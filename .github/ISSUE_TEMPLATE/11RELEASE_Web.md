@@ -1,5 +1,5 @@
 ---
-name: Release Checklist
+name: Web Release Checklist
 about: Add this before doing a new release
 title: "[RELEASE] X.X"
 labels: ''
