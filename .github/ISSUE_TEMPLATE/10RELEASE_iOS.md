@@ -16,7 +16,12 @@ assignees: ''
 - [ ] Version Number is updated
 - [ ] Build Number is updated
 - [ ] RELEASE_NOTES.MD and CHANGELOG.md are up to date and correct
+
+# SAP Specific
 - [ ] Widget bundle ID is set correctly, can be different if changed for beta testing
+
+# CIP Specific
+- [ ] DynamicLinks URL is set correctly
 
 # App Store Connect
 - [ ] Create new Release
