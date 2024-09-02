@@ -1,5 +1,5 @@
-name: 🐞 [BUG] Web
-description: File a bug/issue for Web
+name: 🐞 [BUG] Backend
+description: File a bug/issue for Backend Services
 title: "[BUG] <title>"
 labels: ["bug"]
 body:
@@ -45,42 +45,12 @@ body:
       label: Device
       description: What device are you running on?
       options:
-        - Mac
+        - iOS
+        - iPadOS
+        - macOS
         - Windows
       default: 0
       multiple: true
-    validations:
-      required: true
-  - type: dropdown
-    id: browser
-    attributes:
-      label: Browser
-      description: What browser are you running on?
-      options:
-        - Safari
-        - Chrome
-        - Firefox
-        - Edge
-        - Opera
-        - Other (please specify)
-      default: 0
-      multiple: true
-    validations:
-      required: true
-  - type: input
-    id: osversion
-    attributes:
-      label: OS Version
-      description: "What operating system version are are you running?"
-      placeholder: "macOS Sonoma 14.6.1"
-    validations:
-      required: true
-  - type: input
-    id: appversion
-    attributes:
-      label: App Version
-      description: "What version of the App are you running?"
-      placeholder: "0.8.34"
     validations:
       required: true
   - type: textarea
