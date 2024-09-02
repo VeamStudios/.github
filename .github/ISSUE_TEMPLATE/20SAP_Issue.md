@@ -12,16 +12,14 @@ assignees: ''
 - [ ] Cloud Account Issue
 - [ ] Billing Transfer Request
 
-**Cloud Account Details**:
-- ID:
-- RC: https://app.revenuecat.com/customers/83fbcfcd/
-- Email:
+**Account Details**:
 
-**For Billing Transfer Only**:
-NEW ("Dummy" account)
-- ID:
-- RC: https://app.revenuecat.com/customers/83fbcfcd/
-- Email:
+| Account | ID | RC | Email |
+|---------|----|----|-------|
+| Existing (To keep) | | https://app.revenuecat.com/customers/83fbcfcd/ | |
+| New ("Dummy" account)* | | https://app.revenuecat.com/customers/83fbcfcd/ | |
+
+*Fill out the New account row only for Billing Transfer Requests
 
 **Errors or points of note**:
 (e.g., Billing Issue, second account created on the subscription, etc.)
