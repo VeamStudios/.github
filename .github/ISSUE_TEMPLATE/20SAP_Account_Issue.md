@@ -1,5 +1,5 @@
 ---
-name: [SAP] Cloud Account Issue
+name: 🤦‍♂️ [SAP] Cloud Account Issue
 about: For use with support tickets regarding Cloud account issues.
 title: ''
 labels: 'account-issue'
