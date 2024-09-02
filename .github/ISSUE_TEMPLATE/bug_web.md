@@ -1,4 +1,4 @@
-name: 🐞 iOS Bug (Reusable)
+name: 🐞 Web Bug
 description: File a bug/issue
 title: "[BUG] <title>"
 labels: ["bug"]
@@ -33,10 +33,24 @@ body:
       label: Device
       description: What device are you running on?
       options:
-        - iPhone (Default)
-        - iPad
-        - Simulator iPhone
-        - Simulator iPad
+        - Mac
+        - Windows
+      default: 0
+      multiple: true
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: Browser
+      description: What browser are you running on?
+      options:
+        - Safari
+        - Chrome
+        - Firefox
+        - Edge
+        - Opera
+        - Other (please specify)
       default: 0
       multiple: true
     validations:
@@ -45,8 +59,8 @@ body:
     id: osversion
     attributes:
       label: OS Version
-      description: "What version of iOS/iPadOS are you running?"
-      placeholder: "iOS 18.1"
+      description: "What operating system version are are you running?"
+      placeholder: "macOS Sonoma 14.6.1"
     validations:
       required: true
   - type: input

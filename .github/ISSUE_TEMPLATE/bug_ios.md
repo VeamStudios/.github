@@ -1,4 +1,4 @@
-name: 🐞 iOS Bug (Reusable)
+name: 🐞 iOS Bug
 description: File a bug/issue
 title: "[BUG] <title>"
 labels: ["bug"]
