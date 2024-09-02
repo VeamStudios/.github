@@ -1,5 +1,5 @@
-name: 🐞 iOS Bug
-description: File a bug/issue
+name: 🐞 iOS Bug 
+description: File a bug/issue for iOS
 title: "[BUG] <title>"
 labels: ["bug"]
 body:

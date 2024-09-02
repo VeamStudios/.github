@@ -1,5 +1,5 @@
-name: 🐞 Web Bug
-description: File a bug/issue
+name: Web Bug
+description: File a bug/issue for Web
 title: "[BUG] <title>"
 labels: ["bug"]
 body:
@@ -40,7 +40,7 @@ body:
     validations:
       required: true
   - type: dropdown
-    id: device
+    id: browser
     attributes:
       label: Browser
       description: What browser are you running on?
