@@ -1,5 +1,5 @@
 ---
-name: 🚀 [RELEASE] Web Checklist
+name: 🚀 [Web RELEASE]
 about: Add this before doing a new release
 title: "[RELEASE] X.X"
 labels: ''

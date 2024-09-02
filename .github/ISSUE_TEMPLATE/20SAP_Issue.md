@@ -1,5 +1,5 @@
 ---
-name: 🤦‍♂️ [SAP] Cloud Account / Billing Transfer Issue
+name: 🤦‍♂️ [SUPPORT] SAP Issue
 about: For support tickets regarding Cloud account issues or Billing Transfer requests.
 title: ''
 labels: ''
