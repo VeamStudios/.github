@@ -7,12 +7,6 @@ assignees: ''
 
 ---
 
----
-name: Release Checklist
-about: Add this before doing a new release
-title: "[RELEASE] X.X"
----
-
 # New Release Branch
 - [ ] Create "Release X.X" branch with all required changes
 - [ ] Create Pull Request for the Release branch into Main
