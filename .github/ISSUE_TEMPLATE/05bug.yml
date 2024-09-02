@@ -1,20 +1,35 @@
-name: 🐞 [BUG] General
-description: File a bug/issue for iOS
+name: 🐞 [BUG] Multi-Platform
+description: File a bug/issue for iOS, Android, Web, or Backend
 title: "[BUG] <title>"
 labels: ["bug"]
 body:
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Which platform is this bug report for?
+      options:
+        - iOS
+        - Android
+        - Web
+        - Backend
+    validations:
+      required: true
+
   - type: textarea
     attributes:
       label: Current Behavior
       description: A concise description of what you're experiencing.
     validations:
       required: true
+
   - type: textarea
     attributes:
       label: Expected Behavior
       description: A concise description of what you expected to happen.
     validations:
       required: false
+
   - type: textarea
     attributes:
       label: Steps To Reproduce
@@ -27,19 +42,7 @@ body:
       render: bash
     validations:
       required: false
-  - type: dropdown
-    id: type
-    attributes:
-      label: type
-      description: What type of bug?
-      options:
-        - iOS
-        - Web
-        - Backend
-        - Android
-      default: 0
-    validations:
-      required: true
+
   - type: dropdown
     id: environment
     attributes:
@@ -52,57 +55,30 @@ body:
       default: 0
     validations:
       required: true
+
   - type: dropdown
     id: device
     attributes:
       label: Device
       description: What device are you running on?
       options:
-        - iPhone (Default)
+        - iPhone
         - iPad
-        - Simulator iPhone
-        - Simulator iPad
-      default: 0
-      multiple: true
-    validations:
-      required: true
-    if: "${{ env.type == 'iOS' }}"
-  - type: input
-    id: osversion
-    attributes:
-      label: OS Version
-      description: "What version of iOS/iPadOS are you running?"
-      placeholder: "iOS 18.1"
-    validations:
-      required: true
-    if: "${{ env.type == 'iOS' }}"
-  - type: input
-    id: appversion
-    attributes:
-      label: App Version
-      description: "What version of the App are you running?"
-      placeholder: "0.8.34"
-    validations:
-      required: true
-    if: "${{ env.type == 'iOS' || env.type == 'Android' }}"
-  - type: dropdown
-    id: device
-    attributes:
-      label: Device
-      description: What device are you running on?
-      options:
+        - Android Phone
+        - Android Tablet
         - Mac
         - Windows
-      default: 0
+        - Linux
+        - Other (please specify)
       multiple: true
     validations:
       required: true
-    if: "${{ env.type == 'Web' }}"
+
   - type: dropdown
     id: browser
     attributes:
       label: Browser
-      description: What browser are you running on?
+      description: For Web issues, what browser are you using?
       options:
         - Safari
         - Chrome
@@ -110,11 +86,28 @@ body:
         - Edge
         - Opera
         - Other (please specify)
-      default: 0
       multiple: true
     validations:
+      required: false
+
+  - type: input
+    id: os_version
+    attributes:
+      label: OS Version
+      description: What version of the operating system are you running?
+      placeholder: e.g., iOS 15.5, Android 12, macOS 12.4, Windows 11
+    validations:
+      required: false
+
+  - type: input
+    id: app_version
+    attributes:
+      label: App Version
+      description: What version of the app are you running?
+      placeholder: e.g., 1.2.3
+    validations:
       required: true
-    if: "${{ env.type == 'iOS' }}"
+
   - type: textarea
     attributes:
       label: Attachments
