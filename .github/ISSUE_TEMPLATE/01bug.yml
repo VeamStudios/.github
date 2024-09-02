@@ -1,4 +1,4 @@
-name: 🐞 [BUG] Multi-Platform
+name: 🐞 [BUG]
 description: File a bug/issue for iOS, Android, Web, or Backend
 title: "[BUG] <title>"
 labels: ["bug"]

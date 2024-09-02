@@ -6,7 +6,7 @@ Fixes #
 
 
 ## Checklist before requesting a review
-- [ ] PR title is set to start with one of the following prefixes, followed by a colon and a space:
+- [ ] PR title is set to `[type]: lowercase title`:
 
 - `fix`
 - `feat`
