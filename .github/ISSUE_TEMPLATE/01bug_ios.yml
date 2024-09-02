@@ -1,4 +1,4 @@
-name: 🐞 iOS Bug 
+name: 🐞 [BUG] iOS
 description: File a bug/issue for iOS
 title: "[BUG] <title>"
 labels: ["bug"]

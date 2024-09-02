@@ -1,5 +1,5 @@
 ---
-name: iOS Release Checklist
+name: 🚀 [RELEASE] iOS Checklist
 about: Add this before doing a new release
 title: "[RELEASE] X.X"
 labels: ''
