@@ -1,6 +1,5 @@
 name: 🔨 [TASK]
 description: Add a general Issue or Task.
-title: "<type>: <title>"
 body:
   - type: dropdown
     id: type
