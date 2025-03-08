@@ -1,22 +1,8 @@
-## Describe your changes
+<!--  PR Title should have one of the following prefixes -->
+<!--  fix | feat | build | chore | ci | docs | style | refac | perf | test -->
 
+## Acceptance Criteria
+<!-- Notion Link or Issue Link -->
 
-## Issue Links
-Fixes #
-
-
-## Checklist before requesting a review
-- [ ] PR title is set to `[type]: lowercase title`:
-
-- `fix`
-- `feat`
-- `build`
-- `chore`
-- `ci`
-- `docs`
-- `style`
-- `refac`
-- `perf`
-- `test`
-
-For example: `feat: add new feature` or `fix: resolve bug in login flow`
+## Notes for Reviewers
+<!-- Optional: Any additional context -->
