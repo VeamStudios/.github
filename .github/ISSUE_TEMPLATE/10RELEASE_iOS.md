@@ -20,9 +20,6 @@ assignees: ''
 # SAP Specific
 - [ ] Widget bundle ID is set correctly, can be different if changed for beta testing
 
-# CIP Specific
-- [ ] DynamicLinks URL is set correctly
-
 # App Store Connect
 - [ ] Create new Release
 - [ ] Demo Account is Active in Production
