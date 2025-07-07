@@ -12,13 +12,14 @@ body:
         - Android
         - Web
         - Backend
+      multiple: true
     validations:
       required: true
 
   - type: textarea
     attributes:
       label: Description
-      description: A concise description of what you're experiencing.
+      description: A concise description of what you're experiencing. Add any attachments here.
     validations:
       required: true
 
@@ -77,7 +78,6 @@ body:
 
   - type: dropdown
     id: browser
-    if: ${{ form.platform == 'Web' }}
     attributes:
       label: Browser
       description: For Web issues, what browser are you using?
@@ -94,7 +94,6 @@ body:
 
   - type: input
     id: os_version
-    if: ${{ form.platform == 'Web' }}
     attributes:
       label: OS Version
       description: What version of the operating system are you running?
