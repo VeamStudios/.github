@@ -1,6 +1,6 @@
 name: 🐞 [BUG] iOS
 description: File a bug/issue for iOS
-title: "[BUG] <title>"
+title: "<title>"
 labels: ["bug"]
 body:
   - type: textarea
