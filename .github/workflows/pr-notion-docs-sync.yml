@@ -42,22 +42,22 @@ on:
         description: "Notion URL or ID for CIP App Features database"
         required: false
         type: string
-        default: "https://www.notion.so/208069083a0380f1ae7cefcbd4e2d324"
+        default: "https://www.notion.so/veamstudios/208069083a0380f1ae7cefcbd4e2d324"
       cip-specs-db-url:
         description: "Notion URL or ID for CIP Specs database"
         required: false
         type: string
-        default: "https://www.notion.so/20f069083a0380d09b11e1d4cd9c1553"
+        default: "https://www.notion.so/veamstudios/20f069083a0380d09b11e1d4cd9c1553"
       sap-app-features-db-url:
         description: "Notion URL or ID for SAP App Features database"
         required: false
         type: string
-        default: "https://www.notion.so/134069083a038015b73eec832ff6b6d4"
+        default: "https://www.notion.so/veamstudios/134069083a038015b73eec832ff6b6d4"
       sap-specs-db-url:
         description: "Notion URL or ID for SAP Specs database"
         required: false
         type: string
-        default: "https://www.notion.so/276069083a038055a64dcc24a9f33c43"
+        default: "https://www.notion.so/veamstudios/276069083a038055a64dcc24a9f33c43"
       product-name-override:
         description: "Optional Product name override if repo mapping is unavailable"
         required: false
