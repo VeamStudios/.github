@@ -17,7 +17,10 @@ jobs:
     uses: VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml@main
     secrets:
       notion-token: ${{ secrets.NOTION_TOKEN }}
-    # Uncomment and customize inputs as needed:
+    # Uncomment and customize inputs as needed.
+    # IMPORTANT: If you are not using the default VeamStudios Notion workspace/databases,
+    # you must set the 3 database URLs below to your own Notion databases and ensure
+    # your NOTION_TOKEN integration is shared to those databases, or Notion will return 404.
     # with:
     #   ai-model: 'openai/gpt-4.1-mini'
     #   max-tokens: 2000

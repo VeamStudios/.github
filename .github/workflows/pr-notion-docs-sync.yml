@@ -212,24 +212,35 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import urllib.error
           import urllib.request
 
           token = os.environ["NOTION_TOKEN"]
           notion_version = os.environ["NOTION_VERSION"]
 
-          def notion_post(path, payload):
+          def notion_request(method, path, payload):
             req = urllib.request.Request(
               f"https://api.notion.com{path}",
               data=json.dumps(payload).encode("utf-8"),
-              method="POST",
+              method=method,
               headers={
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
                 "Notion-Version": notion_version,
               },
             )
-            with urllib.request.urlopen(req) as r:
-              return json.loads(r.read().decode("utf-8"))
+            try:
+              with urllib.request.urlopen(req) as r:
+                return json.loads(r.read().decode("utf-8"))
+            except urllib.error.HTTPError as e:
+              body = e.read().decode("utf-8", "replace")
+              hint = ""
+              if e.code == 404 and "/databases/" in path:
+                hint = " Ensure the database URL/ID is correct and the Notion integration has access to that database."
+              raise RuntimeError(f"Notion API {method} {path} failed with HTTP {e.code}: {body}.{hint}") from e
+
+          def notion_post(path, payload):
+            return notion_request("POST", path, payload)
 
           def extract_title(page):
             props = page.get("properties", {})
@@ -475,33 +486,32 @@ jobs:
           token = os.environ["NOTION_TOKEN"]
           notion_version = os.environ["NOTION_VERSION"]
 
-          def notion_post(path, payload):
+          def notion_request(method, path, payload):
             req = urllib.request.Request(
               f"https://api.notion.com{path}",
               data=json.dumps(payload).encode("utf-8"),
-              method="POST",
+              method=method,
               headers={
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
                 "Notion-Version": notion_version,
               },
             )
-            with urllib.request.urlopen(req) as r:
-              return json.loads(r.read().decode("utf-8"))
+            try:
+              with urllib.request.urlopen(req) as r:
+                return json.loads(r.read().decode("utf-8"))
+            except urllib.error.HTTPError as e:
+              body = e.read().decode("utf-8", "replace")
+              hint = ""
+              if e.code == 404 and "/databases/" in path:
+                hint = " Ensure the database URL/ID is correct and the Notion integration has access to that database."
+              raise RuntimeError(f"Notion API {method} {path} failed with HTTP {e.code}: {body}.{hint}") from e
+
+          def notion_post(path, payload):
+            return notion_request("POST", path, payload)
 
           def notion_patch(path, payload):
-            req = urllib.request.Request(
-              f"https://api.notion.com{path}",
-              data=json.dumps(payload).encode("utf-8"),
-              method="PATCH",
-              headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-                "Notion-Version": notion_version,
-              },
-            )
-            with urllib.request.urlopen(req) as r:
-              return json.loads(r.read().decode("utf-8"))
+            return notion_request("PATCH", path, payload)
 
           def heading_block(text):
             return {"object": "block", "type": "heading_3", "heading_3": {"rich_text": [{"type": "text", "text": {"content": text}}]}}
