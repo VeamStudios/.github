@@ -18,13 +18,17 @@ jobs:
     secrets:
       notion-token: ${{ secrets.NOTION_TOKEN }}
     # Uncomment and customize inputs as needed.
+    # Recommended for richer, more actionable Notion Proposal detail:
+    # - use a stronger model
+    # - allow more output tokens
+    # - include a larger PR diff context window
     # IMPORTANT: If you are not using the default VeamStudios Notion workspace/databases,
     # you must set the 3 database URLs below to your own Notion databases and ensure
     # your NOTION_TOKEN integration is shared to those databases, or Notion will return 404.
     # with:
-    #   ai-model: 'openai/gpt-4.1-mini'
-    #   max-tokens: 2000
-    #   max-diff-bytes: 45000
+    #   ai-model: 'openai/gpt-4.1'
+    #   max-tokens: 3500
+    #   max-diff-bytes: 90000
     #   product-name-override: 'Checklist Inspector Pro'
     #   create-no-impact-proposal: true
     #   dry-run: false

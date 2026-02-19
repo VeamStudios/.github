@@ -358,6 +358,7 @@ jobs:
           You are a technical documentation impact analyst.
 
           Determine which existing docs should be updated and whether any new docs should be created based on a PR.
+          Produce actionable documentation edit guidance that a writer can execute directly.
 
           Return JSON only, no markdown:
           [
@@ -366,7 +367,18 @@ jobs:
               "target_doc": "exact existing title or new title",
               "action": "update|create",
               "what_changed": "short, specific summary",
-              "reason": "why this doc change is required from the PR"
+              "reason": "why this doc change is required from the PR",
+              "proposed_doc_updates": [
+                "specific documentation change #1",
+                "specific documentation change #2"
+              ],
+              "evidence_from_pr": [
+                "path/to/file.ext: concrete code change evidence"
+              ],
+              "acceptance_criteria": [
+                "clear verification criterion #1",
+                "clear verification criterion #2"
+              ]
             }
           ]
 
@@ -374,6 +386,9 @@ jobs:
           - Use target_id from the provided catalog for update actions.
           - If no docs are impacted, return [].
           - Keep entries concise and concrete.
+          - proposed_doc_updates must be a clear checklist of doc edits (sections to add/update/remove, field names, UI labels, behaviors).
+          - evidence_from_pr must cite changed files and the behavior change they prove.
+          - acceptance_criteria must be testable statements that confirm documentation is accurate after updates.
           EOF
 
       - name: Build model user prompt
@@ -447,12 +462,30 @@ jobs:
             action = str(item.get("action", "")).strip().lower()
             if action not in ("update", "create"):
               continue
+            proposed_doc_updates = item.get("proposed_doc_updates", [])
+            if not isinstance(proposed_doc_updates, list):
+              proposed_doc_updates = []
+            proposed_doc_updates = [str(x).strip() for x in proposed_doc_updates if str(x).strip()]
+
+            evidence_from_pr = item.get("evidence_from_pr", [])
+            if not isinstance(evidence_from_pr, list):
+              evidence_from_pr = []
+            evidence_from_pr = [str(x).strip() for x in evidence_from_pr if str(x).strip()]
+
+            acceptance_criteria = item.get("acceptance_criteria", [])
+            if not isinstance(acceptance_criteria, list):
+              acceptance_criteria = []
+            acceptance_criteria = [str(x).strip() for x in acceptance_criteria if str(x).strip()]
+
             valid.append({
               "target_id": str(item.get("target_id", "")).strip(),
               "target_doc": str(item.get("target_doc", "")).strip(),
               "action": action,
               "what_changed": str(item.get("what_changed", "")).strip(),
               "reason": str(item.get("reason", "")).strip(),
+              "proposed_doc_updates": proposed_doc_updates,
+              "evidence_from_pr": evidence_from_pr,
+              "acceptance_criteria": acceptance_criteria,
             })
 
           with open("targets.json", "w", encoding="utf-8") as f:
@@ -617,16 +650,35 @@ jobs:
           if not targets:
             blocks.append(paragraph_block("No docs impact detected."))
           else:
-            for t in targets:
+            for idx, t in enumerate(targets, start=1):
               target_id = t.get("target_id", "")
               target_title = t.get("target_doc", "")
               catalog_item = catalog.get(target_id)
               if catalog_item:
                 target_title = f"{catalog_item['title']} ({catalog_item['source']})"
+              blocks.append(heading_block(f"Target {idx}: {target_title or 'New doc'}"))
               line = f"[{t.get('action','update')}] {target_title or 'New doc'}: {t.get('what_changed','')}"
               reason = f"Why: {t.get('reason','')}"
               blocks.append(paragraph_block(line))
               blocks.append(paragraph_block(reason))
+
+              proposed_updates = t.get("proposed_doc_updates", [])
+              if proposed_updates:
+                blocks.append(heading_block("Suggested documentation edits"))
+                for u in proposed_updates:
+                  blocks.append(todo_block(u))
+
+              evidence = t.get("evidence_from_pr", [])
+              if evidence:
+                blocks.append(heading_block("PR evidence"))
+                for e in evidence:
+                  blocks.append(paragraph_block(f"- {e}"))
+
+              acceptance = t.get("acceptance_criteria", [])
+              if acceptance:
+                blocks.append(heading_block("Acceptance criteria"))
+                for a in acceptance:
+                  blocks.append(todo_block(a))
 
           blocks.extend([
             heading_block("Review checklist"),
