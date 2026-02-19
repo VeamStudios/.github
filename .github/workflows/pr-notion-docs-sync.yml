@@ -1,0 +1,651 @@
+name: PR Notion Docs Sync
+
+on:
+  workflow_call:
+    inputs:
+      ai-model:
+        description: "AI model used to identify documentation updates"
+        required: false
+        type: string
+        default: "openai/gpt-4.1-mini"
+      max-tokens:
+        description: "Max tokens returned by AI inference"
+        required: false
+        type: number
+        default: 2000
+      max-diff-bytes:
+        description: "Maximum diff bytes sent to the model"
+        required: false
+        type: number
+        default: 45000
+      notion-version:
+        description: "Notion API version header"
+        required: false
+        type: string
+        default: "2022-06-28"
+      github-repos-db-url:
+        description: "Notion URL or ID for GitHub Repos database"
+        required: false
+        type: string
+        default: "https://www.notion.so/veamstudios/7657c233579e40909b9cf1640e4904f8"
+      products-db-url:
+        description: "Notion URL or ID for Products database"
+        required: false
+        type: string
+        default: "https://www.notion.so/veamstudios/30c069083a03803e9636f97345e2d433"
+      proposals-db-url:
+        description: "Notion URL or ID for Proposals database"
+        required: false
+        type: string
+        default: "https://www.notion.so/veamstudios/2ca691667ea34ddfabee572644ce8290"
+      cip-app-features-db-url:
+        description: "Notion URL or ID for CIP App Features database"
+        required: false
+        type: string
+        default: "https://www.notion.so/208069083a0380f1ae7cefcbd4e2d324"
+      cip-specs-db-url:
+        description: "Notion URL or ID for CIP Specs database"
+        required: false
+        type: string
+        default: "https://www.notion.so/20f069083a0380d09b11e1d4cd9c1553"
+      sap-app-features-db-url:
+        description: "Notion URL or ID for SAP App Features database"
+        required: false
+        type: string
+        default: "https://www.notion.so/134069083a038015b73eec832ff6b6d4"
+      sap-specs-db-url:
+        description: "Notion URL or ID for SAP Specs database"
+        required: false
+        type: string
+        default: "https://www.notion.so/276069083a038055a64dcc24a9f33c43"
+      product-name-override:
+        description: "Optional Product name override if repo mapping is unavailable"
+        required: false
+        type: string
+        default: ""
+      create-no-impact-proposal:
+        description: "Create proposal page when no docs impact is detected"
+        required: false
+        type: boolean
+        default: true
+      dry-run:
+        description: "Run all inference/selection logic without writing to Notion"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      notion-token:
+        description: "Notion integration token"
+        required: true
+
+jobs:
+  notion-doc-sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      models: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Resolve IDs and PR metadata
+        id: meta
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          INPUT_GITHUB_REPOS_DB_URL: ${{ inputs.github-repos-db-url }}
+          INPUT_PRODUCTS_DB_URL: ${{ inputs.products-db-url }}
+          INPUT_PROPOSALS_DB_URL: ${{ inputs.proposals-db-url }}
+          INPUT_CIP_APP_DB_URL: ${{ inputs.cip-app-features-db-url }}
+          INPUT_CIP_SPEC_DB_URL: ${{ inputs.cip-specs-db-url }}
+          INPUT_SAP_APP_DB_URL: ${{ inputs.sap-app-features-db-url }}
+          INPUT_SAP_SPEC_DB_URL: ${{ inputs.sap-specs-db-url }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          def extract_db_id(value: str) -> str:
+            if not value:
+              return ""
+            # First try canonical UUID (with dashes)
+            m = re.search(r'([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})', value)
+            if m:
+              return m.group(1).replace("-", "")
+            # Then compact 32-char IDs used in notion URLs
+            m = re.search(r'([0-9a-fA-F]{32})', value)
+            if m:
+              return m.group(1).lower()
+            return ""
+
+          required = {
+            "github_repos_db_id": extract_db_id(os.getenv("INPUT_GITHUB_REPOS_DB_URL", "")),
+            "products_db_id": extract_db_id(os.getenv("INPUT_PRODUCTS_DB_URL", "")),
+            "proposals_db_id": extract_db_id(os.getenv("INPUT_PROPOSALS_DB_URL", "")),
+            "cip_app_db_id": extract_db_id(os.getenv("INPUT_CIP_APP_DB_URL", "")),
+            "cip_spec_db_id": extract_db_id(os.getenv("INPUT_CIP_SPEC_DB_URL", "")),
+            "sap_app_db_id": extract_db_id(os.getenv("INPUT_SAP_APP_DB_URL", "")),
+            "sap_spec_db_id": extract_db_id(os.getenv("INPUT_SAP_SPEC_DB_URL", "")),
+          }
+
+          missing = [k for k, v in required.items() if not v and k in ("github_repos_db_id", "products_db_id", "proposals_db_id")]
+          if missing:
+            print(f"Missing required Notion database IDs: {', '.join(missing)}", file=sys.stderr)
+            sys.exit(1)
+
+          repository = os.getenv("GITHUB_REPOSITORY", "")
+          if "/" not in repository:
+            print("This workflow must run in a repository context.", file=sys.stderr)
+            sys.exit(1)
+          owner, repo_name = repository.split("/", 1)
+
+          payload = {
+            "repo_owner": owner,
+            "repo_name": repo_name,
+            "pr_number": os.getenv("PR_NUMBER", ""),
+            "pr_url": os.getenv("PR_URL", ""),
+            "pr_title": os.getenv("PR_TITLE", ""),
+            "pr_body": os.getenv("PR_BODY", "") or "",
+            "pr_sha": os.getenv("PR_SHA", ""),
+            **required,
+          }
+          with open("meta.json", "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+            for key, val in payload.items():
+              if key == "pr_body":
+                continue
+              out.write(f"{key}={str(val).replace(chr(10), ' ')}\n")
+          PY
+
+      - name: Collect PR diff and changed files
+        id: pr_context
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.meta.outputs.pr_number }}
+          MAX_DIFF_BYTES: ${{ inputs.max-diff-bytes }}
+        run: |
+          gh pr view "$PR_NUMBER" --json files,headRefOid,url,title,body > pr_view.json
+          gh pr diff "$PR_NUMBER" > pr_diff_raw.txt || true
+
+          python - <<'PY'
+          import json
+
+          with open("pr_view.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+          paths = [f.get("path", "") for f in data.get("files", []) if f.get("path")]
+          with open("changed_files.txt", "w", encoding="utf-8") as f:
+            f.write("\n".join(paths))
+
+          max_bytes = int(__import__("os").getenv("MAX_DIFF_BYTES", "45000"))
+          raw = open("pr_diff_raw.txt", "rb").read()
+          trimmed = raw[:max_bytes]
+          with open("pr_diff.txt", "wb") as f:
+            f.write(trimmed)
+          PY
+
+      - name: Resolve product and build doc catalog
+        id: catalog
+        env:
+          NOTION_TOKEN: ${{ secrets.notion-token }}
+          NOTION_VERSION: ${{ inputs.notion-version }}
+          PRODUCT_NAME_OVERRIDE: ${{ inputs.product-name-override }}
+          GITHUB_REPOS_DB_ID: ${{ steps.meta.outputs.github_repos_db_id }}
+          PRODUCTS_DB_ID: ${{ steps.meta.outputs.products_db_id }}
+          CIP_APP_DB_ID: ${{ steps.meta.outputs.cip_app_db_id }}
+          CIP_SPEC_DB_ID: ${{ steps.meta.outputs.cip_spec_db_id }}
+          SAP_APP_DB_ID: ${{ steps.meta.outputs.sap_app_db_id }}
+          SAP_SPEC_DB_ID: ${{ steps.meta.outputs.sap_spec_db_id }}
+          REPO_NAME: ${{ steps.meta.outputs.repo_name }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          token = os.environ["NOTION_TOKEN"]
+          notion_version = os.environ["NOTION_VERSION"]
+
+          def notion_post(path, payload):
+            req = urllib.request.Request(
+              f"https://api.notion.com{path}",
+              data=json.dumps(payload).encode("utf-8"),
+              method="POST",
+              headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "Notion-Version": notion_version,
+              },
+            )
+            with urllib.request.urlopen(req) as r:
+              return json.loads(r.read().decode("utf-8"))
+
+          def extract_title(page):
+            props = page.get("properties", {})
+            for _, prop in props.items():
+              if prop.get("type") == "title":
+                t = prop.get("title", [])
+                return "".join(x.get("plain_text", "") for x in t).strip()
+            return ""
+
+          def query_all_titles(db_id, source_name):
+            if not db_id:
+              return []
+            payload = {"page_size": 100}
+            out = []
+            while True:
+              res = notion_post(f"/v1/databases/{db_id}/query", payload)
+              for page in res.get("results", []):
+                title = extract_title(page)
+                if not title:
+                  continue
+                out.append({
+                  "title": title,
+                  "id": page["id"],
+                  "url": page.get("url", ""),
+                  "source": source_name,
+                })
+              if not res.get("has_more"):
+                break
+              payload["start_cursor"] = res.get("next_cursor")
+            return out
+
+          repo_name = os.environ["REPO_NAME"]
+          repo_db_id = os.environ["GITHUB_REPOS_DB_ID"]
+          products_db_id = os.environ["PRODUCTS_DB_ID"]
+
+          # Resolve repo -> product tag from GitHub Repos database.
+          repo_query = notion_post(
+            f"/v1/databases/{repo_db_id}/query",
+            {
+              "filter": {
+                "property": "Name",
+                "title": {
+                  "equals": repo_name
+                }
+              },
+              "page_size": 5,
+            },
+          )
+          repo_rows = repo_query.get("results", [])
+          product_name = os.environ.get("PRODUCT_NAME_OVERRIDE", "").strip()
+          if not product_name and repo_rows:
+            products_prop = repo_rows[0]["properties"].get("Products", {})
+            names = [x.get("name", "") for x in products_prop.get("multi_select", []) if x.get("name")]
+            if names:
+              product_name = names[0]
+
+          if not product_name:
+            raise RuntimeError(
+              f"Unable to resolve product for repo '{repo_name}'. Provide product-name-override or update GitHub Repos mapping."
+            )
+
+          product_query = notion_post(
+            f"/v1/databases/{products_db_id}/query",
+            {
+              "filter": {
+                "property": "Product name",
+                "title": {
+                  "equals": product_name
+                }
+              },
+              "page_size": 5,
+            },
+          )
+          product_results = product_query.get("results", [])
+          if not product_results:
+            raise RuntimeError(f"Product '{product_name}' not found in Products database.")
+
+          product_page = product_results[0]
+          product_page_id = product_page["id"]
+
+          product_norm = product_name.lower()
+          if "checklist inspector" in product_norm or "cip" in product_norm:
+            app_db = os.environ["CIP_APP_DB_ID"]
+            spec_db = os.environ["CIP_SPEC_DB_ID"]
+            product_family = "CIP"
+          elif "site audit" in product_norm or "sap" in product_norm:
+            app_db = os.environ["SAP_APP_DB_ID"]
+            spec_db = os.environ["SAP_SPEC_DB_ID"]
+            product_family = "SAP"
+          else:
+            app_db = os.environ["CIP_APP_DB_ID"]
+            spec_db = os.environ["CIP_SPEC_DB_ID"]
+            product_family = "CIP"
+
+          docs = []
+          docs.extend(query_all_titles(app_db, "app_feature"))
+          docs.extend(query_all_titles(spec_db, "spec"))
+
+          with open("doc_catalog.json", "w", encoding="utf-8") as f:
+            json.dump(docs, f, indent=2)
+          with open("doc_titles.txt", "w", encoding="utf-8") as f:
+            for i, d in enumerate(docs, start=1):
+              f.write(f"{i}. {d['title']} [{d['source']}] (id: {d['id']})\n")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+            out.write(f"product_name={product_name}\n")
+            out.write(f"product_page_id={product_page_id}\n")
+            out.write(f"product_family={product_family}\n")
+            out.write(f"doc_count={len(docs)}\n")
+          PY
+
+      - name: Infer doc targets prompt files
+        run: |
+          cat > system_prompt.txt <<'EOF'
+          You are a technical documentation impact analyst.
+
+          Determine which existing docs should be updated and whether any new docs should be created based on a PR.
+
+          Return JSON only, no markdown:
+          [
+            {
+              "target_id": "existing_doc_id_or_empty_for_create",
+              "target_doc": "exact existing title or new title",
+              "action": "update|create",
+              "what_changed": "short, specific summary",
+              "reason": "why this doc change is required from the PR"
+            }
+          ]
+
+          Rules:
+          - Use target_id from the provided catalog for update actions.
+          - If no docs are impacted, return [].
+          - Keep entries concise and concrete.
+          EOF
+
+      - name: Build model user prompt
+        env:
+          PR_URL: ${{ steps.meta.outputs.pr_url }}
+          PR_TITLE: ${{ steps.meta.outputs.pr_title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PRODUCT_NAME: ${{ steps.catalog.outputs.product_name }}
+          PRODUCT_FAMILY: ${{ steps.catalog.outputs.product_family }}
+        run: |
+          {
+            echo "Product: ${PRODUCT_NAME} (${PRODUCT_FAMILY})"
+            echo "PR URL: ${PR_URL}"
+            echo "PR Title: ${PR_TITLE}"
+            echo ""
+            echo "PR Description:"
+            echo "${PR_BODY}"
+            echo ""
+            echo "Changed Files:"
+            cat changed_files.txt
+            echo ""
+            echo "Candidate Docs:"
+            cat doc_titles.txt
+            echo ""
+            echo "PR Diff:"
+            echo '```diff'
+            cat pr_diff.txt
+            echo '```'
+          } > user_prompt.txt
+
+      - name: Generate target recommendations
+        id: ai
+        uses: actions/ai-inference@v1
+        with:
+          model: ${{ inputs.ai-model }}
+          system-prompt-file: ./system_prompt.txt
+          prompt-file: ./user_prompt.txt
+          max-tokens: ${{ inputs.max-tokens }}
+
+      - name: Normalize target recommendations
+        id: targets
+        run: |
+          RESPONSE_FILE="${{ steps.ai.outputs.response-file }}"
+          if [ -f "$RESPONSE_FILE" ]; then
+            cp "$RESPONSE_FILE" ai_raw.txt
+          else
+            printf '%s' "${{ steps.ai.outputs.response }}" > ai_raw.txt
+          fi
+
+          python - <<'PY'
+          import json
+          import re
+
+          raw = open("ai_raw.txt", "r", encoding="utf-8").read().strip()
+          # Strip code fences if present.
+          raw = re.sub(r"^```(?:json)?\s*", "", raw)
+          raw = re.sub(r"\s*```$", "", raw)
+
+          try:
+            parsed = json.loads(raw) if raw else []
+          except json.JSONDecodeError:
+            parsed = []
+
+          if not isinstance(parsed, list):
+            parsed = []
+
+          valid = []
+          for item in parsed:
+            if not isinstance(item, dict):
+              continue
+            action = str(item.get("action", "")).strip().lower()
+            if action not in ("update", "create"):
+              continue
+            valid.append({
+              "target_id": str(item.get("target_id", "")).strip(),
+              "target_doc": str(item.get("target_doc", "")).strip(),
+              "action": action,
+              "what_changed": str(item.get("what_changed", "")).strip(),
+              "reason": str(item.get("reason", "")).strip(),
+            })
+
+          with open("targets.json", "w", encoding="utf-8") as f:
+            json.dump(valid, f, indent=2)
+          PY
+
+          TARGET_COUNT=$(jq 'length' targets.json)
+          echo "target_count=${TARGET_COUNT}" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update Proposal in Notion
+        if: ${{ !inputs.dry-run }}
+        env:
+          NOTION_TOKEN: ${{ secrets.notion-token }}
+          NOTION_VERSION: ${{ inputs.notion-version }}
+          PROPOSALS_DB_ID: ${{ steps.meta.outputs.proposals_db_id }}
+          PR_URL: ${{ steps.meta.outputs.pr_url }}
+          PR_NUMBER: ${{ steps.meta.outputs.pr_number }}
+          PR_TITLE: ${{ steps.meta.outputs.pr_title }}
+          PR_SHA: ${{ steps.meta.outputs.pr_sha }}
+          PRODUCT_PAGE_ID: ${{ steps.catalog.outputs.product_page_id }}
+          PRODUCT_FAMILY: ${{ steps.catalog.outputs.product_family }}
+          PRODUCT_NAME: ${{ steps.catalog.outputs.product_name }}
+          TARGET_COUNT: ${{ steps.targets.outputs.target_count }}
+          CREATE_NO_IMPACT: ${{ inputs.create-no-impact-proposal }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          token = os.environ["NOTION_TOKEN"]
+          notion_version = os.environ["NOTION_VERSION"]
+
+          def notion_post(path, payload):
+            req = urllib.request.Request(
+              f"https://api.notion.com{path}",
+              data=json.dumps(payload).encode("utf-8"),
+              method="POST",
+              headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "Notion-Version": notion_version,
+              },
+            )
+            with urllib.request.urlopen(req) as r:
+              return json.loads(r.read().decode("utf-8"))
+
+          def notion_patch(path, payload):
+            req = urllib.request.Request(
+              f"https://api.notion.com{path}",
+              data=json.dumps(payload).encode("utf-8"),
+              method="PATCH",
+              headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "Notion-Version": notion_version,
+              },
+            )
+            with urllib.request.urlopen(req) as r:
+              return json.loads(r.read().decode("utf-8"))
+
+          def heading_block(text):
+            return {"object": "block", "type": "heading_3", "heading_3": {"rich_text": [{"type": "text", "text": {"content": text}}]}}
+
+          def paragraph_block(text):
+            return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": text[:1800]}}]}}
+
+          def todo_block(text):
+            return {"object": "block", "type": "to_do", "to_do": {"checked": False, "rich_text": [{"type": "text", "text": {"content": text[:1800]}}]}}
+
+          targets = json.load(open("targets.json", "r", encoding="utf-8"))
+          catalog = {d["id"]: d for d in json.load(open("doc_catalog.json", "r", encoding="utf-8"))}
+
+          target_count = int(os.environ.get("TARGET_COUNT", "0"))
+          create_no_impact = os.environ.get("CREATE_NO_IMPACT", "true").lower() == "true"
+          if target_count == 0 and not create_no_impact:
+            print("No docs impact detected and create-no-impact-proposal=false; skipping Notion write.")
+            raise SystemExit(0)
+
+          cip_app = []
+          cip_spec = []
+          sap_app = []
+          sap_spec = []
+          for t in targets:
+            if t.get("action") != "update":
+              continue
+            tid = t.get("target_id", "")
+            if tid not in catalog:
+              continue
+            src = catalog[tid]["source"]
+            if os.environ["PRODUCT_FAMILY"] == "CIP":
+              if src == "app_feature":
+                cip_app.append({"id": tid})
+              else:
+                cip_spec.append({"id": tid})
+            else:
+              if src == "app_feature":
+                sap_app.append({"id": tid})
+              else:
+                sap_spec.append({"id": tid})
+
+          changed_files = open("changed_files.txt", "r", encoding="utf-8").read().splitlines()
+          areas = set()
+          for path in changed_files:
+            p = path.lower()
+            if p.endswith(".swift") or "/ios/" in p:
+              areas.add("iOS")
+            if any(p.endswith(x) for x in (".js", ".jsx", ".ts", ".tsx", ".css", ".scss", ".html")) or "/web/" in p:
+              areas.add("Web")
+            if "/backend/" in p or "/server/" in p or p.endswith(".py") or p.endswith(".go") or p.endswith(".java"):
+              areas.add("Backend")
+          if not areas:
+            areas = {"Backend"}
+
+          pr_url = os.environ["PR_URL"]
+          pr_number = os.environ["PR_NUMBER"]
+          pr_title = os.environ["PR_TITLE"]
+          pr_sha = os.environ["PR_SHA"]
+          product_name = os.environ["PRODUCT_NAME"]
+          product_page_id = os.environ["PRODUCT_PAGE_ID"]
+          proposals_db_id = os.environ["PROPOSALS_DB_ID"]
+
+          summary = (
+            "No docs impact detected from current PR analysis."
+            if target_count == 0
+            else f"{target_count} documentation target(s) identified from PR diff analysis."
+          )
+
+          properties = {
+            "Proposal": {"title": [{"text": {"content": f"PR #{pr_number} - {pr_title}"}}]},
+            "Status": {"status": {"name": "Proposed"}},
+            "PR URL": {"url": pr_url},
+            "Summary": {"rich_text": [{"text": {"content": summary}}]},
+            "Product": {"relation": [{"id": product_page_id}]},
+            "Doc Areas": {"multi_select": [{"name": area} for area in sorted(areas)]},
+            "CIP App Feature Targets": {"relation": cip_app},
+            "CIP Spec Targets": {"relation": cip_spec},
+            "SAP App Feature Targets": {"relation": sap_app},
+            "SAP Spec Targets": {"relation": sap_spec},
+          }
+
+          # Idempotency key: PR URL. Upsert existing proposal page.
+          existing = notion_post(
+            f"/v1/databases/{proposals_db_id}/query",
+            {
+              "filter": {
+                "property": "PR URL",
+                "url": {"equals": pr_url}
+              },
+              "page_size": 1,
+            },
+          ).get("results", [])
+
+          blocks = [
+            heading_block("PR Context"),
+            paragraph_block(f"PR: {pr_url}"),
+            paragraph_block(f"Product: {product_name}"),
+            paragraph_block(f"Head SHA: {pr_sha}"),
+            heading_block("Proposed changes"),
+          ]
+
+          if not targets:
+            blocks.append(paragraph_block("No docs impact detected."))
+          else:
+            for t in targets:
+              target_id = t.get("target_id", "")
+              target_title = t.get("target_doc", "")
+              catalog_item = catalog.get(target_id)
+              if catalog_item:
+                target_title = f"{catalog_item['title']} ({catalog_item['source']})"
+              line = f"[{t.get('action','update')}] {target_title or 'New doc'}: {t.get('what_changed','')}"
+              reason = f"Why: {t.get('reason','')}"
+              blocks.append(paragraph_block(line))
+              blocks.append(paragraph_block(reason))
+
+          blocks.extend([
+            heading_block("Review checklist"),
+            todo_block("Validate proposed targets against changed code"),
+            todo_block("Confirm acceptance criteria are clear"),
+            todo_block("Set Status to Approved or Rejected"),
+          ])
+
+          if existing:
+            page_id = existing[0]["id"]
+            notion_patch(f"/v1/pages/{page_id}", {"properties": properties})
+            notion_patch(f"/v1/blocks/{page_id}/children", {"children": blocks})
+            print(f"Updated existing Proposal page: {page_id}")
+          else:
+            notion_post(
+              "/v1/pages",
+              {
+                "parent": {"database_id": proposals_db_id},
+                "properties": properties,
+                "children": blocks,
+              },
+            )
+            print("Created new Proposal page.")
+          PY
+
+      - name: Dry-run artifacts
+        if: ${{ inputs.dry-run }}
+        run: |
+          echo "Dry run enabled. Generated targets:"
+          cat targets.json
+          echo ""
+          echo "Doc catalog size:"
+          jq 'length' doc_catalog.json

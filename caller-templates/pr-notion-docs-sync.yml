@@ -1,0 +1,30 @@
+# PR Notion Docs Sync - Caller Workflow
+#
+# Copy this file into your repo's .github/workflows/ directory.
+# It calls the central reusable workflow from the VeamStudios/.github repo.
+#
+# On PR open/update, this workflow creates or updates a Notion Proposal page
+# with suggested documentation changes derived from the PR diff.
+
+name: PR Notion Docs Sync
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+jobs:
+  notion-docs-sync:
+    uses: VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml@main
+    secrets:
+      notion-token: ${{ secrets.NOTION_TOKEN }}
+    # Uncomment and customize inputs as needed:
+    # with:
+    #   ai-model: 'openai/gpt-4.1-mini'
+    #   max-tokens: 2000
+    #   max-diff-bytes: 45000
+    #   product-name-override: 'Checklist Inspector Pro'
+    #   create-no-impact-proposal: true
+    #   dry-run: false
+    #   github-repos-db-url: 'https://www.notion.so/veamstudios/7657c233579e40909b9cf1640e4904f8'
+    #   products-db-url: 'https://www.notion.so/veamstudios/30c069083a03803e9636f97345e2d433'
+    #   proposals-db-url: 'https://www.notion.so/veamstudios/2ca691667ea34ddfabee572644ce8290'
