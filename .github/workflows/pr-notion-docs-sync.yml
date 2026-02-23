@@ -6,7 +6,7 @@ on:
       pr-number:
         description: "Pull request number to analyze"
         required: true
-        type: number
+        type: string
       max-diff-bytes:
         description: "Maximum diff bytes captured from PR"
         required: false
