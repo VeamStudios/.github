@@ -125,7 +125,7 @@ jobs:
         id: meta
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number }}
+          PR_NUMBER: ${{ inputs['pr-number'] || github.event.pull_request.number }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
@@ -371,7 +371,7 @@ jobs:
           retention-days: 7
 
       - name: Create or update Proposal Request in Notion
-        if: ${{ !inputs.dry-run }}
+        if: ${{ !inputs['dry-run'] }}
         env:
           NOTION_TOKEN: ${{ secrets.notion-token }}
           NOTION_VERSION: ${{ inputs.notion-version }}
@@ -555,7 +555,7 @@ jobs:
           PY
 
       - name: Dry-run artifacts
-        if: ${{ inputs.dry-run }}
+        if: ${{ inputs['dry-run'] }}
         run: |
           echo "Dry run enabled. Proposal request payload:"
           cat pr_context_compact.json

@@ -31,8 +31,8 @@ jobs:
     # you must set the 3 database URLs below to your own Notion databases and ensure
     # your NOTION_TOKEN integration is shared to those databases, or Notion will return 404.
     with:
-      pr-number: ${{ inputs.pr-number }}
-      dry-run: ${{ inputs.dry-run }}
+      pr-number: ${{ inputs['pr-number'] }}
+      dry-run: ${{ inputs['dry-run'] }}
     #   max-diff-bytes: 90000
     #   max-diff-chars-in-proposal: 16000
     #   max-changed-files-in-proposal: 250
