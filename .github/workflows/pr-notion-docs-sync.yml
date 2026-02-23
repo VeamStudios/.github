@@ -7,21 +7,6 @@ on:
         description: "Pull request number to analyze"
         required: true
         type: string
-      max-diff-bytes:
-        description: "Maximum diff bytes captured from PR"
-        required: false
-        type: number
-        default: 45000
-      max-diff-chars-in-proposal:
-        description: "Max diff characters embedded into Notion proposal request"
-        required: false
-        type: number
-        default: 12000
-      max-changed-files-in-proposal:
-        description: "Max changed files listed in Notion proposal request"
-        required: false
-        type: number
-        default: 200
       notion-version:
         description: "Notion API version header"
         required: false
@@ -58,21 +43,6 @@ on:
         description: "Optional PR number override"
         required: false
         type: string
-      max-diff-bytes:
-        description: "Maximum diff bytes captured from PR"
-        required: false
-        type: number
-        default: 45000
-      max-diff-chars-in-proposal:
-        description: "Max diff characters embedded into Notion proposal request"
-        required: false
-        type: number
-        default: 12000
-      max-changed-files-in-proposal:
-        description: "Max changed files listed in Notion proposal request"
-        required: false
-        type: number
-        default: 200
       notion-version:
         description: "Notion API version header"
         required: false
@@ -126,10 +96,6 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ inputs['pr-number'] || github.event.pull_request.number }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_SHA: ${{ github.event.pull_request.head.sha }}
           INPUT_GITHUB_REPOS_DB_URL: ${{ inputs.github-repos-db-url }}
           INPUT_PRODUCTS_DB_URL: ${{ inputs.products-db-url }}
           INPUT_PROPOSALS_DB_URL: ${{ inputs.proposals-db-url }}
@@ -143,11 +109,9 @@ jobs:
           def extract_db_id(value: str) -> str:
             if not value:
               return ""
-            # First try canonical UUID (with dashes)
             m = re.search(r'([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})', value)
             if m:
               return m.group(1).replace("-", "")
-            # Then compact 32-char IDs used in notion URLs
             m = re.search(r'([0-9a-fA-F]{32})', value)
             if m:
               return m.group(1).lower()
@@ -159,7 +123,7 @@ jobs:
             "proposals_db_id": extract_db_id(os.getenv("INPUT_PROPOSALS_DB_URL", "")),
           }
 
-          missing = [k for k, v in required.items() if not v and k in ("github_repos_db_id", "products_db_id", "proposals_db_id")]
+          missing = [k for k, v in required.items() if not v]
           if missing:
             print(f"Missing required Notion database IDs: {', '.join(missing)}", file=sys.stderr)
             sys.exit(1)
@@ -170,87 +134,77 @@ jobs:
             sys.exit(1)
           owner, repo_name = repository.split("/", 1)
 
+          pr_number = os.getenv("PR_NUMBER", "").strip()
+          if not pr_number:
+            print("PR number is required. Provide inputs.pr-number for manual runs.", file=sys.stderr)
+            sys.exit(1)
+
           payload = {
             "repo_owner": owner,
             "repo_name": repo_name,
-            "pr_number": os.getenv("PR_NUMBER", ""),
-            "pr_url": os.getenv("PR_URL", ""),
-            "pr_title": os.getenv("PR_TITLE", ""),
-            "pr_body": os.getenv("PR_BODY", "") or "",
-            "pr_sha": os.getenv("PR_SHA", ""),
+            "pr_number": pr_number,
             **required,
           }
-          if not str(payload["pr_number"]).strip():
-            print("PR number is required. Provide inputs.pr-number for manual runs.", file=sys.stderr)
-            sys.exit(1)
-          with open("meta.json", "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
-
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
             for key, val in payload.items():
-              if key == "pr_body":
-                continue
-              out.write(f"{key}={str(val).replace(chr(10), ' ')}\n")
+              out.write(f"{key}={val}\n")
           PY
 
-      - name: Collect PR diff and changed files
+      - name: Collect PR context
         id: pr_context
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.meta.outputs.pr_number }}
-          MAX_DIFF_BYTES: ${{ inputs.max-diff-bytes }}
-          MAX_DIFF_CHARS_IN_PROPOSAL: ${{ inputs.max-diff-chars-in-proposal }}
-          MAX_CHANGED_FILES_IN_PROPOSAL: ${{ inputs.max-changed-files-in-proposal }}
         run: |
           gh pr view "$PR_NUMBER" --json files,headRefOid,url,title,body > pr_view.json
-          gh pr diff "$PR_NUMBER" > pr_diff_raw.txt || true
 
           python - <<'PY'
           import json
           import os
+          from collections import Counter
 
           with open("pr_view.json", "r", encoding="utf-8") as f:
             data = json.load(f)
           pr_url = data.get("url", "")
           pr_title = data.get("title", "")
-          pr_body = data.get("body", "") or ""
+          pr_body = (data.get("body", "") or "")[:4000]
           pr_sha = data.get("headRefOid", "")
           paths = [f.get("path", "") for f in data.get("files", []) if f.get("path")]
-          with open("changed_files.txt", "w", encoding="utf-8") as f:
-            f.write("\n".join(paths))
 
-          max_bytes = int(os.getenv("MAX_DIFF_BYTES", "45000"))
-          raw = open("pr_diff_raw.txt", "rb").read()
-          trimmed = raw[:max_bytes]
-          with open("pr_diff.txt", "wb") as f:
-            f.write(trimmed)
-
-          max_diff_chars = int(os.getenv("MAX_DIFF_CHARS_IN_PROPOSAL", "12000"))
-          max_changed_files = int(os.getenv("MAX_CHANGED_FILES_IN_PROPOSAL", "200"))
-          diff_text = trimmed.decode("utf-8", "replace")
-          diff_excerpt = diff_text[:max_diff_chars]
-          max_pr_body_chars = 4000
-          compact = {
-            "schema_version": "1",
-            "pr": {
-              "url": pr_url,
-              "title": pr_title,
-              "body": pr_body[:max_pr_body_chars],
-              "body_truncated": len(pr_body) > max_pr_body_chars,
-              "head_sha": pr_sha,
-            },
-            "changed_files": paths[:max_changed_files],
-            "changed_files_total": len(paths),
-            "diff_excerpt": diff_excerpt,
-            "diff_excerpt_truncated": len(diff_text) > len(diff_excerpt),
+          area_rules = {
+            "iOS": lambda p: p.endswith(".swift") or "/ios " in f" {p} ".lower(),
+            "Web": lambda p: any(p.endswith(e) for e in (".js",".jsx",".ts",".tsx",".css",".scss",".html")) or "/web/" in p.lower(),
+            "Backend": lambda p: any(p.endswith(e) for e in (".py",".go",".java")) or any(d in p.lower() for d in ("/backend/","/server/")),
+            "CI/Config": lambda p: any(p.endswith(e) for e in (".yml",".yaml",".json",".toml")) or ".github/" in p.lower(),
+            "Docs": lambda p: any(p.endswith(e) for e in (".md",".rst",".txt")) or "/docs/" in p.lower(),
           }
-          with open("pr_context_compact.json", "w", encoding="utf-8") as f:
-            json.dump(compact, f, indent=2, ensure_ascii=False)
+          area_counts = Counter()
+          for path in paths:
+            matched = False
+            for area, test in area_rules.items():
+              if test(path):
+                area_counts[area] += 1
+                matched = True
+            if not matched:
+              area_counts["Other"] += 1
+
+          areas = sorted(area_counts.keys())
+          change_summary_parts = [f"{area}: {area_counts[area]} file(s)" for area in areas]
+          change_summary = ", ".join(change_summary_parts)
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
             out.write(f"pr_url={str(pr_url).replace(chr(10), ' ')}\n")
             out.write(f"pr_title={str(pr_title).replace(chr(10), ' ')}\n")
-            out.write(f"pr_sha={str(pr_sha).replace(chr(10), ' ')}\n")
+            out.write(f"pr_sha={pr_sha}\n")
+            out.write(f"change_summary={change_summary}\n")
+            out.write(f"total_files={len(paths)}\n")
+
+          with open("pr_body.txt", "w", encoding="utf-8") as f:
+            f.write(pr_body)
+
+          areas_json = json.dumps(areas)
+          with open("areas.json", "w", encoding="utf-8") as f:
+            f.write(areas_json)
           PY
 
       - name: Resolve product mapping
@@ -300,15 +254,12 @@ jobs:
           repo_db_id = os.environ["GITHUB_REPOS_DB_ID"]
           products_db_id = os.environ["PRODUCTS_DB_ID"]
 
-          # Resolve repo -> product tag from GitHub Repos database.
           repo_query = notion_post(
             f"/v1/databases/{repo_db_id}/query",
             {
               "filter": {
                 "property": "Name",
-                "title": {
-                  "equals": repo_name
-                }
+                "title": {"equals": repo_name}
               },
               "page_size": 5,
             },
@@ -331,9 +282,7 @@ jobs:
             {
               "filter": {
                 "property": "Product name",
-                "title": {
-                  "equals": product_name
-                }
+                "title": {"equals": product_name}
               },
               "page_size": 5,
             },
@@ -359,17 +308,6 @@ jobs:
             out.write(f"product_family={product_family}\n")
           PY
 
-      - name: Upload proposal request artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: notion-proposal-request-pr-${{ steps.meta.outputs.pr_number }}
-          path: |
-            meta.json
-            pr_context_compact.json
-            changed_files.txt
-            pr_diff.txt
-          retention-days: 7
-
       - name: Create or update Proposal Request in Notion
         if: ${{ !inputs['dry-run'] }}
         env:
@@ -380,6 +318,8 @@ jobs:
           PR_NUMBER: ${{ steps.meta.outputs.pr_number }}
           PR_TITLE: ${{ steps.pr_context.outputs.pr_title }}
           PR_SHA: ${{ steps.pr_context.outputs.pr_sha }}
+          CHANGE_SUMMARY: ${{ steps.pr_context.outputs.change_summary }}
+          TOTAL_FILES: ${{ steps.pr_context.outputs.total_files }}
           PRODUCT_PAGE_ID: ${{ steps.catalog.outputs.product_page_id }}
           PRODUCT_FAMILY: ${{ steps.catalog.outputs.product_family }}
           PRODUCT_NAME: ${{ steps.catalog.outputs.product_name }}
@@ -429,55 +369,29 @@ jobs:
           def todo_block(text):
             return {"object": "block", "type": "to_do", "to_do": {"checked": False, "rich_text": [{"type": "text", "text": {"content": text[:1800]}}]}}
 
-          def code_block(text, language="plain text"):
-            return {
-              "object": "block",
-              "type": "code",
-              "code": {
-                "language": language,
-                "rich_text": [{"type": "text", "text": {"content": text[:1800]}}],
-              },
-            }
-
-          def chunk_text(text, size=1700):
-            text = text or ""
-            return [text[i:i + size] for i in range(0, len(text), size)] or [""]
-
-          compact = json.load(open("pr_context_compact.json", "r", encoding="utf-8"))
-
-          changed_files = open("changed_files.txt", "r", encoding="utf-8").read().splitlines()
-          areas = set()
-          for path in changed_files:
-            p = path.lower()
-            if p.endswith(".swift") or "/ios/" in p:
-              areas.add("iOS")
-            if any(p.endswith(x) for x in (".js", ".jsx", ".ts", ".tsx", ".css", ".scss", ".html")) or "/web/" in p:
-              areas.add("Web")
-            if "/backend/" in p or "/server/" in p or p.endswith(".py") or p.endswith(".go") or p.endswith(".java"):
-              areas.add("Backend")
-          if not areas:
-            areas = {"Backend"}
-
           pr_url = os.environ["PR_URL"]
           pr_number = os.environ["PR_NUMBER"]
           pr_title = os.environ["PR_TITLE"]
           pr_sha = os.environ["PR_SHA"]
+          change_summary = os.environ["CHANGE_SUMMARY"]
+          total_files = os.environ["TOTAL_FILES"]
           product_name = os.environ["PRODUCT_NAME"]
+          product_family = os.environ["PRODUCT_FAMILY"]
           product_page_id = os.environ["PRODUCT_PAGE_ID"]
           proposals_db_id = os.environ["PROPOSALS_DB_ID"]
 
-          summary = "PR context prepared for documentation impact analysis."
+          pr_body = open("pr_body.txt", "r", encoding="utf-8").read().strip()
+          areas = json.load(open("areas.json", "r", encoding="utf-8"))
 
           properties = {
             "Proposal": {"title": [{"text": {"content": f"PR #{pr_number} - {pr_title}"}}]},
             "Status": {"status": {"name": "Raw Data"}},
             "PR URL": {"url": pr_url},
-            "Summary": {"rich_text": [{"text": {"content": summary}}]},
+            "Summary": {"rich_text": [{"text": {"content": f"{total_files} files across {', '.join(areas)}"}}]},
             "Product": {"relation": [{"id": product_page_id}]},
-            "Doc Areas": {"multi_select": [{"name": area} for area in sorted(areas)]},
+            "Doc Areas": {"multi_select": [{"name": a} for a in areas if a not in ("Other", "CI/Config")]},
           }
 
-          # Idempotency key: PR URL. Upsert existing proposal page.
           existing = notion_post(
             f"/v1/databases/{proposals_db_id}/query",
             {
@@ -492,48 +406,26 @@ jobs:
           blocks = [
             heading_block("PR Context"),
             paragraph_block(f"PR: {pr_url}"),
-            paragraph_block(f"Product: {product_name}"),
-            paragraph_block(f"Product family: {os.environ['PRODUCT_FAMILY']}"),
+            paragraph_block(f"Product: {product_name} ({product_family})"),
             paragraph_block(f"Head SHA: {pr_sha}"),
-            heading_block("Agent task"),
-            paragraph_block("Analyze this PR context and propose concrete documentation updates in Notion."),
-            paragraph_block("System prompt source: .github/prompts/notion-doc-proposal-agent-system-prompt.md"),
-            todo_block("Identify impacted existing docs and any new docs that should be created"),
-            todo_block("For each target, add why, suggested edits, PR evidence, and acceptance criteria"),
-            todo_block("After proposal content is ready, set Status to Proposed"),
-            heading_block("Changed files snapshot"),
+            paragraph_block(f"Scope: {total_files} files — {change_summary}"),
           ]
 
-          for path in compact.get("changed_files", [])[:40]:
-            blocks.append(paragraph_block(f"- {path}"))
-          if compact.get("changed_files_total", 0) > len(compact.get("changed_files", [])):
-            blocks.append(paragraph_block(
-              f"(truncated list) total changed files: {compact.get('changed_files_total', 0)}"
-            ))
-
-          blocks.append(heading_block("Diff excerpt snapshot"))
-          diff_excerpt = compact.get("diff_excerpt", "")
-          if not diff_excerpt:
-            blocks.append(paragraph_block("No diff excerpt available."))
-          else:
-            for chunk in chunk_text(diff_excerpt)[:4]:
-              blocks.append(code_block(chunk, "plain text"))
-            if len(chunk_text(diff_excerpt)) > 4:
-              blocks.append(paragraph_block("Diff excerpt truncated for Notion page size limits."))
-
-          blocks.append(heading_block("Machine-readable request payload"))
-          compact_json = json.dumps(compact, indent=2, ensure_ascii=False)
-          payload_preview = compact_json[:10000]
-          for chunk in chunk_text(payload_preview):
-            blocks.append(code_block(chunk, "json"))
-          if len(compact_json) > len(payload_preview):
-            blocks.append(paragraph_block("Payload JSON truncated for Notion page size limits. Full payload is in workflow artifacts."))
+          if pr_body:
+            blocks.append(heading_block("PR Description"))
+            for chunk in [pr_body[i:i+1800] for i in range(0, min(len(pr_body), 3600), 1800)]:
+              blocks.append(paragraph_block(chunk))
 
           blocks.extend([
+            heading_block("Agent task"),
+            paragraph_block("Review the linked PR and propose documentation updates."),
+            todo_block("Read the PR via the link above to understand the changes"),
+            todo_block("Identify impacted existing docs or new docs to create"),
+            todo_block("Write proposed changes with rationale and acceptance criteria"),
+            todo_block("Set Status to Proposed when complete"),
             heading_block("Review checklist"),
-            todo_block("Validate proposed targets against changed code"),
+            todo_block("Validate proposed targets against the PR"),
             todo_block("Confirm acceptance criteria are concrete and testable"),
-            todo_block("Set Status to Proposed after proposal draft is complete"),
             todo_block("A team member sets Status to Approved or Rejected"),
           ])
 
@@ -554,11 +446,17 @@ jobs:
             print("Created new Proposal page.")
           PY
 
-      - name: Dry-run artifacts
+      - name: Dry-run output
         if: ${{ inputs['dry-run'] }}
+        env:
+          PR_URL: ${{ steps.pr_context.outputs.pr_url }}
+          PR_TITLE: ${{ steps.pr_context.outputs.pr_title }}
+          CHANGE_SUMMARY: ${{ steps.pr_context.outputs.change_summary }}
+          TOTAL_FILES: ${{ steps.pr_context.outputs.total_files }}
+          PRODUCT_NAME: ${{ steps.catalog.outputs.product_name }}
         run: |
-          echo "Dry run enabled. Proposal request payload:"
-          cat pr_context_compact.json
-          echo ""
-          echo "Changed files:"
-          wc -l changed_files.txt
+          echo "Dry run — proposal request summary:"
+          echo "  PR: ${PR_URL}"
+          echo "  Title: ${PR_TITLE}"
+          echo "  Product: ${PRODUCT_NAME}"
+          echo "  Scope: ${TOTAL_FILES} files — ${CHANGE_SUMMARY}"

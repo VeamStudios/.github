@@ -26,17 +26,13 @@ jobs:
     uses: VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml@main
     secrets:
       notion-token: ${{ secrets.NOTION_TOKEN }}
-    # Uncomment and customize inputs as needed.
     # IMPORTANT: If you are not using the default VeamStudios Notion workspace/databases,
-    # you must set the 3 database URLs below to your own Notion databases and ensure
+    # you must set the database URLs below to your own Notion databases and ensure
     # your NOTION_TOKEN integration is shared to those databases, or Notion will return 404.
     with:
       pr-number: ${{ inputs['pr-number'] }}
       dry-run: ${{ inputs['dry-run'] }}
-    #   max-diff-bytes: 90000
-    #   max-diff-chars-in-proposal: 16000
-    #   max-changed-files-in-proposal: 250
     #   product-name-override: 'Checklist Inspector Pro'
-    #   github-repos-db-url: 'https://www.notion.so/veamstudios/7657c233579e40909b9cf1640e4904f8'
-    #   products-db-url: 'https://www.notion.so/veamstudios/30c069083a03803e9636f97345e2d433'
-    #   proposals-db-url: 'https://www.notion.so/veamstudios/2ca691667ea34ddfabee572644ce8290'
+    #   github-repos-db-url: 'https://www.notion.so/veamstudios/...'
+    #   products-db-url: 'https://www.notion.so/veamstudios/...'
+    #   proposals-db-url: 'https://www.notion.so/veamstudios/...'
