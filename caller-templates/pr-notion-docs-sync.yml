@@ -3,14 +3,23 @@
 # Copy this file into your repo's .github/workflows/ directory.
 # It calls the central reusable workflow from the VeamStudios/.github repo.
 #
-# On PR open/update, this workflow creates or updates a Notion Proposal page
-# with suggested documentation changes derived from the PR diff.
+# Manually trigger this workflow with a PR number to create/update
+# a Notion Proposal page with PR context for documentation analysis.
 
 name: PR Notion Docs Sync
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, edited]
+  workflow_dispatch:
+    inputs:
+      pr-number:
+        description: "Pull request number to analyze"
+        required: true
+        type: number
+      dry-run:
+        description: "Build artifacts only without writing to Notion"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   notion-docs-sync:
@@ -18,20 +27,16 @@ jobs:
     secrets:
       notion-token: ${{ secrets.NOTION_TOKEN }}
     # Uncomment and customize inputs as needed.
-    # Recommended for richer, more actionable Notion Proposal detail:
-    # - use a stronger model
-    # - allow more output tokens
-    # - include a larger PR diff context window
     # IMPORTANT: If you are not using the default VeamStudios Notion workspace/databases,
     # you must set the 3 database URLs below to your own Notion databases and ensure
     # your NOTION_TOKEN integration is shared to those databases, or Notion will return 404.
-    # with:
-    #   ai-model: 'openai/gpt-4.1'
-    #   max-tokens: 3500
+    with:
+      pr-number: ${{ inputs.pr-number }}
+      dry-run: ${{ inputs.dry-run }}
     #   max-diff-bytes: 90000
+    #   max-diff-chars-in-proposal: 16000
+    #   max-changed-files-in-proposal: 250
     #   product-name-override: 'Checklist Inspector Pro'
-    #   create-no-impact-proposal: true
-    #   dry-run: false
     #   github-repos-db-url: 'https://www.notion.so/veamstudios/7657c233579e40909b9cf1640e4904f8'
     #   products-db-url: 'https://www.notion.so/veamstudios/30c069083a03803e9636f97345e2d433'
     #   proposals-db-url: 'https://www.notion.so/veamstudios/2ca691667ea34ddfabee572644ce8290'
