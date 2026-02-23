@@ -14,7 +14,7 @@ on:
       pr-number:
         description: "Pull request number to analyze"
         required: true
-        type: number
+        type: string
       dry-run:
         description: "Build artifacts only without writing to Notion"
         required: false
