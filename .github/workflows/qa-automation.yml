@@ -17,9 +17,9 @@ on:
         description: 'AI model to use for QA brief generation'
         required: false
         type: string
-        default: 'openai/gpt-4.1'
-      max-tokens:
-        description: 'Max tokens for AI response'
+        default: 'openai/gpt-5'
+      max-completion-tokens:
+        description: 'Max completion tokens for AI response'
         required: false
         type: number
         default: 2000
@@ -55,27 +55,30 @@ jobs:
           REPO_BASENAME=$(basename "${{ github.repository }}")
 
           # --- Platform detection ---
+          # Scans all segments of the repo name (split by '-') for a known platform.
+          # This handles versioned names like 'SiteAuditPro-Web-V5' correctly.
           if [ -n "$INPUT_PLATFORM" ]; then
             PLATFORM="$INPUT_PLATFORM"
           else
-            PLATFORM_RAW="${REPO_BASENAME##*-}"
-            case "$PLATFORM_RAW" in
-              iOS)      PLATFORM="iOS/iPadOS" ;;
-              Android)  PLATFORM="Android" ;;
-              Web)      PLATFORM="Web" ;;
-              *)        PLATFORM="Unknown Platform" ;;
-            esac
+            PLATFORM="Unknown Platform"
+            IFS='-' read -ra SEGMENTS <<< "$REPO_BASENAME"
+            for SEGMENT in "${SEGMENTS[@]}"; do
+              case "$SEGMENT" in
+                iOS)      PLATFORM="iOS/iPadOS"; break ;;
+                Android)  PLATFORM="Android"; break ;;
+                Web)      PLATFORM="Web"; break ;;
+              esac
+            done
           fi
 
           # --- App name detection ---
           if [ -n "$INPUT_APP_NAME" ]; then
             APP_NAME="$INPUT_APP_NAME"
           else
-            APP_ID="${REPO_BASENAME%-*}"
-            case "$APP_ID" in
+            case "$REPO_BASENAME" in
               *CIP*|*ChecklistInspector*)  APP_NAME="Checklist Inspector Pro" ;;
               *SAP*|*SiteAudit*)           APP_NAME="Site Audit Pro" ;;
-              *)                           APP_NAME="$APP_ID" ;;
+              *)                           APP_NAME="${REPO_BASENAME%%-*}" ;;
             esac
           fi
 
@@ -174,6 +177,45 @@ jobs:
           - No generic advice ("test thoroughly", "verify functionality")
           - Focus on what a tester can actually verify
           - Consider edge cases relevant to the platform (iOS gestures, Android back button, browser compatibility)
+
+          MERMAID CHART RULES:
+          When including a mermaid flowchart, you MUST follow this syntax exactly. GitHub will reject invalid charts.
+
+          Start with: ```mermaid
+          Then: flowchart TD (or LR)
+
+          Node shapes:
+          - Rectangle:      A[Text here]
+          - Rounded:         A(Text here)
+          - Stadium:         A([Text here])
+          - Diamond:         A{Text here}
+          - Circle:          A((Text here))
+          - Cylinder:        A[(Text here)]
+
+          Links:
+          - Arrow:           A --> B
+          - Arrow + label:   A -->|label text| B
+          - Dotted arrow:    A -.-> B
+          - Thick arrow:     A ==> B
+          - Open link:       A --- B
+
+          Critical rules:
+          - Every node ID must be a simple alphanumeric string (e.g., A, B1, userLogin) with NO spaces
+          - Node text with special characters MUST be in quotes: A["Text with (parens) or special chars"]
+          - Do NOT use the word "end" as a node ID — use "End" or "END" instead
+          - Do NOT put text directly in link arrows like A -- text --> B. Use the label syntax: A -->|text| B
+          - Keep charts simple: max 8-10 nodes
+          - Close with: ```
+
+          Example of a valid chart:
+          ```mermaid
+          flowchart TD
+              A[User opens screen] --> B{Change detected?}
+              B -->|Yes| C[Show updated UI]
+              B -->|No| D[Show default state]
+              C --> E[User verifies result]
+              D --> E
+          ```
           EOF
 
       - name: Create user prompt
@@ -219,7 +261,7 @@ jobs:
           model: ${{ inputs.ai-model }}
           system-prompt-file: ./system_prompt.txt
           prompt-file: ./user_prompt.txt
-          max-tokens: ${{ inputs.max-tokens }}
+          max-completion-tokens: ${{ inputs.max-completion-tokens }}
 
       - name: Post QA Brief to PR
         env:
