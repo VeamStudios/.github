@@ -22,7 +22,8 @@ on:
         description: 'Max completion tokens for AI response'
         required: false
         type: number
-        default: 2000
+        default: 4000
+        # Max output allowed on gpt-4.1 free tier is 4000
 
 jobs:
   create-qa-brief:
