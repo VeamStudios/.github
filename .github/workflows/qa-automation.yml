@@ -158,6 +158,7 @@ jobs:
           ### Impact Zones
           - Bullet list of specific screens, features, or user flows that were modified
           - Be specific (e.g., "Login screen - password field" not "Authentication")
+          - Include a mermaid chart only if it provides valuable insight for understanding the changes.
 
           ### Potential Side Effects
           List areas that USE the changed components and may need regression testing.
