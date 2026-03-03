@@ -179,43 +179,12 @@ jobs:
           - Consider edge cases relevant to the platform (iOS gestures, Android back button, browser compatibility)
 
           MERMAID CHART RULES:
-          When including a mermaid flowchart, you MUST follow this syntax exactly. GitHub will reject invalid charts.
-
-          Start with: ```mermaid
-          Then: flowchart TD (or LR)
-
-          Node shapes:
-          - Rectangle:      A[Text here]
-          - Rounded:         A(Text here)
-          - Stadium:         A([Text here])
-          - Diamond:         A{Text here}
-          - Circle:          A((Text here))
-          - Cylinder:        A[(Text here)]
-
-          Links:
-          - Arrow:           A --> B
-          - Arrow + label:   A -->|label text| B
-          - Dotted arrow:    A -.-> B
-          - Thick arrow:     A ==> B
-          - Open link:       A --- B
-
-          Critical rules:
-          - Every node ID must be a simple alphanumeric string (e.g., A, B1, userLogin) with NO spaces
-          - Node text with special characters MUST be in quotes: A["Text with (parens) or special chars"]
-          - Do NOT use the word "end" as a node ID — use "End" or "END" instead
-          - Do NOT put text directly in link arrows like A -- text --> B. Use the label syntax: A -->|text| B
+          If including a mermaid flowchart, follow valid syntax per https://mermaid.js.org/syntax/flowchart.html
+          - Use node IDs with NO spaces (e.g., A, B1, userLogin)
+          - Quote text with special characters: A["Text with (parens)"]
+          - Do NOT use "end" as a node ID
+          - Use label syntax for arrows: A -->|label| B
           - Keep charts simple: max 8-10 nodes
-          - Close with: ```
-
-          Example of a valid chart:
-          ```mermaid
-          flowchart TD
-              A[User opens screen] --> B{Change detected?}
-              B -->|Yes| C[Show updated UI]
-              B -->|No| D[Show default state]
-              C --> E[User verifies result]
-              D --> E
-          ```
           EOF
 
       - name: Create user prompt
