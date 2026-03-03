@@ -144,9 +144,15 @@ jobs:
             fi
           fi
 
-          # Truncate diff to avoid token limits (keep first 20KB)
-          head -c 20000 pr_diff.txt > pr_diff_truncated.txt
+          # Truncate diff to avoid token limits (keep first 8KB ~2k tokens)
+          head -c 8000 pr_diff.txt > pr_diff_truncated.txt
           mv pr_diff_truncated.txt pr_diff.txt
+
+          # Cap cross-references to avoid token limits (4KB ~1k tokens)
+          if [ -s cross_references.txt ]; then
+            head -c 4000 cross_references.txt > cross_references_capped.txt
+            mv cross_references_capped.txt cross_references.txt
+          fi
 
       - name: Create system prompt
         run: |
@@ -186,6 +192,19 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
+          # Truncate PR body to 2000 chars (~500 tokens) to stay under model token limit
+          printf '%s' "$PR_BODY" > pr_body_raw.txt
+          BODY_LEN=$(wc -c < pr_body_raw.txt)
+          head -c 2000 pr_body_raw.txt > pr_body_truncated.txt
+          if [ "$BODY_LEN" -gt 2000 ]; then
+            echo "" >> pr_body_truncated.txt
+            echo "[... PR description truncated for length ...]" >> pr_body_truncated.txt
+          fi
+          PR_BODY_FINAL=$(cat pr_body_truncated.txt)
+          if [ -z "$PR_BODY_FINAL" ]; then
+            PR_BODY_FINAL="No description provided"
+          fi
+
           CHANGED_FILES=$(cat changed_files.txt 2>/dev/null || echo "No files detected")
           PR_DIFF=$(cat pr_diff.txt 2>/dev/null || echo "No diff available")
           CROSS_REFS=$(cat cross_references.txt 2>/dev/null || echo "No cross-references found")
@@ -199,7 +218,7 @@ jobs:
           - **PR:** #${PR_NUMBER} - ${PR_TITLE}
 
           ## PR Description
-          ${PR_BODY:-No description provided}
+          ${PR_BODY_FINAL}
 
           ## Changed Files
           ${CHANGED_FILES}
