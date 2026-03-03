@@ -18,12 +18,11 @@ on:
         required: false
         type: string
         default: 'openai/gpt-4.1'
-      max-completion-tokens:
-        description: 'Max completion tokens for AI response'
+      max-tokens:
+        description: 'Max tokens for AI response'
         required: false
         type: number
-        default: 4000
-        # Max output allowed on gpt-4.1 free tier is 4000
+        default: 2000
 
 jobs:
   create-qa-brief:
@@ -145,8 +144,8 @@ jobs:
             fi
           fi
 
-          # Truncate diff to avoid token limits
-          head -c 10000 pr_diff.txt > pr_diff_truncated.txt
+          # Truncate diff to avoid token limits (keep first 20KB)
+          head -c 20000 pr_diff.txt > pr_diff_truncated.txt
           mv pr_diff_truncated.txt pr_diff.txt
 
       - name: Create system prompt
@@ -217,12 +216,12 @@ jobs:
 
       - name: Generate QA Brief
         id: ai
-        uses: actions/ai-inference@v2
+        uses: actions/ai-inference@v1
         with:
           model: ${{ inputs.ai-model }}
           system-prompt-file: ./system_prompt.txt
           prompt-file: ./user_prompt.txt
-          max-completion-tokens: ${{ inputs.max-completion-tokens }}
+          max-tokens: ${{ inputs.max-tokens }}
 
       - name: Post QA Brief to PR
         env:
