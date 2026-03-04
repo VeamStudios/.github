@@ -12,22 +12,26 @@ Example usage from another repository:
 
 ```yaml
 - name: Select Xcode
-  uses: your-org/github/.github/actions/select-xcode@v1
+  uses: VeamStudios/.github/.github/actions/select-xcode@main
 ```
 
 Optional inputs:
 
 ```yaml
 - name: Select Xcode
-  uses: your-org/github/.github/actions/select-xcode@v1
-  with:
-    xcode-version: "16.0"
-    # or use xcode-path to override directly:
-    # xcode-path: "/Applications/Xcode_16.0.app/Contents/Developer"
+  uses: VeamStudios/.github/.github/actions/select-xcode@main
+  # with:
+  #   xcode-version: "26.3"
+  #   print-version: "true"
 ```
 
 Recommended versioning:
 
-1. Create and use a major tag like `v1` in caller repos.
-2. When a new Xcode version is needed, update only this action default in this repo.
-3. Move `v1` to the latest commit so all caller repos pick up the change.
+1. Use `@main` if you want all repos to pick up updates automatically.
+2. If you prefer a pinned major tag (like `@v1`), create and maintain that tag in this repo.
+3. When a new Xcode version is needed, update only this action default in this repo.
+
+Troubleshooting:
+
+- If you see `Unable to resolve action ... unable to find version v1`, either switch to `@main` or create/push the `v1` tag in this repo.
+- Use the full action path (`VeamStudios/.github/.github/actions/select-xcode@...`), not just `VeamStudios/.github@...`.

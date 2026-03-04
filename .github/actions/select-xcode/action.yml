@@ -6,10 +6,6 @@ inputs:
     description: "Xcode version suffix used in /Applications/Xcode_<version>.app (for example: 26.0)"
     required: false
     default: "26.3"
-  xcode-path:
-    description: "Full Developer directory path override (for example: /Applications/Xcode_26.3.app/Contents/Developer)"
-    required: false
-    default: ""
   print-version:
     description: "Whether to print xcodebuild -version after selection"
     required: false
@@ -28,10 +24,7 @@ runs:
       run: |
         set -euo pipefail
 
-        selected_path="${{ inputs.xcode-path }}"
-        if [[ -z "${selected_path}" ]]; then
-          selected_path="/Applications/Xcode_${{ inputs.xcode-version }}.app/Contents/Developer"
-        fi
+        selected_path="/Applications/Xcode_${{ inputs.xcode-version }}.app/Contents/Developer"
 
         if [[ ! -d "${selected_path}" ]]; then
           echo "Xcode Developer directory not found: ${selected_path}" >&2
