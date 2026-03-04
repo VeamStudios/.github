@@ -1,0 +1,48 @@
+name: Select Xcode
+description: Select a specific Xcode installation on a macOS runner.
+
+inputs:
+  xcode-version:
+    description: "Xcode version suffix used in /Applications/Xcode_<version>.app (for example: 26.0)"
+    required: false
+    default: "26.3"
+  xcode-path:
+    description: "Full Developer directory path override (for example: /Applications/Xcode_26.3.app/Contents/Developer)"
+    required: false
+    default: ""
+  print-version:
+    description: "Whether to print xcodebuild -version after selection"
+    required: false
+    default: "true"
+
+outputs:
+  selected-path:
+    description: "The selected Developer directory path"
+    value: ${{ steps.select.outputs.selected-path }}
+
+runs:
+  using: composite
+  steps:
+    - id: select
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        selected_path="${{ inputs.xcode-path }}"
+        if [[ -z "${selected_path}" ]]; then
+          selected_path="/Applications/Xcode_${{ inputs.xcode-version }}.app/Contents/Developer"
+        fi
+
+        if [[ ! -d "${selected_path}" ]]; then
+          echo "Xcode Developer directory not found: ${selected_path}" >&2
+          echo "Installed Xcode apps:" >&2
+          ls -1 /Applications | grep -E '^Xcode.*\.app$' || true
+          exit 1
+        fi
+
+        sudo xcode-select -s "${selected_path}"
+        echo "selected-path=${selected_path}" >> "${GITHUB_OUTPUT}"
+
+        if [[ "${{ inputs.print-version }}" == "true" ]]; then
+          xcodebuild -version
+        fi

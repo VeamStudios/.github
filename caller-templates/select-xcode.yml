@@ -1,0 +1,3 @@
+# Reusable Xcode selection step from the shared github repo.
+- name: Select Xcode
+  uses: VeamStudios/.github/.github/actions/select-xcode@v1
