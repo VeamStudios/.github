@@ -1,0 +1,51 @@
+name: Reusable PR Title Conventions
+
+on:
+  workflow_call:
+    inputs:
+      conventional_prefixes:
+        description: 'Comma-separated list of allowed prefixes'
+        required: false
+        type: string
+        default: 'fix,feat,build,chore,ci,docs,style,refac,perf,test'
+
+jobs:
+  check_pr_title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            
+            const conventionalPrefixes = '${{ inputs.conventional_prefixes }}'.split(',');
+            
+            const titleRegex = new RegExp(`^(${conventionalPrefixes.join('|')})(\\(.+\\))?!?: .+`);
+            
+            if (!titleRegex.test(pr.title)) {
+              const comment = `
+            Thank you for your contribution! It seems that your PR title doesn't follow our Conventional Commits specification. 
+            Please update your PR title to start with one of the following prefixes, followed by a colon and a space:
+            
+            ${conventionalPrefixes.map(prefix => `- \`${prefix}\``).join('\n')}
+            
+            For example: \`feat: add new feature\` or \`fix: resolve bug in login flow\`
+            
+            This helps in maintaining a clean and structured commit history. Thank you!
+              `;
+              
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pr.number,
+                body: comment
+              });
+              
+              console.log('Added comment about Conventional Commits to PR');
+              process.exit(1);
+            } else {
+              console.log('PR title follows the Conventional Commits specification');
+            }
