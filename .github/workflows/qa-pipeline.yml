@@ -39,6 +39,14 @@ jobs:
       models: read
 
     steps:
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOT_QA_APP_ID }}
+          private-key: ${{ secrets.BOT_QA_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
@@ -92,7 +100,7 @@ jobs:
       - name: Gather PR context
         id: context
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
           PR_NUM=${{ github.event.pull_request.number }}
           PLATFORM="${{ steps.detect.outputs.platform }}"
@@ -247,7 +255,7 @@ jobs:
 
       - name: Post QA Brief to PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
           APP_NAME: ${{ steps.detect.outputs.app_name }}
           PLATFORM: ${{ steps.detect.outputs.platform }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -278,9 +286,17 @@ jobs:
       pull-requests: write
 
     steps:
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOT_QA_APP_ID }}
+          private-key: ${{ secrets.BOT_QA_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - name: Merge PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |

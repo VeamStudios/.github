@@ -1,0 +1,76 @@
+name: Merge Gate
+
+on:
+  workflow_call:
+    inputs:
+      base_branch:
+        description: "Base branch to count merges into (e.g. main)"
+        required: false
+        default: "main"
+        type: string
+      window_hours:
+        description: "How far back to count merged PRs"
+        required: false
+        default: 24
+        type: number
+      max_pages:
+        description: "Max GitHub API pages to scan (100 PRs per page)"
+        required: false
+        default: 10
+        type: number
+    outputs:
+      should_deploy:
+        description: "true if one or more PRs merged to base_branch within the window"
+        value: ${{ jobs.evaluate.outputs.should_deploy }}
+
+jobs:
+  evaluate:
+    name: Count recent merges
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+    steps:
+      - id: check
+        uses: actions/github-script@v7
+        env:
+          BASE_BRANCH: ${{ inputs.base_branch }}
+          WINDOW_HOURS: ${{ inputs.window_hours }}
+          MAX_PAGES: ${{ inputs.max_pages }}
+        with:
+          script: |
+            const base = process.env.BASE_BRANCH || 'main';
+            const windowHours = Number(process.env.WINDOW_HOURS || 24);
+            const maxPages = Number(process.env.MAX_PAGES || 10);
+            const now = new Date();
+            const since = new Date(now.getTime() - windowHours * 60 * 60 * 1000);
+            const { owner, repo } = context.repo;
+            let mergedCount = 0;
+            let page = 1;
+
+            while (page <= maxPages) {
+              const { data } = await github.rest.pulls.list({
+                owner,
+                repo,
+                state: 'closed',
+                base,
+                sort: 'updated',
+                direction: 'desc',
+                per_page: 100,
+                page
+              });
+
+              mergedCount += data.filter((pr) => (
+                pr.merged_at && new Date(pr.merged_at) >= since
+              )).length;
+
+              if (data.length < 100) break;
+              const oldestUpdated = new Date(data[data.length - 1].updated_at);
+              if (oldestUpdated < since) break;
+              page += 1;
+            }
+
+            const shouldDeploy = mergedCount > 0;
+            core.info(`Merged PRs to ${base} in last ${windowHours}h: ${mergedCount}`);
+            core.setOutput('should_deploy', shouldDeploy ? 'true' : 'false');

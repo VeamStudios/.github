@@ -1,0 +1,50 @@
+name: PR iOS Build
+
+on:
+  workflow_call:
+    inputs:
+      xcode_version:
+        description: "Xcode version passed to select-xcode"
+        required: false
+        default: "26.2"
+        type: string
+      xcodebuild_args:
+        description: "Arguments after xcodebuild (project/workspace, scheme, signing flags)"
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build iOS app
+    runs-on: macos-26
+    steps:
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Select Xcode
+        uses: VeamStudios/.github/.github/actions/select-xcode@main
+        with:
+          xcode-version: "${{ inputs.xcode_version }}"
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          token: ${{ steps.app_token.outputs.token }}
+
+      - name: Private GitHub dependencies
+        run: |
+          git config --global user.name 'Veam Bot'
+          git config --global user.email 'veamstudios@users.noreply.github.com'
+          echo "machine github.com login 'Veam Bot' password ${{ steps.app_token.outputs.token }}" > ~/.netrc
+          chmod 600 ~/.netrc
+
+      - name: Build
+        run: xcodebuild ${{ inputs.xcodebuild_args }}

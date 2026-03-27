@@ -1,0 +1,140 @@
+name: PR SPM Package Update
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Git tag / version string to pin (must exist on package_repo_url)"
+        required: true
+        type: string
+      package_repo_url:
+        description: "HTTPS git URL for the SPM package (matches Package.resolved pin)"
+        required: true
+        type: string
+      xcode_scheme:
+        description: "Scheme for xcodebuild -resolvePackageDependencies"
+        required: false
+        default: "Dev"
+        type: string
+      base_branch:
+        description: "Branch to branch from and target for the PR"
+        required: false
+        default: "main"
+        type: string
+      branch_prefix:
+        description: "Local/remote branch name prefix (suffix is sanitized version)"
+        required: false
+        default: "chore/update-spm-dep-"
+        type: string
+      commit_subject:
+        description: "Git commit subject line"
+        required: false
+        default: ""
+        type: string
+      pr_title:
+        description: "Pull request title"
+        required: false
+        default: ""
+        type: string
+      pr_body:
+        description: "Pull request body (markdown)"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  update:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.base_branch }}
+          token: ${{ steps.app_token.outputs.token }}
+
+      - name: Setup Git authentication
+        run: |
+          git config --global user.email "180547681+veamstudios-release-bot[bot]@users.noreply.github.com"
+          git config --global user.name "Release Bot"
+          echo "machine github.com login 'Release Bot' password ${{ steps.app_token.outputs.token }}" > ~/.netrc
+          chmod 600 ~/.netrc
+
+      - name: Update SPM dependency
+        env:
+          VERSION: ${{ inputs.version }}
+          PACKAGE_URL: ${{ inputs.package_repo_url }}
+        run: |
+          REVISION=$(git ls-remote "$PACKAGE_URL" "refs/tags/$VERSION" | awk '{print $1}')
+          if [ -z "$REVISION" ]; then
+            echo "::error::Could not resolve tag $VERSION from $PACKAGE_URL"
+            exit 1
+          fi
+
+          RESOLVED=$(find . \( -path '*.xcodeproj/*' -o -path '*.xcworkspace/*' \) -name 'Package.resolved' | head -1)
+          if [ -z "$RESOLVED" ]; then
+            echo "::error::Package.resolved not found"
+            exit 1
+          fi
+
+          echo "Updating $RESOLVED → $VERSION ($REVISION)"
+
+          jq --arg url "$PACKAGE_URL" \
+             --arg rev "$REVISION" \
+             --arg ver "$VERSION" \
+             '(.pins[] | select(.location == $url or .repositoryURL == $url)) |= (.state.revision = $rev | .state.version = $ver | .state.branch = null)' \
+             "$RESOLVED" > tmp.json && mv tmp.json "$RESOLVED"
+
+      - name: Verify resolution
+        env:
+          SCHEME: ${{ inputs.xcode_scheme }}
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project "$(find . -name '*.xcodeproj' -maxdepth 1 | head -1)" \
+            -scheme "$SCHEME"
+
+      - name: Create PR
+        uses: actions/github-script@v7
+        env:
+          VERSION: ${{ inputs.version }}
+          BASE_BRANCH: ${{ inputs.base_branch }}
+          BRANCH_PREFIX: ${{ inputs.branch_prefix }}
+          COMMIT_SUBJECT: ${{ inputs.commit_subject }}
+          PR_TITLE: ${{ inputs.pr_title }}
+          PR_BODY: ${{ inputs.pr_body }}
+        with:
+          github-token: ${{ steps.app_token.outputs.token }}
+          script: |
+            const version = process.env.VERSION;
+            const base = process.env.BASE_BRANCH || 'main';
+            const prefix = process.env.BRANCH_PREFIX || 'chore/update-spm-dep-';
+            const safe = version.replace(/[^a-zA-Z0-9._-]+/g, '-');
+            const branch = `${prefix}${safe}`;
+            const commitSubject = process.env.COMMIT_SUBJECT?.trim()
+              || `chore: update SPM dependency to ${version}`;
+            const title = process.env.PR_TITLE?.trim()
+              || `chore: update SPM dependency to ${version}`;
+            const body = process.env.PR_BODY?.trim()
+              || `Auto-generated workflow.\nUpdates SPM package to \`${version}\`.`;
+
+            await exec.exec('git', ['checkout', '-b', branch]);
+            await exec.exec('git', ['add', '.']);
+            await exec.exec('git', ['commit', '-m', commitSubject]);
+            await exec.exec('git', ['push', 'origin', branch]);
+            await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              head: branch,
+              base,
+              body
+            });

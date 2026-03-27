@@ -1,0 +1,105 @@
+name: Release Notifications
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Release version tag (e.g. v1.2.3)"
+        required: true
+        type: string
+      environment:
+        description: "Deployment environment (e.g. production)"
+        required: true
+        type: string
+      beta_run_id:
+        description: "Beta workflow run ID used as the promotion source"
+        required: true
+        type: string
+      beta_run_url:
+        description: "URL for the beta workflow run used as the promotion source"
+        required: true
+        type: string
+      beta_commit_sha:
+        description: "Commit SHA for the approved beta build"
+        required: true
+        type: string
+      beta_version:
+        description: "Approved beta version string"
+        required: true
+        type: string
+      beta_build_number:
+        description: "Approved beta build number"
+        required: true
+        type: string
+      cloud_commit_sha:
+        description: "Commit SHA for the released cloud build"
+        required: true
+        type: string
+      cloud_version:
+        description: "Released cloud version string"
+        required: true
+        type: string
+      cloud_build_number:
+        description: "Released cloud build number"
+        required: true
+        type: string
+      slack_footer_mrkdwn:
+        description: "Final context block (mrkdwn). Override per app (e.g. Slack subteam cc vs plain text)."
+        required: false
+        default: "cc <!subteam^S049Q89D5HA|support-team> — please inform any customers waiting on fixes in this release."
+        type: string
+    secrets:
+      SLACK_RELEASES_WEBHOOK_URL:
+        required: true
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v2.1.0
+        with:
+          webhook: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "🚀 *${{ github.repository }}* — <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.version }}|${{ inputs.version }}> deployed to ${{ inputs.environment }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "🚀 *${{ github.repository }}* — <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.version }}|${{ inputs.version }}> deployed to ${{ inputs.environment }}\n\nSee the <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.version }}|full release notes> for details."
+                  }
+                },
+                {
+                  "type": "context",
+                  "elements": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Approved Beta:* ${{ inputs.beta_version }}  |  *Beta Build Number:* ${{ inputs.beta_build_number }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Beta Commit:* `${{ inputs.beta_commit_sha }}`"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Beta Source:* <${{ inputs.beta_run_url }}|run #${{ inputs.beta_run_id }}>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Released Cloud:* ${{ inputs.cloud_version }}  |  *Cloud Build Number:* ${{ inputs.cloud_build_number }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Cloud Commit:* `${{ inputs.cloud_commit_sha }}`"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "${{ inputs.slack_footer_mrkdwn }}"
+                    }
+                  ]
+                }
+              ]
+            }
