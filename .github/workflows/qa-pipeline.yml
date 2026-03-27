@@ -1,0 +1,294 @@
+name: QA Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      merge-method:
+        description: 'Merge method to use (merge, squash, rebase)'
+        required: false
+        type: string
+        default: 'squash'
+      app-name:
+        description: 'Override auto-detected app name (leave empty to detect from repo name)'
+        required: false
+        type: string
+        default: ''
+      platform:
+        description: 'Override auto-detected platform (leave empty to detect from repo name)'
+        required: false
+        type: string
+        default: ''
+      ai-model:
+        description: 'AI model to use for QA brief generation'
+        required: false
+        type: string
+        default: 'openai/gpt-4.1'
+      max-tokens:
+        description: 'Max tokens for AI response'
+        required: false
+        type: number
+        default: 2000
+
+jobs:
+  qa-brief:
+    if: github.event.label.name == 'qa-needed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      models: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Detect App and Platform
+        id: detect
+        run: |
+          # Use input overrides if provided, otherwise auto-detect from repo name
+          INPUT_APP_NAME="${{ inputs.app-name }}"
+          INPUT_PLATFORM="${{ inputs.platform }}"
+
+          if [ -n "$INPUT_APP_NAME" ] && [ -n "$INPUT_PLATFORM" ]; then
+            echo "app_name=$INPUT_APP_NAME" >> $GITHUB_OUTPUT
+            echo "platform=$INPUT_PLATFORM" >> $GITHUB_OUTPUT
+            echo "Using overrides: $INPUT_APP_NAME ($INPUT_PLATFORM)"
+            exit 0
+          fi
+
+          REPO_BASENAME=$(basename "${{ github.repository }}")
+
+          # Platform detection handles names like SiteAuditPro-Web-V5.
+          if [ -n "$INPUT_PLATFORM" ]; then
+            PLATFORM="$INPUT_PLATFORM"
+          else
+            PLATFORM="Unknown Platform"
+            IFS='-' read -ra SEGMENTS <<< "$REPO_BASENAME"
+            for SEGMENT in "${SEGMENTS[@]}"; do
+              case "$SEGMENT" in
+                iOS)      PLATFORM="iOS/iPadOS"; break ;;
+                Android)  PLATFORM="Android"; break ;;
+                Web)      PLATFORM="Web"; break ;;
+              esac
+            done
+          fi
+
+          if [ -n "$INPUT_APP_NAME" ]; then
+            APP_NAME="$INPUT_APP_NAME"
+          else
+            case "$REPO_BASENAME" in
+              *CIP*|*ChecklistInspector*)  APP_NAME="Checklist Inspector Pro" ;;
+              *SAP*|*SiteAudit*)           APP_NAME="Site Audit Pro" ;;
+              *)                           APP_NAME="${REPO_BASENAME%%-*}" ;;
+            esac
+          fi
+
+          echo "app_name=$APP_NAME" >> $GITHUB_OUTPUT
+          echo "platform=$PLATFORM" >> $GITHUB_OUTPUT
+          echo "Detected: $APP_NAME ($PLATFORM)"
+
+      - name: Gather PR context
+        id: context
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUM=${{ github.event.pull_request.number }}
+          PLATFORM="${{ steps.detect.outputs.platform }}"
+
+          # Get PR diff and changed files
+          gh pr diff "$PR_NUM" > pr_diff.txt || echo "No diff available" > pr_diff.txt
+          gh pr view "$PR_NUM" --json files --jq '.files[].path' > changed_files.txt || echo "" > changed_files.txt
+
+          # Initialize output files
+          touch component_names.txt cross_references.txt
+
+          # Determine file patterns based on platform
+          case "$PLATFORM" in
+            *iOS*|*iPadOS*)
+              FILE_PATTERN="\.swift$"
+              SEARCH_PATTERNS="*.swift"
+              EXTRACT_REGEX="(class|struct|enum|protocol) [A-Za-z0-9_]+"
+              ;;
+            Android)
+              FILE_PATTERN="\.(kt|java)$"
+              SEARCH_PATTERNS="*.kt *.java"
+              EXTRACT_REGEX="(class|interface|object) [A-Za-z0-9_]+"
+              ;;
+            Web)
+              FILE_PATTERN="\.(jsx?|tsx?)$"
+              SEARCH_PATTERNS="*.js *.jsx *.ts *.tsx"
+              EXTRACT_REGEX="(export )?(function|const|class) [A-Za-z0-9_]+"
+              ;;
+            *)
+              FILE_PATTERN=""
+              ;;
+          esac
+
+          # Extract component names and cross-references if we have a pattern
+          if [ -n "$FILE_PATTERN" ]; then
+            for file in $(grep -E "$FILE_PATTERN" changed_files.txt 2>/dev/null); do
+              if [ -f "$file" ]; then
+                grep -oE "$EXTRACT_REGEX" "$file" | awk '{print $NF}' >> component_names.txt 2>/dev/null || true
+              fi
+            done
+
+            # Find cross-references for each component
+            if [ -s component_names.txt ]; then
+              sort -u component_names.txt -o component_names.txt
+              while read -r component; do
+                [ -z "$component" ] && continue
+                echo "=== Usage of $component ===" >> cross_references.txt
+                # shellcheck disable=SC2086
+                git grep -l "$component" -- $SEARCH_PATTERNS 2>/dev/null | head -20 >> cross_references.txt || true
+                echo "" >> cross_references.txt
+              done < component_names.txt
+            fi
+          fi
+
+          # Truncate diff to avoid token limits
+          head -c 8000 pr_diff.txt > pr_diff_truncated.txt
+          mv pr_diff_truncated.txt pr_diff.txt
+
+          # Cap cross-references to avoid token limits
+          if [ -s cross_references.txt ]; then
+            head -c 4000 cross_references.txt > cross_references_capped.txt
+            mv cross_references_capped.txt cross_references.txt
+          fi
+
+      - name: Create system prompt
+        run: |
+          cat > system_prompt.txt << 'EOF'
+          You are a senior QA analyst creating concise manual testing briefs for mobile and web applications.
+
+          RESPONSE FORMAT (use exactly these sections):
+
+          ### What Changed
+          2-3 sentences describing the change from a user's perspective. No technical jargon.
+
+          ### Impact Zones
+          - Bullet list of specific screens, features, or user flows that were modified
+          - Be specific (e.g., "Login screen - password field" not "Authentication")
+
+          ### Potential Side Effects
+          List areas that USE the changed components and may need regression testing.
+          If the change is isolated with no dependencies, write: "No side effects identified - change is isolated."
+
+          ### Test Cases
+          4-6 numbered test cases in format:
+          1. [Precondition if needed] Action -> Expected result
+
+          RULES:
+          - Be concise and specific
+          - No hedging language ("might", "could", "possibly")
+          - No generic advice ("test thoroughly", "verify functionality")
+          - Focus on what a tester can actually verify
+          - Consider edge cases relevant to the platform (iOS gestures, Android back button, browser compatibility)
+          EOF
+
+      - name: Create user prompt
+        env:
+          APP_NAME: ${{ steps.detect.outputs.app_name }}
+          PLATFORM: ${{ steps.detect.outputs.platform }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # Truncate PR body to stay under the model token limit
+          printf '%s' "$PR_BODY" > pr_body_raw.txt
+          BODY_LEN=$(wc -c < pr_body_raw.txt)
+          head -c 2000 pr_body_raw.txt > pr_body_truncated.txt
+          if [ "$BODY_LEN" -gt 2000 ]; then
+            echo "" >> pr_body_truncated.txt
+            echo "[... PR description truncated for length ...]" >> pr_body_truncated.txt
+          fi
+          PR_BODY_FINAL=$(cat pr_body_truncated.txt)
+          if [ -z "$PR_BODY_FINAL" ]; then
+            PR_BODY_FINAL="No description provided"
+          fi
+
+          CHANGED_FILES=$(cat changed_files.txt 2>/dev/null || echo "No files detected")
+          PR_DIFF=$(cat pr_diff.txt 2>/dev/null || echo "No diff available")
+          CROSS_REFS=$(cat cross_references.txt 2>/dev/null || echo "No cross-references found")
+
+          cat > user_prompt.txt << EOF
+          Generate a QA Brief for this pull request.
+
+          ## Context
+          - **App:** ${APP_NAME}
+          - **Platform:** ${PLATFORM}
+          - **PR:** #${PR_NUMBER} - ${PR_TITLE}
+
+          ## PR Description
+          ${PR_BODY_FINAL}
+
+          ## Changed Files
+          ${CHANGED_FILES}
+
+          ## Code Diff
+          \`\`\`
+          ${PR_DIFF}
+          \`\`\`
+
+          ## Cross-References
+          Files that use the modified components:
+          ${CROSS_REFS}
+          EOF
+
+      - name: Generate QA Brief
+        id: ai
+        uses: actions/ai-inference@v1
+        with:
+          model: ${{ inputs.ai-model }}
+          system-prompt-file: ./system_prompt.txt
+          prompt-file: ./user_prompt.txt
+          max-tokens: ${{ inputs.max-tokens }}
+
+      - name: Post QA Brief to PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_NAME: ${{ steps.detect.outputs.app_name }}
+          PLATFORM: ${{ steps.detect.outputs.platform }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          AI_RESPONSE=$(cat "${{ steps.ai.outputs.response-file }}" 2>/dev/null || echo "${{ steps.ai.outputs.response }}")
+
+          {
+            echo "## QA Brief"
+            echo ""
+            echo "| App | Platform |"
+            echo "|-----|----------|"
+            echo "| ${APP_NAME} | ${PLATFORM} |"
+            echo ""
+            echo "${AI_RESPONSE}"
+            echo ""
+            echo "---"
+            echo "<sub>Auto-generated by GitHub Models</sub>"
+          } > comment.md
+
+          gh pr comment "${PR_NUMBER}" --body-file comment.md
+          echo "QA Brief posted to PR #${PR_NUMBER}"
+
+  merge:
+    if: github.event.label.name == 'qa-approved' && contains(github.event.pull_request.labels.*.name, 'qa-needed') && contains(github.event.pull_request.labels.*.name, 'qa-merge')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Merge PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "Merging PR #${PR_NUMBER}: ${PR_TITLE}"
+
+          gh pr merge "${PR_NUMBER}" \
+            --repo "${{ github.repository }}" \
+            --${{ inputs.merge-method }} \
+            --auto
+
+          echo "PR #${PR_NUMBER} merged successfully"
