@@ -3,6 +3,10 @@ name: QA Pipeline
 on:
   workflow_call:
     inputs:
+      bot-qa-app-id:
+        description: 'GitHub App ID used to mint the QA bot token'
+        required: true
+        type: string
       merge-method:
         description: 'Merge method to use (merge, squash, rebase)'
         required: false
@@ -28,6 +32,9 @@ on:
         required: false
         type: number
         default: 2000
+    secrets:
+      BOT_QA_PRIVATE_KEY:
+        required: true
 
 jobs:
   qa-brief:
@@ -39,11 +46,23 @@ jobs:
       models: read
 
     steps:
+      - name: Validate QA bot configuration
+        run: |
+          if [ -z "${{ inputs.bot-qa-app-id }}" ]; then
+            echo "::error::Required workflow input bot-qa-app-id is missing"
+            exit 1
+          fi
+
+          if [ -z "${{ secrets.BOT_QA_PRIVATE_KEY }}" ]; then
+            echo "::error::Required workflow secret BOT_QA_PRIVATE_KEY is missing"
+            exit 1
+          fi
+
       - name: Mint GitHub App token
         id: app_token
         uses: actions/create-github-app-token@v1
         with:
-          app-id: ${{ vars.BOT_QA_APP_ID }}
+          app-id: ${{ inputs.bot-qa-app-id }}
           private-key: ${{ secrets.BOT_QA_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
@@ -286,11 +305,23 @@ jobs:
       pull-requests: write
 
     steps:
+      - name: Validate QA bot configuration
+        run: |
+          if [ -z "${{ inputs.bot-qa-app-id }}" ]; then
+            echo "::error::Required workflow input bot-qa-app-id is missing"
+            exit 1
+          fi
+
+          if [ -z "${{ secrets.BOT_QA_PRIVATE_KEY }}" ]; then
+            echo "::error::Required workflow secret BOT_QA_PRIVATE_KEY is missing"
+            exit 1
+          fi
+
       - name: Mint GitHub App token
         id: app_token
         uses: actions/create-github-app-token@v1
         with:
-          app-id: ${{ vars.BOT_QA_APP_ID }}
+          app-id: ${{ inputs.bot-qa-app-id }}
           private-key: ${{ secrets.BOT_QA_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
