@@ -1,0 +1,16 @@
+# SiteAuditPro-iOS Hotfix Prepare - Caller Workflow
+#
+# Copy this file into SiteAuditPro-iOS at `.github/workflows/siteauditpro-ios-hotfix-prepare.yml`.
+# It calls the central reusable hotfix prepare workflow from the VeamStudios/.github repo.
+
+name: SiteAuditPro iOS Hotfix Prepare
+
+on:
+  workflow_dispatch:
+
+jobs:
+  prepare-hotfix:
+    uses: VeamStudios/.github/.github/workflows/hotfix-prepare.yml@main
+    with:
+      project_file: "Site Audit Pro.xcodeproj/project.pbxproj"
+    secrets: inherit

@@ -1,0 +1,42 @@
+# SiteAuditPro-iOS Hotfix Deploy - Caller Workflow
+#
+# Copy this file into SiteAuditPro-iOS at `.github/workflows/siteauditpro-ios-hotfix-deploy.yml`.
+# Run this only after `SiteAuditPro iOS Hotfix Prepare` has created the hotfix PR.
+# Use the PR number and expected version shown in the prepare workflow summary.
+
+name: SiteAuditPro iOS Hotfix Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Hotfix PR number created by Hotfix Prepare"
+        required: true
+        type: string
+      expected_version:
+        description: "Prepared hotfix marketing version from Hotfix Prepare (for example 8.26.2)"
+        required: true
+        type: string
+      release_notes:
+        description: "Additional release notes for deploy"
+        required: false
+        type: string
+      sync_changelog_website:
+        description: "Copy CHANGELOG.md to the website repo after deploy"
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  deploy-hotfix:
+    uses: VeamStudios/.github/.github/workflows/hotfix-deploy.yml@main
+    with:
+      pr_number: ${{ inputs.pr_number }}
+      expected_version: ${{ inputs.expected_version }}
+      release_notes: ${{ inputs.release_notes }}
+      ipa_path: "./fastlane/builds/site-audit-pro-cloud.ipa"
+      archive_name_prefix: "SiteAuditPro"
+      changelog_destination_repo: ${{ inputs.sync_changelog_website && 'VeamStudios/siteauditpro.com' || '' }}
+      changelog_destination_folder: ${{ inputs.sync_changelog_website && 'src/app/content/changelogs/ios' || '' }}
+      confirm_deploy_from_pr_head: true
+    secrets: inherit

@@ -1,0 +1,67 @@
+name: Update Changelog Website
+
+on:
+  workflow_call:
+    inputs:
+      source_file:
+        description: "Source changelog file in the caller repository"
+        required: true
+        type: string
+      deployed_ref:
+        description: "Git ref for the commit, branch, or tag being deployed"
+        required: true
+        type: string
+      destination_repo:
+        description: "Repository to receive the changelog copy"
+        required: true
+        type: string
+      destination_folder:
+        description: "Destination folder in the changelog repository"
+        required: true
+        type: string
+      version:
+        description: "Version string used in the changelog sync commit message"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    name: Copy changelog to destination repo
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout repository (default ref)
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.deployed_ref }}
+          token: ${{ steps.app_token.outputs.token }}
+
+      - name: Resolve commit message
+        id: commit_message
+        shell: bash
+        run: |
+          MESSAGE="Update changelog for ${{ inputs.version }}"
+          echo "value=$MESSAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Update changelog website
+        uses: dmnemec/copy_file_to_another_repo_action@v1.1.1
+        env:
+          API_TOKEN_GITHUB: ${{ steps.app_token.outputs.token }}
+        with:
+          source_file: ${{ inputs.source_file }}
+          destination_repo: ${{ inputs.destination_repo }}
+          destination_folder: ${{ inputs.destination_folder }}
+          destination_branch: "main"
+          user_email: "180547681+veamstudios-release-bot[bot]@users.noreply.github.com"
+          user_name: "Release Bot"
+          commit_message: ${{ steps.commit_message.outputs.value }}

@@ -1,0 +1,504 @@
+name: Hotfix Deploy
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        description: "Open hotfix PR number to deploy"
+        required: false
+        type: string
+      hotfix_branch:
+        description: "Open hotfix branch to deploy when PR number is not provided"
+        required: false
+        type: string
+      expected_version:
+        description: "Expected hotfix marketing version (for example 8.26.2)"
+        required: true
+        type: string
+      release_notes:
+        description: "Additional release notes (optional — added to auto-generated notes)"
+        required: false
+        default: ""
+        type: string
+      build_configuration:
+        description: "Configuration passed to the iOS TestFlight deploy workflow"
+        required: false
+        default: "cloud"
+        type: string
+      build_environment_name:
+        description: "GitHub Environment name for the build job"
+        required: false
+        default: "prod"
+        type: string
+      release_environment_name:
+        description: "GitHub Environment name for the release job"
+        required: false
+        default: "prod"
+        type: string
+      ipa_path:
+        description: "Path to the built IPA used for version extraction"
+        required: true
+        type: string
+      archive_name_prefix:
+        description: "Optional prefix for the zipped xcarchive artifact name"
+        required: false
+        default: ""
+        type: string
+      changelog_source_file:
+        description: "Source changelog file to copy after release creation"
+        required: false
+        default: "CHANGELOG.md"
+        type: string
+      changelog_destination_repo:
+        description: "Optional repository to receive the changelog copy"
+        required: false
+        default: ""
+        type: string
+      changelog_destination_folder:
+        description: "Optional destination folder in the changelog repository"
+        required: false
+        default: ""
+        type: string
+      confirm_deploy_from_pr_head:
+        description: "Confirm that this workflow should deploy the current hotfix PR head"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: hotfix-deploy-${{ inputs.pr_number || inputs.hotfix_branch || inputs.expected_version }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-hotfix:
+    name: Resolve Hotfix PR Head
+    runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.resolve_hotfix.outputs.pr_number }}
+      pr_url: ${{ steps.resolve_hotfix.outputs.pr_url }}
+      hotfix_branch: ${{ steps.resolve_hotfix.outputs.hotfix_branch }}
+      hotfix_sha: ${{ steps.resolve_hotfix.outputs.hotfix_sha }}
+      latest_release_tag: ${{ steps.resolve_hotfix.outputs.latest_release_tag }}
+      latest_release_version: ${{ steps.resolve_hotfix.outputs.latest_release_version }}
+      release_url: ${{ steps.resolve_hotfix.outputs.release_url }}
+    steps:
+      - name: Confirm deploy from PR head
+        if: ${{ inputs.confirm_deploy_from_pr_head != true }}
+        run: |
+          echo "::error::Hotfix deploy was not confirmed."
+          echo "::error::Next steps:"
+          echo "::error::1. Review the hotfix PR head."
+          echo "::error::2. Rerun with 'confirm_deploy_from_pr_head' enabled."
+          exit 1
+
+      - name: Resolve hotfix PR
+        id: resolve_hotfix
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          HOTFIX_BRANCH: ${{ inputs.hotfix_branch }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = process.env.PR_NUMBER?.trim();
+            const hotfixBranchInput = process.env.HOTFIX_BRANCH?.trim();
+            const expectedVersion = process.env.EXPECTED_VERSION?.trim();
+
+            if (!expectedVersion || !/^\d+\.\d+\.\d+$/.test(expectedVersion)) {
+              core.setFailed(
+                `Expected version '${expectedVersion || ""}' is not valid.\nNext action:\n1. Pass a semantic version like 8.26.2.\n2. Retry the workflow.`
+              );
+              return;
+            }
+
+            if (!prNumber && !hotfixBranchInput) {
+              core.setFailed(
+                "Provide either a PR number or a hotfix branch.\nNext action:\n1. Pass 'pr_number', or\n2. Pass 'hotfix_branch' for an open hotfix PR."
+              );
+              return;
+            }
+
+            function parseVersion(value) {
+              return value.split(".").map((component) => Number.parseInt(component, 10));
+            }
+
+            function compareVersions(left, right) {
+              const leftParts = parseVersion(left);
+              const rightParts = parseVersion(right);
+
+              for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+                const leftValue = leftParts[index] || 0;
+                const rightValue = rightParts[index] || 0;
+
+                if (leftValue > rightValue) {
+                  return 1;
+                }
+
+                if (leftValue < rightValue) {
+                  return -1;
+                }
+              }
+
+              return 0;
+            }
+
+            const { data: latestRelease } = await github.rest.repos.getLatestRelease({ owner, repo });
+            const latestReleaseTag = latestRelease.tag_name;
+            const latestReleaseVersion = latestReleaseTag.replace(/^v/, "").trim();
+
+            if (compareVersions(expectedVersion, latestReleaseVersion) <= 0) {
+              core.setFailed(
+                `Expected hotfix version ${expectedVersion} must be greater than the latest production version ${latestReleaseVersion}.\nNext action:\n1. Use the next patch version from hotfix preparation.\n2. Retry the workflow.`
+              );
+              return;
+            }
+
+            let pullRequest;
+
+            if (prNumber) {
+              pullRequest = (await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: Number(prNumber)
+              })).data;
+            } else {
+              const { data: pullRequests } = await github.rest.pulls.list({
+                owner,
+                repo,
+                state: "open",
+                head: `${owner}:${hotfixBranchInput}`,
+                per_page: 10
+              });
+
+              if (pullRequests.length === 0) {
+                core.setFailed(
+                  `No open PR found for hotfix branch '${hotfixBranchInput}'.\nNext action:\n1. Run hotfix preparation, or\n2. Open the hotfix PR before deploying.`
+                );
+                return;
+              }
+
+              pullRequest = pullRequests[0];
+            }
+
+            if (pullRequest.state !== "open") {
+              core.setFailed(
+                `PR #${pullRequest.number} is not open.\nNext action:\n1. Reopen the hotfix PR, or\n2. Choose a different open hotfix PR.`
+              );
+              return;
+            }
+
+            if (pullRequest.head.repo.full_name !== `${owner}/${repo}`) {
+              core.setFailed(
+                `PR #${pullRequest.number} does not point to a branch in ${owner}/${repo}.\nNext action:\n1. Use a same-repo hotfix branch.\n2. Retry the workflow.`
+              );
+              return;
+            }
+
+            if (!pullRequest.head.ref.startsWith("hotfix/")) {
+              core.setFailed(
+                `PR #${pullRequest.number} head branch '${pullRequest.head.ref}' is not a hotfix branch.\nNext action:\n1. Prepare a hotfix with hotfix-prepare.yml.\n2. Retry the workflow.`
+              );
+              return;
+            }
+
+            const labels = (pullRequest.labels || []).map((label) => label.name);
+            if (!labels.includes("hotfix")) {
+              core.setFailed(
+                `PR #${pullRequest.number} is missing the 'hotfix' label.\nNext action:\n1. Use hotfix-prepare.yml or add the hotfix label.\n2. Retry the workflow.`
+              );
+              return;
+            }
+
+            const comparison = await github.request("GET /repos/{owner}/{repo}/compare/{basehead}", {
+              owner,
+              repo,
+              basehead: `${latestReleaseTag}...${pullRequest.head.sha}`
+            });
+            const comparisonStatus = comparison.data.status;
+
+            if (!["ahead", "identical"].includes(comparisonStatus)) {
+              core.setFailed(
+                `Hotfix branch '${pullRequest.head.ref}' no longer descends cleanly from ${latestReleaseTag}.\nNext action:\n1. Prepare a new hotfix branch from the latest production release.\n2. Retry the workflow.`
+              );
+              return;
+            }
+
+            core.setOutput("pr_number", String(pullRequest.number));
+            core.setOutput("pr_url", pullRequest.html_url);
+            core.setOutput("hotfix_branch", pullRequest.head.ref);
+            core.setOutput("hotfix_sha", pullRequest.head.sha);
+            core.setOutput("latest_release_tag", latestReleaseTag);
+            core.setOutput("latest_release_version", latestReleaseVersion);
+            core.setOutput("release_url", latestRelease.html_url);
+
+  build-cloud:
+    name: Build Cloud From Hotfix PR Head
+    needs: resolve-hotfix
+    uses: VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main
+    with:
+      configuration: ${{ inputs.build_configuration }}
+      environment_name: ${{ inputs.build_environment_name }}
+      ipa_path: ${{ inputs.ipa_path }}
+      checkout_ref: ${{ needs.resolve-hotfix.outputs.hotfix_sha }}
+      capture_commit_sha: true
+      upload_cloud_archive: true
+      upload_release_manifest: false
+      expected_marketing_version: ${{ inputs.expected_version }}
+    secrets: inherit
+
+  validate-release:
+    name: Validate Hotfix Build
+    runs-on: ubuntu-latest
+    needs: [resolve-hotfix, build-cloud]
+    steps:
+      - name: Compare resolved hotfix and cloud build
+        run: |
+          if [ "${{ needs.resolve-hotfix.outputs.hotfix_sha }}" != "${{ needs.build-cloud.outputs.commit_sha }}" ]; then
+            echo "::error::Hotfix deploy stopped because the cloud build commit does not match the hotfix PR head."
+            echo "::error::Next steps:"
+            echo "::error::1. Review the PR head SHA and build-cloud output."
+            echo "::error::2. Rerun the workflow."
+            exit 1
+          fi
+
+          if [ "${{ inputs.expected_version }}" != "${{ needs.build-cloud.outputs.marketing_version }}" ]; then
+            echo "::error::Hotfix deploy stopped because the built marketing version does not match the expected hotfix version."
+            echo "::error::Next steps:"
+            echo "::error::1. Confirm the project version in the hotfix PR."
+            echo "::error::2. Retry the workflow with the correct expected version."
+            exit 1
+          fi
+
+  create-release:
+    name: Create Hotfix Release
+    runs-on: ubuntu-latest
+    needs: [resolve-hotfix, build-cloud, validate-release]
+    environment: ${{ inputs.release_environment_name }}
+    steps:
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Setup Git authentication
+        run: |
+          git config --global user.email "180547681+veamstudios-release-bot[bot]@users.noreply.github.com"
+          git config --global user.name "Release Bot"
+          echo "machine github.com login 'Release Bot' password ${{ steps.app_token.outputs.token }}" > ~/.netrc
+          chmod 600 ~/.netrc
+
+      - name: Checkout hotfix commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve-hotfix.outputs.hotfix_sha }}
+          fetch-depth: 1
+          token: ${{ steps.app_token.outputs.token }}
+
+      - name: Download cloud archive artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-cloud.outputs.cloud_archive_artifact_name }}
+          path: ./artifacts
+
+      - name: Locate cloud archive path
+        id: archive_path
+        shell: bash
+        run: |
+          ARCHIVE_PATH=""
+          for candidate in ./artifacts/cloud.xcarchive ./artifacts/*/cloud.xcarchive; do
+            if [ -d "$candidate" ]; then
+              ARCHIVE_PATH="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$ARCHIVE_PATH" ]; then
+            echo "::error::cloud.xcarchive not found after artifact download"
+            exit 1
+          fi
+
+          echo "path=$ARCHIVE_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Zip xcarchive
+        id: zip_archive
+        run: |
+          ARCHIVE_PREFIX="${{ inputs.archive_name_prefix }}"
+          if [ -z "$ARCHIVE_PREFIX" ]; then
+            ARCHIVE_PREFIX="${GITHUB_REPOSITORY#*/}"
+          fi
+          ARCHIVE_NAME="${ARCHIVE_PREFIX}-v${{ inputs.expected_version }}-${{ inputs.build_configuration }}.xcarchive.zip"
+          ZIP_PATH="./artifacts/$ARCHIVE_NAME"
+          zip -r "$ZIP_PATH" "${{ steps.archive_path.outputs.path }}"
+          echo "archive_zip=$ZIP_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure tag does not already exist
+        shell: bash
+        env:
+          TAG_NAME: v${{ inputs.expected_version }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG_NAME already exists."
+            echo "::error::Next steps:"
+            echo "::error::1. Confirm whether this hotfix has already been released."
+            echo "::error::2. Use a different version if a new hotfix is required."
+            exit 1
+          fi
+
+      - name: Create and push tag
+        env:
+          TAG_NAME: v${{ inputs.expected_version }}
+          COMMIT_SHA: ${{ needs.resolve-hotfix.outputs.hotfix_sha }}
+        run: |
+          git tag -a "$TAG_NAME" "$COMMIT_SHA" -m "Hotfix $TAG_NAME"
+          git push origin "$TAG_NAME"
+          echo "Created tag: $TAG_NAME at commit $COMMIT_SHA"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
+        with:
+          tag_name: v${{ inputs.expected_version }}
+          name: v${{ inputs.expected_version }}
+          target_commitish: ${{ needs.resolve-hotfix.outputs.hotfix_sha }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            ${{ inputs.release_notes }}
+            ### Hotfix Provenance
+            - **Base Production Release**: [${{ needs.resolve-hotfix.outputs.latest_release_tag }}](${{ needs.resolve-hotfix.outputs.release_url }})
+            - **Hotfix PR**: [#${{ needs.resolve-hotfix.outputs.pr_number }}](${{ needs.resolve-hotfix.outputs.pr_url }})
+            - **Hotfix Branch**: `${{ needs.resolve-hotfix.outputs.hotfix_branch }}`
+            - **Hotfix Commit**: `${{ needs.resolve-hotfix.outputs.hotfix_sha }}`
+            ### Released Cloud Build
+            - **Cloud Version**: ${{ needs.build-cloud.outputs.version }}
+            - **Cloud Build Number**: ${{ needs.build-cloud.outputs.build_number }}
+            - **Cloud Archive Artifact**: ${{ needs.build-cloud.outputs.cloud_archive_artifact_name }}
+          files: |
+            ${{ steps.zip_archive.outputs.archive_zip }}
+          draft: false
+          prerelease: false
+
+  update-changelog-website:
+    name: Update Changelog Website
+    needs: [resolve-hotfix, create-release]
+    if: ${{ inputs.changelog_destination_repo != '' && inputs.changelog_destination_folder != '' }}
+    uses: VeamStudios/.github/.github/workflows/update-changelog-website.yml@main
+    with:
+      source_file: ${{ inputs.changelog_source_file }}
+      deployed_ref: ${{ needs.resolve-hotfix.outputs.hotfix_sha }}
+      destination_repo: ${{ inputs.changelog_destination_repo }}
+      destination_folder: ${{ inputs.changelog_destination_folder }}
+      version: v${{ inputs.expected_version }}
+    secrets: inherit
+
+  comment-on-hotfix-pr:
+    name: Comment On Hotfix PR
+    runs-on: ubuntu-latest
+    needs: [resolve-hotfix, create-release, update-changelog-website]
+    if: ${{ needs.create-release.result == 'success' && (needs.update-changelog-website.result == 'success' || needs.update-changelog-website.result == 'skipped') }}
+    steps:
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Comment on hotfix PR
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.resolve-hotfix.outputs.pr_number }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ inputs.expected_version }}
+          TAG_NAME: v${{ inputs.expected_version }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        with:
+          github-token: ${{ steps.app_token.outputs.token }}
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = Number(process.env.PR_NUMBER);
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: prNumber,
+              body: [
+                `Hotfix release ${process.env.TAG_NAME} has been created.`,
+                "",
+                `Release URL: ${process.env.RELEASE_URL}`,
+                "",
+                "Next steps:",
+                `- Merge or cherry-pick the fix into the default branch (\`${process.env.DEFAULT_BRANCH}\`) if needed.`,
+                "- Cherry-pick or merge the fix into any active feature branches that still need it."
+              ].join("\n")
+            });
+
+  summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs:
+      [resolve-hotfix, build-cloud, validate-release, create-release, update-changelog-website, comment-on-hotfix-pr]
+    if: always()
+    steps:
+      - name: Display summary
+        run: |
+          if [ "${{ needs.resolve-hotfix.result }}" != "success" ]; then
+            echo "Hotfix deploy stopped while resolving the hotfix PR head."
+            echo "Next steps:"
+            echo "1. Confirm the PR number or branch name."
+            echo "2. Confirm the PR is labeled 'hotfix'."
+            echo "3. Rerun the workflow."
+          elif [ "${{ needs.build-cloud.result }}" != "success" ]; then
+            echo "Hotfix deploy stopped while building the cloud release from the hotfix PR head."
+            echo "Next steps:"
+            echo "1. Review the build-cloud job output above."
+            echo "2. Fix the build or signing issue."
+            echo "3. Rerun the workflow."
+          elif [ "${{ needs.validate-release.result }}" != "success" ]; then
+            echo "Hotfix deploy stopped because the build validation failed."
+            echo "Next steps:"
+            echo "1. Review the validate-release job output above."
+            echo "2. Fix the version or commit mismatch."
+            echo "3. Rerun the workflow."
+          elif [ "${{ needs.create-release.result }}" != "success" ]; then
+            echo "Hotfix deploy stopped while creating the GitHub release."
+            echo "Next steps:"
+            echo "1. Review the create-release job output above."
+            echo "2. Fix the tagging or release creation failure."
+            echo "3. Rerun the workflow."
+          elif [ "${{ needs.update-changelog-website.result }}" != "success" ] && [ "${{ needs.update-changelog-website.result }}" != "skipped" ]; then
+            echo "Hotfix deploy stopped while syncing the changelog website."
+            echo "Next steps:"
+            echo "1. Review the update-changelog-website job output above."
+            echo "2. Fix the changelog sync configuration or destination repository access."
+            echo "3. Rerun the workflow."
+          elif [ "${{ needs.comment-on-hotfix-pr.result }}" != "success" ] && [ "${{ needs.comment-on-hotfix-pr.result }}" != "skipped" ]; then
+            echo "Hotfix deploy stopped while commenting on the hotfix PR."
+            echo "Next steps:"
+            echo "1. Review the comment-on-hotfix-pr job output above."
+            echo "2. Fix the PR comment failure."
+            echo "3. Rerun the workflow."
+          else
+            echo "Hotfix deploy completed successfully."
+            echo ""
+            echo "Release: v${{ inputs.expected_version }}"
+            echo "Base Production Release: ${{ needs.resolve-hotfix.outputs.latest_release_tag }}"
+            echo "Hotfix PR: #${{ needs.resolve-hotfix.outputs.pr_number }}"
+            echo "Hotfix Branch: ${{ needs.resolve-hotfix.outputs.hotfix_branch }}"
+            echo "Hotfix Commit: ${{ needs.resolve-hotfix.outputs.hotfix_sha }}"
+            echo "Cloud Version: ${{ needs.build-cloud.outputs.version }}"
+            echo "Cloud Build Number: ${{ needs.build-cloud.outputs.build_number }}"
+            echo "Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ inputs.expected_version }}"
+            echo ""
+            echo "Reminder: propagate this fix to the default branch and any active feature branches that still need it."
+          fi

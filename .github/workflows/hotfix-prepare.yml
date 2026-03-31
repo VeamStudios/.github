@@ -1,0 +1,292 @@
+name: Hotfix Prepare
+
+on:
+  workflow_call:
+    inputs:
+      project_file:
+        description: "Path to the Xcode project.pbxproj file whose MARKETING_VERSION should be bumped"
+        required: true
+        type: string
+    outputs:
+      tag_name:
+        description: "Latest production release tag"
+        value: ${{ jobs.prepare-hotfix.outputs.tag_name }}
+      current_version:
+        description: "Current production marketing version"
+        value: ${{ jobs.prepare-hotfix.outputs.current_version }}
+      next_version:
+        description: "Prepared hotfix marketing version"
+        value: ${{ jobs.prepare-hotfix.outputs.next_version }}
+      branch_name:
+        description: "Created hotfix branch name"
+        value: ${{ jobs.prepare-hotfix.outputs.branch_name }}
+      pr_number:
+        description: "Created hotfix pull request number"
+        value: ${{ jobs.prepare-hotfix.outputs.pr_number }}
+      pr_url:
+        description: "Created hotfix pull request URL"
+        value: ${{ jobs.prepare-hotfix.outputs.pr_url }}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: hotfix-prepare
+  cancel-in-progress: false
+
+jobs:
+  prepare-hotfix:
+    name: Prepare Hotfix PR
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.resolve_release.outputs.tag_name }}
+      current_version: ${{ steps.resolve_release.outputs.current_version }}
+      next_version: ${{ steps.resolve_release.outputs.next_version }}
+      branch_name: ${{ steps.resolve_release.outputs.branch_name }}
+      pr_number: ${{ steps.create_pr.outputs.pr_number }}
+      pr_url: ${{ steps.create_pr.outputs.pr_url }}
+    steps:
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Resolve latest production release
+        id: resolve_release
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app_token.outputs.token }}
+          script: |
+            const { owner, repo } = context.repo;
+            const { data: release } = await github.rest.repos.getLatestRelease({ owner, repo });
+
+            const currentVersion = release.tag_name.replace(/^v/, "").trim();
+            if (!/^\d+\.\d+\.\d+$/.test(currentVersion)) {
+              core.setFailed(
+                `Latest production release tag '${release.tag_name}' is not a supported semantic version.\nNext action:\n1. Rename the release tag to v<major>.<minor>.<patch>, or\n2. Update hotfix preparation logic before retrying.`
+              );
+              return;
+            }
+
+            const versionParts = currentVersion.split(".").map((value) => Number.parseInt(value, 10));
+            versionParts[2] += 1;
+            const nextVersion = versionParts.join(".");
+            const branchName = `hotfix/v${nextVersion}`;
+            const defaultBranch = context.payload.repository.default_branch;
+
+            try {
+              await github.rest.git.getRef({
+                owner,
+                repo,
+                ref: `heads/${branchName}`
+              });
+
+              core.setFailed(
+                `Hotfix branch '${branchName}' already exists.\nNext action:\n1. Continue the existing hotfix branch, or\n2. Delete it before rerunning this workflow.`
+              );
+              return;
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
+            core.setOutput("tag_name", release.tag_name);
+            core.setOutput("release_url", release.html_url);
+            core.setOutput("release_published_at", release.published_at || "");
+            core.setOutput("current_version", currentVersion);
+            core.setOutput("next_version", nextVersion);
+            core.setOutput("branch_name", branchName);
+            core.setOutput("default_branch", defaultBranch);
+
+      - name: Checkout released production tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.resolve_release.outputs.tag_name }}
+          fetch-depth: 0
+          token: ${{ steps.app_token.outputs.token }}
+
+      - name: Capture released production commit
+        id: release_commit
+        shell: bash
+        env:
+          TAG_NAME: ${{ steps.resolve_release.outputs.tag_name }}
+        run: |
+          echo "sha=$(git rev-list -n 1 "$TAG_NAME")" >> "$GITHUB_OUTPUT"
+
+      - name: Create hotfix branch
+        shell: bash
+        env:
+          HOTFIX_BRANCH: ${{ steps.resolve_release.outputs.branch_name }}
+        run: |
+          git checkout -b "$HOTFIX_BRANCH"
+
+      - name: Bump marketing version for hotfix
+        shell: bash
+        env:
+          PROJECT_FILE: ${{ inputs.project_file }}
+          CURRENT_VERSION: ${{ steps.resolve_release.outputs.current_version }}
+          NEXT_VERSION: ${{ steps.resolve_release.outputs.next_version }}
+        run: |
+          python3 <<'PY'
+          import os
+          import pathlib
+          import re
+          import sys
+
+          project_file = pathlib.Path(os.environ["PROJECT_FILE"])
+          current_version = os.environ["CURRENT_VERSION"]
+          next_version = os.environ["NEXT_VERSION"]
+
+          contents = project_file.read_text(encoding="utf-8")
+          pattern = re.compile(rf"(MARKETING_VERSION = ){re.escape(current_version)}(;)")
+          replacement_count = len(pattern.findall(contents))
+
+          if replacement_count == 0:
+              print(
+                  f"No MARKETING_VERSION entries matched {current_version} in {project_file}.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          updated_contents = pattern.sub(rf"\g<1>{next_version}\2", contents)
+          project_file.write_text(updated_contents, encoding="utf-8")
+
+          print(
+              f"Updated {replacement_count} MARKETING_VERSION entries from {current_version} to {next_version}."
+          )
+          PY
+
+      - name: Configure Git author
+        run: |
+          git config user.email "180547681+veamstudios-release-bot[bot]@users.noreply.github.com"
+          git config user.name "Release Bot"
+
+      - name: Commit version bump
+        shell: bash
+        env:
+          PROJECT_FILE: ${{ inputs.project_file }}
+          NEXT_VERSION: ${{ steps.resolve_release.outputs.next_version }}
+        run: |
+          git add "$PROJECT_FILE"
+          if git diff --cached --quiet; then
+            echo "::error::No version bump changes were staged."
+            exit 1
+          fi
+          git commit -m "chore: prepare hotfix v${NEXT_VERSION}"
+
+      - name: Push hotfix branch
+        shell: bash
+        env:
+          HOTFIX_BRANCH: ${{ steps.resolve_release.outputs.branch_name }}
+        run: |
+          git push -u origin "$HOTFIX_BRANCH"
+
+      - name: Create hotfix PR
+        id: create_pr
+        uses: actions/github-script@v7
+        env:
+          BRANCH_NAME: ${{ steps.resolve_release.outputs.branch_name }}
+          DEFAULT_BRANCH: ${{ steps.resolve_release.outputs.default_branch }}
+          CURRENT_VERSION: ${{ steps.resolve_release.outputs.current_version }}
+          NEXT_VERSION: ${{ steps.resolve_release.outputs.next_version }}
+          RELEASE_TAG: ${{ steps.resolve_release.outputs.tag_name }}
+          RELEASE_URL: ${{ steps.resolve_release.outputs.release_url }}
+          RELEASE_PUBLISHED_AT: ${{ steps.resolve_release.outputs.release_published_at }}
+          RELEASE_COMMIT_SHA: ${{ steps.release_commit.outputs.sha }}
+        with:
+          github-token: ${{ steps.app_token.outputs.token }}
+          script: |
+            const { owner, repo } = context.repo;
+            const branchName = process.env.BRANCH_NAME;
+            const defaultBranch = process.env.DEFAULT_BRANCH;
+            const currentVersion = process.env.CURRENT_VERSION;
+            const nextVersion = process.env.NEXT_VERSION;
+            const releaseTag = process.env.RELEASE_TAG;
+            const releaseUrl = process.env.RELEASE_URL;
+            const releasePublishedAt = process.env.RELEASE_PUBLISHED_AT;
+            const releaseCommitSha = process.env.RELEASE_COMMIT_SHA;
+
+            try {
+              await github.rest.issues.createLabel({
+                owner,
+                repo,
+                name: "hotfix",
+                color: "b60205",
+                description: "Production hotfix work"
+              });
+            } catch (error) {
+              if (error.status !== 422) {
+                throw error;
+              }
+            }
+
+            const body = [
+              "## Hotfix Provenance",
+              `- Base production release: [\`${releaseTag}\`](${releaseUrl})`,
+              `- Base production commit: \`${releaseCommitSha}\``,
+              `- Previous marketing version: \`${currentVersion}\``,
+              `- Prepared hotfix version: \`${nextVersion}\``,
+              releasePublishedAt ? `- Release published at: \`${releasePublishedAt}\`` : null,
+              "",
+              "## Prepared By Workflow",
+              `- Branch: \`${branchName}\``,
+              "- The project version has already been bumped for this hotfix.",
+              "- Continue making the fix on this branch.",
+              `- When ready to release, run your repo's hotfix deploy workflow from this PR head with expected version \`${nextVersion}\`.`,
+              "",
+              "## After Release",
+              `- Merge or cherry-pick the fix into the default branch (\`${defaultBranch}\`) if needed.`,
+              "- Cherry-pick or merge the same fix into any active feature branches that should also contain it."
+            ].filter(Boolean).join("\n");
+
+            const { data: pullRequest } = await github.rest.pulls.create({
+              owner,
+              repo,
+              title: `hotfix: prepare v${nextVersion}`,
+              head: branchName,
+              base: defaultBranch,
+              body
+            });
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: pullRequest.number,
+              labels: ["hotfix"]
+            });
+
+            core.setOutput("pr_number", String(pullRequest.number));
+            core.setOutput("pr_url", pullRequest.html_url);
+
+      - name: Write workflow summary
+        env:
+          RELEASE_TAG: ${{ steps.resolve_release.outputs.tag_name }}
+          CURRENT_VERSION: ${{ steps.resolve_release.outputs.current_version }}
+          NEXT_VERSION: ${{ steps.resolve_release.outputs.next_version }}
+          HOTFIX_BRANCH: ${{ steps.resolve_release.outputs.branch_name }}
+          DEFAULT_BRANCH: ${{ steps.resolve_release.outputs.default_branch }}
+          PR_NUMBER: ${{ steps.create_pr.outputs.pr_number }}
+          PR_URL: ${{ steps.create_pr.outputs.pr_url }}
+        run: |
+          {
+            echo "## Hotfix Prepared"
+            echo ""
+            echo "- Base release: \`$RELEASE_TAG\`"
+            echo "- Version bump: \`$CURRENT_VERSION\` -> \`$NEXT_VERSION\`"
+            echo "- Hotfix branch: \`$HOTFIX_BRANCH\`"
+            echo "- Hotfix PR number: \`$PR_NUMBER\`"
+            echo "- PR base branch: \`$DEFAULT_BRANCH\`"
+            echo "- PR: $PR_URL"
+            echo ""
+            echo "## Next Step"
+            echo ""
+            echo "Run your repo's hotfix deploy workflow with:"
+            echo "- PR number: \`$PR_NUMBER\`"
+            echo "- Expected version: \`$NEXT_VERSION\`"
+            echo "- Confirm deploy from PR head: \`true\`"
+          } >> "$GITHUB_STEP_SUMMARY"
