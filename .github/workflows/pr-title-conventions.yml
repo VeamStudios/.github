@@ -7,7 +7,7 @@ on:
         description: 'Comma-separated list of allowed prefixes'
         required: false
         type: string
-        default: 'fix,feat,build,chore,ci,docs,style,refac,perf,test'
+        default: 'fix,hotfix,feat,build,chore,ci,docs,style,refac,perf,test'
 
 jobs:
   check_pr_title:
