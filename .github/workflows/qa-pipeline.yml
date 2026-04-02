@@ -38,7 +38,7 @@ on:
 
 jobs:
   qa-brief:
-    if: github.event.label.name == 'qa-needed'
+    if: "github.event.label.name == 'bot: qa needed'"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -298,7 +298,7 @@ jobs:
           echo "QA Brief posted to PR #${PR_NUMBER}"
 
   merge:
-    if: github.event.label.name == 'qa-approved' && contains(github.event.pull_request.labels.*.name, 'qa-needed') && contains(github.event.pull_request.labels.*.name, 'qa-merge')
+    if: "github.event.label.name == 'bot: qa approved' && contains(github.event.pull_request.labels.*.name, 'bot: qa needed') && contains(github.event.pull_request.labels.*.name, 'bot: qa automerge')"
     runs-on: ubuntu-latest
     permissions:
       contents: write

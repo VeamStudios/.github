@@ -3,7 +3,7 @@
 # Copy this file into your repo's .github/workflows/ directory.
 # It calls the central reusable workflow from the VeamStudios/.github repo.
 #
-# When the 'qa-needed' label is added to a PR, this workflow generates
+# When the 'bot: qa needed' label is added to a PR, this workflow generates
 # an AI-powered QA brief and posts it as a PR comment.
 #
 # The app name and platform are auto-detected from the repo name by default.
@@ -18,7 +18,7 @@ on:
 
 jobs:
   qa-brief:
-    if: github.event.label.name == 'qa-needed'
+    if: "github.event.label.name == 'bot: qa needed'"
     uses: VeamStudios/.github/.github/workflows/qa-automation.yml@main
     # Uncomment and customise inputs as needed:
     # with:

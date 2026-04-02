@@ -3,7 +3,7 @@
 # Copy this file into your repo's .github/workflows/ directory.
 # It calls the central reusable workflow from the VeamStudios/.github repo.
 #
-# When the 'qa-approved' label is added to a PR, this workflow automatically
+# When the 'bot: qa approved' label is added to a PR, this workflow automatically
 # merges it using the configured merge method.
 
 name: Auto Merge on QA Approval
@@ -14,7 +14,7 @@ on:
 
 jobs:
   auto-merge:
-    if: github.event.label.name == 'qa-approved'
+    if: "github.event.label.name == 'bot: qa approved'"
     uses: VeamStudios/.github/.github/workflows/auto-merge.yml@main
     # Uncomment to override the default merge method:
     # with:
