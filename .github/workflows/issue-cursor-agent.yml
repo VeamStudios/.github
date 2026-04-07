@@ -73,7 +73,7 @@ jobs:
     steps:
       - name: Resolve requested mode
         id: route
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           FIX_LABEL: ${{ inputs.fix-label }}
           TRIAGE_LABEL: ${{ inputs.triage-label }}
@@ -268,7 +268,7 @@ jobs:
 
       - name: Create or update pull request
         id: pr
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           BRANCH_NAME: ${{ needs.route.outputs.branch_name }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
