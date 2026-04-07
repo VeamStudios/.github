@@ -103,7 +103,7 @@ jobs:
             -scheme "$SCHEME"
 
       - name: Create PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           VERSION: ${{ inputs.version }}
           BASE_BRANCH: ${{ inputs.base_branch }}

@@ -98,7 +98,7 @@ jobs:
 
       - name: Resolve hotfix PR
         id: resolve_hotfix
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           PR_NUMBER: ${{ inputs.pr_number }}
           HOTFIX_BRANCH: ${{ inputs.hotfix_branch }}
@@ -416,7 +416,7 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Comment on hotfix PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           PR_NUMBER: ${{ needs.resolve-hotfix.outputs.pr_number }}
           RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ inputs.expected_version }}
