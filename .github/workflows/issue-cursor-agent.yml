@@ -447,7 +447,7 @@ jobs:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           CURSOR_MODEL: ${{ inputs.cursor-model }}
         run: |
-          agent -p --output-format text --model "$CURSOR_MODEL" "$(cat cursor_triage_prompt.txt)" | tee cursor_triage_output.md
+          agent -p --force --output-format text --model "$CURSOR_MODEL" "$(cat cursor_triage_prompt.txt)" | tee cursor_triage_output.md
 
       - name: Comment with triage summary
         env:
