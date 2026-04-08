@@ -12,6 +12,10 @@ on:
         description: "Arguments after xcodebuild (project/workspace, scheme, signing flags)"
         required: true
         type: string
+    secrets:
+      BOT_RELEASE_PRIVATE_KEY:
+        description: "PEM private key for the Release Bot GitHub App"
+        required: true
 
 jobs:
   build:
