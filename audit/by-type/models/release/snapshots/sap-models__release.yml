@@ -1,0 +1,123 @@
+name: Release new version
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "version"
+  cancel-in-progress: true
+
+jobs:
+  bump_minor_and_release:
+    if: github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@veamstudios"
+
+      - name: Set account identity
+        run: |
+          git config --global user.email 180547681+veamstudios-release-bot[bot]@users.noreply.github.com
+          git config --global user.name "Release Bot"
+
+      - name: Bump minor version
+        run: yarn version --minor
+
+      - name: Read bumped version
+        id: version
+        run: echo "new_version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify changelog entry before push and publish
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.new_version }}"
+          chmod +x ./scripts/extract-changelog-lines.sh
+          ./scripts/extract-changelog-lines.sh "$version" > /dev/null
+
+      - name: Push commit and tag
+        run: |
+          version="$(jq -r .version package.json)"
+          git push origin
+          git push origin "v$version"
+
+      - name: Publish the '@veamstudios/sap' package
+        run: yarn publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate token
+        id: generate_token
+        uses: tibdex/github-app-token@v2
+        with:
+          app_id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private_key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          version="$(jq -r .version package.json)"
+          chmod +x ./scripts/extract-changelog-lines.sh
+          if changelog_lines="$(./scripts/extract-changelog-lines.sh "$version")"; then
+            gh release create "v$version" \
+              --title "v$version" \
+              --notes "$changelog_lines"
+          else
+            gh release create "v$version" \
+              --title "v$version" \
+              --generate-notes
+          fi
+
+      - name: Notify client repos
+        uses: actions/github-script@v7
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+        with:
+          github-token: ${{ secrets.VEAM_READ_TOKEN }}
+          script: |
+            const repos = ['SiteAuditPro-Backend', 'SiteAuditPro-Web', 'SiteAuditPro-iOS'];
+
+            const results = await Promise.allSettled(
+              repos.map((repo) =>
+                github.rest.repos.createDispatchEvent({
+                  owner: 'veamstudios',
+                  repo,
+                  event_type: 'sap-models-update',
+                  client_payload: { version: process.env.NEW_VERSION }
+                })
+              )
+            );
+
+            const failures = results
+              .map((result, index) => ({ repo: repos[index], result }))
+              .filter(({ result }) => result.status === 'rejected');
+
+            for (const { repo, result } of failures) {
+              core.error(`Failed to notify ${repo}: ${result.reason.message}`);
+            }
+
+            if (failures.length > 0) {
+              throw new Error(`Failed to notify ${failures.length} client repos.`);
+            }

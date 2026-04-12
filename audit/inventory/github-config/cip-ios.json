@@ -1,0 +1,61 @@
+{
+  "key": "cip-ios",
+  "repo": "VeamStudios/ChecklistInspectorPro-iOS",
+  "family": "ios",
+  "product": "ChecklistInspectorPro",
+  "source_label": "main",
+  "repo_secrets": [
+
+  ],
+  "repo_variables": [
+
+  ],
+  "environments": [
+    {
+      "name": "beta",
+      "html_url": "https://github.com/VeamStudios/ChecklistInspectorPro-iOS/deployments/activity_log?environments_filter=beta",
+      "repo_secrets": [
+
+      ],
+      "repo_variables": [
+        "APP_BUNDLE_ID",
+        "APP_SCHEME_NAME",
+        "APP_XCODE_CONFIGURATION"
+      ]
+    },
+    {
+      "name": "copilot",
+      "html_url": "https://github.com/VeamStudios/ChecklistInspectorPro-iOS/deployments/activity_log?environments_filter=copilot",
+      "repo_secrets": [
+
+      ],
+      "repo_variables": [
+
+      ]
+    },
+    {
+      "name": "dev",
+      "html_url": "https://github.com/VeamStudios/ChecklistInspectorPro-iOS/deployments/activity_log?environments_filter=dev",
+      "repo_secrets": [
+
+      ],
+      "repo_variables": [
+        "APP_BUNDLE_ID",
+        "APP_SCHEME_NAME",
+        "APP_XCODE_CONFIGURATION"
+      ]
+    },
+    {
+      "name": "prod",
+      "html_url": "https://github.com/VeamStudios/ChecklistInspectorPro-iOS/deployments/activity_log?environments_filter=prod",
+      "repo_secrets": [
+
+      ],
+      "repo_variables": [
+        "APP_BUNDLE_ID",
+        "APP_SCHEME_NAME",
+        "APP_XCODE_CONFIGURATION"
+      ]
+    }
+  ]
+}

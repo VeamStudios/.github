@@ -1,0 +1,12 @@
+name: Check PR Title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  check_pr_title:
+    uses: VeamStudios/.github/.github/workflows/pr-title-conventions.yml@main
+    # If you want to override the default prefixes, uncomment the following lines:
+    # with:
+    #   conventional_prefixes: 'fix,feat,build,chore,ci,docs,style,refactor,perf,test'

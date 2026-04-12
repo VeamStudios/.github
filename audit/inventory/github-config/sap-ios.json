@@ -1,0 +1,57 @@
+{
+  "key": "sap-ios",
+  "repo": "VeamStudios/SiteAuditPro-iOS",
+  "family": "ios",
+  "product": "SiteAuditPro",
+  "source_label": "pr-2393",
+  "repo_secrets": [
+    "ACTION_XCODEBUILD_PRIVATE_REPO_KEY",
+    "API_TOKEN_GITHUB",
+    "CHANGELOG_ACCESS"
+  ],
+  "repo_variables": [
+
+  ],
+  "environments": [
+    {
+      "name": "beta",
+      "html_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/deployments/activity_log?environments_filter=beta",
+      "repo_secrets": [
+
+      ],
+      "repo_variables": [
+
+      ]
+    },
+    {
+      "name": "copilot",
+      "html_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/deployments/activity_log?environments_filter=copilot",
+      "repo_secrets": [
+
+      ],
+      "repo_variables": [
+
+      ]
+    },
+    {
+      "name": "dev",
+      "html_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/deployments/activity_log?environments_filter=dev",
+      "repo_secrets": [
+
+      ],
+      "repo_variables": [
+
+      ]
+    },
+    {
+      "name": "prod",
+      "html_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/deployments/activity_log?environments_filter=prod",
+      "repo_secrets": [
+
+      ],
+      "repo_variables": [
+
+      ]
+    }
+  ]
+}

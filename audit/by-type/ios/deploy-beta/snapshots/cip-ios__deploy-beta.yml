@@ -1,0 +1,102 @@
+name: Deploy Beta
+
+on:
+  schedule:
+    - cron: "0 5 * * *" 
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-beta
+  cancel-in-progress: true
+
+jobs:
+  check-nightly-merge:
+    name: Check for recent merges to main
+    uses: VeamStudios/.github/.github/workflows/merge-gate.yml@main
+    permissions:
+      pull-requests: read
+    with:
+      base_branch: main
+      window_hours: 24
+      max_pages: 10
+
+  preflight-cloud-release:
+    name: Validate Cloud Release Compatibility
+    needs: check-nightly-merge
+    if: ${{ github.event_name != 'schedule' || needs.check-nightly-merge.outputs.should_deploy == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          token: ${{ steps.app_token.outputs.token }}
+
+      - name: Setup Ruby and Bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ".ruby-version"
+          bundler-cache: true
+
+      - name: Setup App Store Connect API Key
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo -n "${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+
+      - name: Preflight beta-to-cloud release compatibility
+        run: bundle exec fastlane preflight_release_alignment source_configuration:beta target_configuration:cloud
+        env:
+          CI: true
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+
+  deploy-beta:
+    name: Build & Deploy Beta to TestFlight
+    needs: [check-nightly-merge, preflight-cloud-release]
+    if: ${{ github.event_name != 'schedule' || needs.check-nightly-merge.outputs.should_deploy == 'true' }}
+    uses: VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main
+    with:
+      configuration: beta
+      environment_name: beta
+      ipa_path: ./fastlane/builds/com.veamstudios.checklistinspectorpro.beta.ipa
+      checkout_ref: ${{ github.sha }}
+      capture_commit_sha: true
+      upload_cloud_archive: false
+      upload_release_manifest: true
+    secrets: inherit
+
+  summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [check-nightly-merge, preflight-cloud-release, deploy-beta]
+    if: always()
+    steps:
+      - name: Display Summary
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ needs.check-nightly-merge.outputs.should_deploy }}" != "true" ]; then
+            echo "No PRs were merged to main in the last 24 hours, so the nightly beta build was skipped."
+          elif [ "${{ needs.preflight-cloud-release.result }}" != "success" ]; then
+            echo "Beta build stopped because the cloud release compatibility check failed."
+            echo "Next steps:"
+            echo "1. Review the preflight error above."
+            echo "2. Bump the marketing version or fix the cloud build-number conflict."
+            echo "3. Rerun the beta workflow."
+          else
+            echo "Beta deploy completed successfully."
+            echo "Source Commit: ${{ needs.deploy-beta.outputs.commit_sha }}"
+            echo ""
+            echo "Beta Marketing Version: ${{ needs.deploy-beta.outputs.marketing_version }}"
+            echo "Beta Build Number: ${{ needs.deploy-beta.outputs.build_number }}"
+            echo "Beta Version: ${{ needs.deploy-beta.outputs.version }}"
+            echo "Beta Release Manifest Artifact: ${{ needs.deploy-beta.outputs.release_manifest_artifact_name }}"
+          fi

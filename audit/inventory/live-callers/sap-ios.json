@@ -1,0 +1,934 @@
+{
+  "key": "sap-ios",
+  "owner": "VeamStudios",
+  "name": "SiteAuditPro-iOS",
+  "url": "https://github.com/VeamStudios/SiteAuditPro-iOS",
+  "product": "SiteAuditPro",
+  "family": "ios",
+  "deploy_style": "shared-ios-testflight",
+  "uses_shared_workflows": true,
+  "source": {
+    "type": "pull_request",
+    "label": "pr-2393",
+    "pr_number": 2393,
+    "pr_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/pull/2393",
+    "ref": "harrygt/new-actions",
+    "sha": "2c0be9751d74c187e1d290a24b030a8c750029bf",
+    "base_ref": "dev"
+  },
+  "source_label": "pr-2393",
+  "fetched_ref": "2c0be9751d74c187e1d290a24b030a8c750029bf",
+  "workflow_count": 11,
+  "action_count": 0,
+  "workflows": [
+    {
+      "path": ".github/workflows/deploy-beta.yml",
+      "source_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/blob/harrygt/new-actions/.github/workflows/deploy-beta.yml",
+      "source_blob_sha": "3619b6c6c004fb22811431f4811016849469123f",
+      "filename": "deploy-beta.yml",
+      "workflow_name": "Deploy Beta",
+      "category": "deploy-beta",
+      "parse_error": null,
+      "triggers": [
+        "schedule",
+        "workflow_dispatch"
+      ],
+      "job_calls": [
+        {
+          "job_name": "check-nightly-merge",
+          "uses": "VeamStudios/.github/.github/workflows/merge-gate.yml@main",
+          "with_keys": [
+            "base_branch",
+            "max_pages",
+            "window_hours"
+          ],
+          "with": {
+            "base_branch": "main",
+            "window_hours": 24,
+            "max_pages": 10
+          },
+          "secret_mode": "none",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        },
+        {
+          "job_name": "preflight-cloud-release",
+          "uses": null,
+          "with_keys": [
+
+          ],
+          "with": null,
+          "secret_mode": "none",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        },
+        {
+          "job_name": "deploy-beta",
+          "uses": "VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main",
+          "with_keys": [
+            "capture_commit_sha",
+            "checkout_ref",
+            "configuration",
+            "environment_name",
+            "ipa_path",
+            "upload_cloud_archive",
+            "upload_release_manifest"
+          ],
+          "with": {
+            "configuration": "beta",
+            "environment_name": "beta",
+            "ipa_path": "./fastlane/builds/site-audit-pro-beta.ipa",
+            "checkout_ref": "${{ github.sha }}",
+            "capture_commit_sha": true,
+            "upload_cloud_archive": false,
+            "upload_release_manifest": true
+          },
+          "secret_mode": "inherit",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        },
+        {
+          "job_name": "summary",
+          "uses": null,
+          "with_keys": [
+
+          ],
+          "with": null,
+          "secret_mode": "none",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        }
+      ],
+      "uses_values": [
+        "VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main",
+        "VeamStudios/.github/.github/workflows/merge-gate.yml@main"
+      ],
+      "external_uses": [
+        "VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main",
+        "VeamStudios/.github/.github/workflows/merge-gate.yml@main"
+      ],
+      "local_uses": [
+
+      ],
+      "shared_repo_uses": [
+        "VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main",
+        "VeamStudios/.github/.github/workflows/merge-gate.yml@main"
+      ],
+      "legacy_actions_uses": [
+
+      ],
+      "referenced_secrets": [
+        "APP_STORE_CONNECT_API_KEY_CONTENT",
+        "APP_STORE_CONNECT_API_KEY_ID",
+        "APP_STORE_CONNECT_ISSUER_ID",
+        "BOT_RELEASE_PRIVATE_KEY"
+      ],
+      "referenced_vars": [
+        "BOT_RELEASE_APP_ID"
+      ],
+      "workflow_call": null,
+      "implicit_secret_dependencies": [
+        "APP_STORE_CONNECT_API_KEY_CONTENT",
+        "APP_STORE_CONNECT_API_KEY_ID",
+        "APP_STORE_CONNECT_ISSUER_ID",
+        "BOT_RELEASE_PRIVATE_KEY"
+      ],
+      "implicit_var_dependencies": [
+        "BOT_RELEASE_APP_ID"
+      ],
+      "environments": [
+
+      ],
+      "top_level_concurrency": {
+        "group": "deploy-beta",
+        "cancel-in-progress": true
+      },
+      "structure_key": "{\"concurrency\":{\"cancel-in-progress\":true,\"group\":\"deploy-beta\"},\"jobs\":{\"check-nightly-merge\":{\"name\":\"Check for recent merges to main\",\"permissions\":{\"pull-requests\":\"read\"},\"uses\":\"VeamStudios/.github/.github/workflows/merge-gate.yml@main\",\"with\":{\"base_branch\":\"main\",\"max_pages\":10,\"window_hours\":24}},\"deploy-beta\":{\"if\":\"${{ github.event_name != 'schedule' || needs.check-nightly-merge.outputs.should_deploy == 'true' }}\",\"name\":\"Build & Deploy Beta to TestFlight\",\"needs\":[\"check-nightly-merge\",\"preflight-cloud-release\"],\"secrets\":\"inherit\",\"uses\":\"VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main\",\"with\":{\"capture_commit_sha\":true,\"checkout_ref\":\"${{ github.sha }}\",\"configuration\":\"beta\",\"environment_name\":\"beta\",\"ipa_path\":\"./fastlane/builds/site-audit-pro-beta.ipa\",\"upload_cloud_archive\":false,\"upload_release_manifest\":true}},\"preflight-cloud-release\":{\"if\":\"${{ github.event_name != 'schedule' || needs.check-nightly-merge.outputs.should_deploy == 'true' }}\",\"name\":\"Validate Cloud Release Compatibility\",\"needs\":\"check-nightly-merge\",\"runs-on\":\"ubuntu-latest\",\"steps\":[{\"id\":\"app_token\",\"name\":\"Mint GitHub App token\",\"uses\":\"actions/create-github-app-token@v1\",\"with\":{\"app-id\":\"${{ vars.BOT_RELEASE_APP_ID }}\",\"owner\":\"${{ github.repository_owner }}\",\"private-key\":\"${{ secrets.BOT_RELEASE_PRIVATE_KEY }}\"}},{\"name\":\"Checkout repository\",\"uses\":\"actions/checkout@v6\",\"with\":{\"ref\":\"${{ github.sha }}\",\"token\":\"${{ steps.app_token.outputs.token }}\"}},{\"name\":\"Setup Ruby and Bundler\",\"uses\":\"ruby/setup-ruby@v1\",\"with\":{\"bundler-cache\":true,\"ruby-version\":\".ruby-version\"}},{\"name\":\"Setup App Store Connect API Key\",\"run\":\"mkdir -p ~/.appstoreconnect/private_keys\\necho -n \\\"${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}\\\" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8\\nchmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8\\n\"},{\"env\":{\"APP_STORE_CONNECT_API_KEY_CONTENT\":\"${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}\",\"APP_STORE_CONNECT_API_KEY_ID\":\"${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}\",\"APP_STORE_CONNECT_ISSUER_ID\":\"${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}\",\"CI\":true},\"name\":\"Preflight beta-to-cloud release compatibility\",\"run\":\"bundle exec fastlane preflight_release_alignment source_configuration:beta target_configuration:cloud\"}]},\"summary\":{\"if\":\"always()\",\"name\":\"Deployment Summary\",\"needs\":[\"check-nightly-merge\",\"preflight-cloud-release\",\"deploy-beta\"],\"runs-on\":\"ubuntu-latest\",\"steps\":[{\"name\":\"Display Summary\",\"run\":\"if [ \\\"${{ github.event_name }}\\\" = \\\"schedule\\\" ] && [ \\\"${{ needs.check-nightly-merge.outputs.should_deploy }}\\\" != \\\"true\\\" ]; then\\n  echo \\\"No PRs were merged to main in the last 24 hours, so the nightly beta build was skipped.\\\"\\nelif [ \\\"${{ needs.preflight-cloud-release.result }}\\\" != \\\"success\\\" ]; then\\n  echo \\\"Beta build stopped because the cloud release compatibility check failed.\\\"\\n  echo \\\"Next steps:\\\"\\n  echo \\\"1. Review the preflight error above.\\\"\\n  echo \\\"2. Bump the marketing version or fix the cloud build-number conflict.\\\"\\n  echo \\\"3. Rerun the beta workflow.\\\"\\nelse\\n  echo \\\"Beta deploy completed successfully.\\\"\\n  echo \\\"Source Commit: ${{ needs.deploy-beta.outputs.commit_sha }}\\\"\\n  echo \\\"\\\"\\n  echo \\\"Beta Marketing Version: ${{ needs.deploy-beta.outputs.marketing_version }}\\\"\\n  echo \\\"Beta Build Number: ${{ needs.deploy-beta.outputs.build_number }}\\\"\\n  echo \\\"Beta Version: ${{ needs.deploy-beta.outputs.version }}\\\"\\n  echo \\\"Beta Release Manifest Artifact: ${{ needs.deploy-beta.outputs.release_manifest_artifact_name }}\\\"\\nfi\\n\"}]}},\"on\":{\"schedule\":[{\"cron\":\"0 5 * * *\"}],\"workflow_dispatch\":null}}"
+    },
+    {
+      "path": ".github/workflows/deploy-dev.yml",
+      "source_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/blob/harrygt/new-actions/.github/workflows/deploy-dev.yml",
+      "source_blob_sha": "84cfd234a84b5b7f2467fdd6d56bbc0486b57702",
+      "filename": "deploy-dev.yml",
+      "workflow_name": "Deploy Dev",
+      "category": "deploy-dev",
+      "parse_error": null,
+      "triggers": [
+        "workflow_dispatch"
+      ],
+      "job_calls": [
+        {
+          "job_name": "deploy-dev",
+          "uses": "VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main",
+          "with_keys": [
+            "capture_commit_sha",
+            "configuration",
+            "environment_name",
+            "ipa_path",
+            "upload_cloud_archive"
+          ],
+          "with": {
+            "configuration": "dev",
+            "environment_name": "dev",
+            "ipa_path": "./fastlane/builds/site-audit-pro-dev.ipa",
+            "capture_commit_sha": true,
+            "upload_cloud_archive": false
+          },
+          "secret_mode": "inherit",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        },
+        {
+          "job_name": "summary",
+          "uses": null,
+          "with_keys": [
+
+          ],
+          "with": null,
+          "secret_mode": "none",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        }
+      ],
+      "uses_values": [
+        "VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main"
+      ],
+      "external_uses": [
+        "VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main"
+      ],
+      "local_uses": [
+
+      ],
+      "shared_repo_uses": [
+        "VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main"
+      ],
+      "legacy_actions_uses": [
+
+      ],
+      "referenced_secrets": [
+
+      ],
+      "referenced_vars": [
+
+      ],
+      "workflow_call": null,
+      "implicit_secret_dependencies": [
+
+      ],
+      "implicit_var_dependencies": [
+
+      ],
+      "environments": [
+
+      ],
+      "top_level_concurrency": {
+        "group": "deploy-dev-${{ github.ref }}",
+        "cancel-in-progress": true
+      },
+      "structure_key": "{\"concurrency\":{\"cancel-in-progress\":true,\"group\":\"deploy-dev-${{ github.ref }}\"},\"jobs\":{\"deploy-dev\":{\"name\":\"Build & Deploy Dev to TestFlight\",\"secrets\":\"inherit\",\"uses\":\"VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main\",\"with\":{\"capture_commit_sha\":true,\"configuration\":\"dev\",\"environment_name\":\"dev\",\"ipa_path\":\"./fastlane/builds/site-audit-pro-dev.ipa\",\"upload_cloud_archive\":false}},\"summary\":{\"name\":\"Deployment Summary\",\"needs\":[\"deploy-dev\"],\"runs-on\":\"ubuntu-latest\",\"steps\":[{\"name\":\"Display Summary\",\"run\":\"echo \\\"Deploy Dev completed!\\\"\\necho \\\"Dev Version: ${{ needs.deploy-dev.outputs.version }}\\\"\\necho \\\"Commit: ${{ needs.deploy-dev.outputs.commit_sha }}\\\"\\n\"}]}},\"on\":{\"workflow_dispatch\":null}}"
+    },
+    {
+      "path": ".github/workflows/deploy-production.yml",
+      "source_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/blob/harrygt/new-actions/.github/workflows/deploy-production.yml",
+      "source_blob_sha": "68a2a91a9017910492c2f23fecf2d46f37963eb1",
+      "filename": "deploy-production.yml",
+      "workflow_name": "Deploy Production",
+      "category": "deploy-production",
+      "parse_error": null,
+      "triggers": [
+        "workflow_dispatch"
+      ],
+      "job_calls": [
+        {
+          "job_name": "resolve-beta",
+          "uses": null,
+          "with_keys": [
+
+          ],
+          "with": null,
+          "secret_mode": "none",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        },
+        {
+          "job_name": "build-cloud",
+          "uses": "VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main",
+          "with_keys": [
+            "build_number_override",
+            "capture_commit_sha",
+            "checkout_ref",
+            "configuration",
+            "environment_name",
+            "expected_marketing_version",
+            "ipa_path",
+            "upload_cloud_archive",
+            "upload_release_manifest"
+          ],
+          "with": {
+            "configuration": "cloud",
+            "environment_name": "prod",
+            "ipa_path": "./fastlane/builds/site-audit-pro-cloud.ipa",
+            "checkout_ref": "${{ needs.resolve-beta.outputs.commit_sha }}",
+            "capture_commit_sha": true,
+            "upload_cloud_archive": true,
+            "upload_release_manifest": false,
+            "build_number_override": "${{ needs.resolve-beta.outputs.build_number }}",
+            "expected_marketing_version": "${{ needs.resolve-beta.outputs.marketing_version }}"
+          },
+          "secret_mode": "inherit",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        },
+        {
+          "job_name": "validate-release",
+          "uses": null,
+          "with_keys": [
+
+          ],
+          "with": null,
+          "secret_mode": "none",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        },
+        {
+          "job_name": "create-release",
+          "uses": null,
+          "with_keys": [
+
+          ],
+          "with": null,
+          "secret_mode": "none",
+          "mapped_secret_names": [
+
+          ],
+          "environment": "prod"
+        },
+        {
+          "job_name": "notify",
+          "uses": "VeamStudios/.github/.github/workflows/release-notifications.yml@main",
+          "with_keys": [
+            "beta_build_number",
+            "beta_commit_sha",
+            "beta_run_id",
+            "beta_run_url",
+            "beta_version",
+            "cloud_build_number",
+            "cloud_commit_sha",
+            "cloud_version",
+            "environment",
+            "slack_footer_mrkdwn",
+            "version"
+          ],
+          "with": {
+            "version": "${{ needs.resolve-beta.outputs.tag_name }}",
+            "environment": "production",
+            "beta_run_id": "${{ needs.resolve-beta.outputs.beta_run_id }}",
+            "beta_run_url": "${{ needs.resolve-beta.outputs.beta_run_url }}",
+            "beta_commit_sha": "${{ needs.resolve-beta.outputs.commit_sha }}",
+            "beta_version": "${{ needs.resolve-beta.outputs.version }}",
+            "beta_build_number": "${{ needs.resolve-beta.outputs.build_number }}",
+            "cloud_commit_sha": "${{ needs.build-cloud.outputs.commit_sha }}",
+            "cloud_version": "${{ needs.build-cloud.outputs.version }}",
+            "cloud_build_number": "${{ needs.build-cloud.outputs.build_number }}",
+            "slack_footer_mrkdwn": "Please inform any customers waiting on fixes in this release."
+          },
+          "secret_mode": "inherit",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        },
+        {
+          "job_name": "summary",
+          "uses": null,
+          "with_keys": [
+
+          ],
+          "with": null,
+          "secret_mode": "none",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        }
+      ],
+      "uses_values": [
+        "VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main",
+        "VeamStudios/.github/.github/workflows/release-notifications.yml@main"
+      ],
+      "external_uses": [
+        "VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main",
+        "VeamStudios/.github/.github/workflows/release-notifications.yml@main"
+      ],
+      "local_uses": [
+
+      ],
+      "shared_repo_uses": [
+        "VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main",
+        "VeamStudios/.github/.github/workflows/release-notifications.yml@main"
+      ],
+      "legacy_actions_uses": [
+
+      ],
+      "referenced_secrets": [
+        "BOT_RELEASE_PRIVATE_KEY"
+      ],
+      "referenced_vars": [
+        "BOT_RELEASE_APP_ID"
+      ],
+      "workflow_call": null,
+      "implicit_secret_dependencies": [
+        "BOT_RELEASE_PRIVATE_KEY"
+      ],
+      "implicit_var_dependencies": [
+        "BOT_RELEASE_APP_ID"
+      ],
+      "environments": [
+        "prod"
+      ],
+      "top_level_concurrency": {
+        "group": "production-${{ github.event.inputs.beta_run_id || 'latest-beta' }}",
+        "cancel-in-progress": false
+      },
+      "structure_key": "{\"concurrency\":{\"cancel-in-progress\":false,\"group\":\"production-${{ github.event.inputs.beta_run_id || 'latest-beta' }}\"},\"jobs\":{\"build-cloud\":{\"name\":\"Build Cloud From Approved Beta Commit\",\"needs\":\"resolve-beta\",\"secrets\":\"inherit\",\"uses\":\"VeamStudios/.github/.github/workflows/deploy-ios-testflight.yml@main\",\"with\":{\"build_number_override\":\"${{ needs.resolve-beta.outputs.build_number }}\",\"capture_commit_sha\":true,\"checkout_ref\":\"${{ needs.resolve-beta.outputs.commit_sha }}\",\"configuration\":\"cloud\",\"environment_name\":\"prod\",\"expected_marketing_version\":\"${{ needs.resolve-beta.outputs.marketing_version }}\",\"ipa_path\":\"./fastlane/builds/site-audit-pro-cloud.ipa\",\"upload_cloud_archive\":true,\"upload_release_manifest\":false}},\"create-release\":{\"environment\":\"prod\",\"name\":\"Create GitHub Release\",\"needs\":[\"resolve-beta\",\"build-cloud\",\"validate-release\"],\"outputs\":{\"tag_name\":\"${{ needs.resolve-beta.outputs.tag_name }}\"},\"runs-on\":\"ubuntu-latest\",\"steps\":[{\"id\":\"app_token\",\"name\":\"Mint GitHub App token\",\"uses\":\"actions/create-github-app-token@v1\",\"with\":{\"app-id\":\"${{ vars.BOT_RELEASE_APP_ID }}\",\"owner\":\"${{ github.repository_owner }}\",\"private-key\":\"${{ secrets.BOT_RELEASE_PRIVATE_KEY }}\"}},{\"name\":\"Setup Git authentication\",\"run\":\"git config --global user.email \\\"180547681+veamstudios-release-bot[bot]@users.noreply.github.com\\\"\\ngit config --global user.name \\\"Release Bot\\\"\\necho \\\"machine github.com login 'Release Bot' password ${{ steps.app_token.outputs.token }}\\\" > ~/.netrc\\nchmod 600 ~/.netrc\\n\"},{\"name\":\"Checkout approved beta commit\",\"uses\":\"actions/checkout@v6\",\"with\":{\"fetch-depth\":1,\"ref\":\"${{ needs.resolve-beta.outputs.commit_sha }}\",\"token\":\"${{ steps.app_token.outputs.token }}\"}},{\"name\":\"Download cloud archive artifact\",\"uses\":\"actions/download-artifact@v4\",\"with\":{\"name\":\"${{ needs.build-cloud.outputs.cloud_archive_artifact_name }}\",\"path\":\"./artifacts\"}},{\"id\":\"archive_path\",\"name\":\"Locate cloud archive path\",\"run\":\"ARCHIVE_PATH=\\\"\\\"\\nfor candidate in ./artifacts/cloud.xcarchive ./artifacts/*/cloud.xcarchive; do\\n  if [ -d \\\"$candidate\\\" ]; then\\n    ARCHIVE_PATH=\\\"$candidate\\\"\\n    break\\n  fi\\ndone\\n\\nif [ -z \\\"$ARCHIVE_PATH\\\" ]; then\\n  echo \\\"::error::cloud.xcarchive not found after artifact download\\\"\\n  exit 1\\nfi\\n\\necho \\\"path=$ARCHIVE_PATH\\\" >> \\\"$GITHUB_OUTPUT\\\"\\n\",\"shell\":\"bash\"},{\"id\":\"zip_archive\",\"name\":\"Zip xcarchive\",\"run\":\"ARCHIVE_NAME=\\\"SiteAuditPro-v${{ needs.resolve-beta.outputs.marketing_version }}-cloud.xcarchive.zip\\\"\\nZIP_PATH=\\\"./artifacts/$ARCHIVE_NAME\\\"\\nzip -r \\\"$ZIP_PATH\\\" \\\"${{ steps.archive_path.outputs.path }}\\\"\\necho \\\"archive_zip=$ZIP_PATH\\\" >> \\\"$GITHUB_OUTPUT\\\"\\n\"},{\"env\":{\"TAG_NAME\":\"${{ needs.resolve-beta.outputs.tag_name }}\"},\"name\":\"Ensure tag does not already exist\",\"run\":\"if git ls-remote --exit-code --tags origin \\\"refs/tags/$TAG_NAME\\\" >/dev/null 2>&1; then\\n  echo \\\"::error::Tag $TAG_NAME already exists.\\\"\\n  echo \\\"::error::Next steps:\\\"\\n  echo \\\"::error::1. Confirm whether this production release already completed.\\\"\\n  echo \\\"::error::2. Delete the existing tag only if the partial release should be recreated.\\\"\\n  echo \\\"::error::3. Rerun the workflow after resolving the existing tag.\\\"\\n  exit 1\\nfi\\n\",\"shell\":\"bash\"},{\"env\":{\"COMMIT_SHA\":\"${{ needs.resolve-beta.outputs.commit_sha }}\",\"TAG_NAME\":\"${{ needs.resolve-beta.outputs.tag_name }}\"},\"name\":\"Create and push tag\",\"run\":\"git tag -a \\\"$TAG_NAME\\\" \\\"$COMMIT_SHA\\\" -m \\\"Release $TAG_NAME\\\"\\ngit push origin \\\"$TAG_NAME\\\"\\necho \\\"Created tag: $TAG_NAME at commit $COMMIT_SHA\\\"\\n\"},{\"env\":{\"GITHUB_TOKEN\":\"${{ steps.app_token.outputs.token }}\"},\"name\":\"Create GitHub Release\",\"uses\":\"softprops/action-gh-release@v2\",\"with\":{\"body\":\"${{ inputs.release_notes }}\\n### Approved Beta Provenance\\n- **Beta Run**: [#${{ needs.resolve-beta.outputs.beta_run_id }}](${{ needs.resolve-beta.outputs.beta_run_url }})\\n- **Beta Commit**: ${{ needs.resolve-beta.outputs.commit_sha }}\\n- **Beta Version**: ${{ needs.resolve-beta.outputs.version }}\\n- **Beta Manifest Created At**: ${{ needs.resolve-beta.outputs.created_at }}\\n### Released Cloud Build\\n- **Cloud Commit**: ${{ needs.build-cloud.outputs.commit_sha }}\\n- **Cloud Version**: ${{ needs.build-cloud.outputs.version }}\\n- **Cloud Archive Artifact**: ${{ needs.build-cloud.outputs.cloud_archive_artifact_name }}\\n\",\"draft\":false,\"fail_on_unmatched_files\":true,\"files\":\"${{ steps.zip_archive.outputs.archive_zip }}\\n\",\"generate_release_notes\":true,\"name\":\"${{ needs.resolve-beta.outputs.tag_name }}\",\"prerelease\":false,\"tag_name\":\"${{ needs.resolve-beta.outputs.tag_name }}\",\"target_commitish\":\"${{ needs.resolve-beta.outputs.commit_sha }}\"}},{\"env\":{\"API_TOKEN_GITHUB\":\"${{ steps.app_token.outputs.token }}\"},\"name\":\"Update Changelog Website\",\"uses\":\"dmnemec/copy_file_to_another_repo_action@v1.1.1\",\"with\":{\"commit_message\":\"Update iOS changelog for v${{ needs.resolve-beta.outputs.marketing_version }}\",\"destination_branch\":\"main\",\"destination_folder\":\"src/app/content/changelogs/ios\",\"destination_repo\":\"VeamStudios/siteauditpro.com\",\"source_file\":\"CHANGELOG.md\",\"user_email\":\"180547681+veamstudios-release-bot[bot]@users.noreply.github.com\",\"user_name\":\"Release Bot\"}}]},\"notify\":{\"name\":\"Notify Release\",\"needs\":[\"resolve-beta\",\"build-cloud\",\"create-release\"],\"secrets\":\"inherit\",\"uses\":\"VeamStudios/.github/.github/workflows/release-notifications.yml@main\",\"with\":{\"beta_build_number\":\"${{ needs.resolve-beta.outputs.build_number }}\",\"beta_commit_sha\":\"${{ needs.resolve-beta.outputs.commit_sha }}\",\"beta_run_id\":\"${{ needs.resolve-beta.outputs.beta_run_id }}\",\"beta_run_url\":\"${{ needs.resolve-beta.outputs.beta_run_url }}\",\"beta_version\":\"${{ needs.resolve-beta.outputs.version }}\",\"cloud_build_number\":\"${{ needs.build-cloud.outputs.build_number }}\",\"cloud_commit_sha\":\"${{ needs.build-cloud.outputs.commit_sha }}\",\"cloud_version\":\"${{ needs.build-cloud.outputs.version }}\",\"environment\":\"production\",\"slack_footer_mrkdwn\":\"Please inform any customers waiting on fixes in this release.\",\"version\":\"${{ needs.resolve-beta.outputs.tag_name }}\"}},\"resolve-beta\":{\"name\":\"Resolve Approved Beta Provenance\",\"outputs\":{\"beta_run_attempt\":\"${{ steps.resolve_beta.outputs.run_attempt }}\",\"beta_run_id\":\"${{ steps.resolve_beta.outputs.run_id }}\",\"beta_run_url\":\"${{ steps.resolve_beta.outputs.run_url }}\",\"build_number\":\"${{ steps.read_manifest.outputs.build_number }}\",\"commit_sha\":\"${{ steps.read_manifest.outputs.commit_sha }}\",\"created_at\":\"${{ steps.read_manifest.outputs.created_at }}\",\"manifest_artifact_name\":\"${{ steps.resolve_beta.outputs.manifest_artifact_name }}\",\"marketing_version\":\"${{ steps.read_manifest.outputs.marketing_version }}\",\"tag_name\":\"${{ steps.read_manifest.outputs.tag_name }}\",\"version\":\"${{ steps.read_manifest.outputs.version }}\"},\"runs-on\":\"ubuntu-latest\",\"steps\":[{\"env\":{\"OVERRIDE_BETA_RUN_ID\":\"${{ inputs.beta_run_id }}\"},\"id\":\"resolve_beta\",\"name\":\"Resolve beta workflow run\",\"uses\":\"actions/github-script@v7\",\"with\":{\"script\":\"const overrideRunId = process.env.OVERRIDE_BETA_RUN_ID?.trim();\\nconst { owner, repo } = context.repo;\\n\\nfunction parseManifestArtifact(artifact) {\\n  const match = artifact.name.match(/^beta-release-manifest-(\\\\d+)-(\\\\d+)$/);\\n  if (!match) {\\n    return null;\\n  }\\n\\n  return {\\n    artifact,\\n    runId: match[1],\\n    runAttempt: match[2]\\n  };\\n}\\n\\nlet selectedRunId = null;\\nlet selectedRunAttempt = null;\\nlet selectedRunUrl = null;\\nlet manifestArtifactName = null;\\n\\nif (overrideRunId) {\\n  const { data } = await github.rest.actions.getWorkflowRun({\\n    owner,\\n    repo,\\n    run_id: Number(overrideRunId)\\n  });\\n\\n  const expectedArtifactName = `beta-release-manifest-${data.id}-${data.run_attempt}`;\\n  const { data: artifactsData } = await github.rest.actions.listWorkflowRunArtifacts({\\n    owner,\\n    repo,\\n    run_id: Number(overrideRunId),\\n    name: expectedArtifactName,\\n    per_page: 100\\n  });\\n  const manifestArtifact = artifactsData.artifacts.find((artifact) => artifact.name === expectedArtifactName);\\n\\n  if (!manifestArtifact) {\\n    core.setFailed(\\n      `Workflow run ${data.id} (attempt ${data.run_attempt}) does not have the expected beta release manifest artifact.`\\n    );\\n    return;\\n  }\\n\\n  selectedRunId = String(data.id);\\n  selectedRunAttempt = String(data.run_attempt);\\n  selectedRunUrl = data.html_url;\\n  manifestArtifactName = manifestArtifact.name;\\n} else {\\n  const { data } = await github.rest.actions.listArtifactsForRepo({\\n    owner,\\n    repo,\\n    per_page: 100\\n  });\\n\\n  const matchingArtifacts = data.artifacts\\n    .filter((artifact) => !artifact.expired)\\n    .map(parseManifestArtifact)\\n    .filter((candidate) => candidate !== null)\\n    .filter((candidate) => candidate.artifact.workflow_run?.head_branch === 'main')\\n    .sort((left, right) => {\\n      const leftCreatedAt = left.artifact.created_at ?? \\\"\\\";\\n      const rightCreatedAt = right.artifact.created_at ?? \\\"\\\";\\n      return rightCreatedAt.localeCompare(leftCreatedAt);\\n    });\\n\\n  const latestArtifact = matchingArtifacts[0];\\n  if (!latestArtifact) {\\n    core.setFailed('Unable to resolve a beta release manifest artifact from the main branch.');\\n    return;\\n  }\\n\\n  selectedRunId = latestArtifact.runId;\\n  selectedRunAttempt = latestArtifact.runAttempt;\\n  selectedRunUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${latestArtifact.runId}`;\\n  manifestArtifactName = latestArtifact.artifact.name;\\n}\\n\\ncore.setOutput('run_id', selectedRunId);\\ncore.setOutput('run_attempt', selectedRunAttempt);\\ncore.setOutput('run_url', selectedRunUrl);\\ncore.setOutput('manifest_artifact_name', manifestArtifactName);\\n\"}},{\"name\":\"Download beta release manifest\",\"uses\":\"actions/download-artifact@v4\",\"with\":{\"github-token\":\"${{ github.token }}\",\"name\":\"${{ steps.resolve_beta.outputs.manifest_artifact_name }}\",\"path\":\"./artifacts\",\"repository\":\"${{ github.repository }}\",\"run-id\":\"${{ steps.resolve_beta.outputs.run_id }}\"}},{\"id\":\"read_manifest\",\"name\":\"Read beta manifest\",\"run\":\"MANIFEST_PATH=\\\"\\\"\\nfor candidate in ./artifacts/release-manifest.json ./artifacts/*/release-manifest.json; do\\n  if [ -f \\\"$candidate\\\" ]; then\\n    MANIFEST_PATH=\\\"$candidate\\\"\\n    break\\n  fi\\ndone\\n\\nif [ -z \\\"$MANIFEST_PATH\\\" ]; then\\n  echo \\\"::error::release-manifest.json not found after artifact download\\\"\\n  exit 1\\nfi\\n\\nMANIFEST_PATH=\\\"$MANIFEST_PATH\\\" python3 <<'PY'\\nimport json\\nimport os\\n\\nmanifest_path = os.environ[\\\"MANIFEST_PATH\\\"]\\nwith open(manifest_path, \\\"r\\\", encoding=\\\"ascii\\\") as handle:\\n    manifest = json.load(handle)\\n\\noutput_path = os.environ[\\\"GITHUB_OUTPUT\\\"]\\nwith open(output_path, \\\"a\\\", encoding=\\\"utf-8\\\") as output:\\n    output.write(f\\\"commit_sha={manifest['commit_sha']}\\\\n\\\")\\n    output.write(f\\\"marketing_version={manifest['marketing_version']}\\\\n\\\")\\n    output.write(f\\\"build_number={manifest['build_number']}\\\\n\\\")\\n    output.write(f\\\"version={manifest['version']}\\\\n\\\")\\n    output.write(f\\\"created_at={manifest['created_at']}\\\\n\\\")\\n    output.write(f\\\"tag_name=v{manifest['marketing_version']}\\\\n\\\")\\nPY\\n\",\"shell\":\"bash\"},{\"name\":\"Validate beta manifest\",\"run\":\"if [ \\\"${{ inputs.expected_version }}\\\" != \\\"\\\" ] && [ \\\"${{ inputs.expected_version }}\\\" != \\\"${{ steps.read_manifest.outputs.marketing_version }}\\\" ]; then\\n  echo \\\"::error::Production release stopped because the requested version does not match the approved beta version.\\\"\\n  echo \\\"::error::Next steps:\\\"\\n  echo \\\"::error::1. Use the matching beta run, or\\\"\\n  echo \\\"::error::2. Bump the version before retrying.\\\"\\n  exit 1\\nfi\\n\",\"shell\":\"bash\"}]},\"summary\":{\"if\":\"always()\",\"name\":\"Deployment Summary\",\"needs\":[\"resolve-beta\",\"build-cloud\",\"validate-release\",\"create-release\",\"notify\"],\"runs-on\":\"ubuntu-latest\",\"steps\":[{\"name\":\"Display Summary\",\"run\":\"if [ \\\"${{ needs.resolve-beta.result }}\\\" != \\\"success\\\" ]; then\\n  echo \\\"Production deploy stopped while resolving the approved beta provenance.\\\"\\n  echo \\\"Next steps:\\\"\\n  echo \\\"1. Review the resolve-beta job output above.\\\"\\n  echo \\\"2. Confirm the beta run ID or regenerate a beta release manifest.\\\"\\n  echo \\\"3. Rerun the production workflow.\\\"\\nelif [ \\\"${{ needs.build-cloud.result }}\\\" != \\\"success\\\" ]; then\\n  echo \\\"Production deploy stopped while building the cloud release from the approved beta commit.\\\"\\n  echo \\\"Next steps:\\\"\\n  echo \\\"1. Review the build-cloud job output above.\\\"\\n  echo \\\"2. Fix the build or signing issue.\\\"\\n  echo \\\"3. Rerun the production workflow.\\\"\\nelif [ \\\"${{ needs.validate-release.result }}\\\" != \\\"success\\\" ]; then\\n  echo \\\"Production deploy stopped because the release provenance validation failed.\\\"\\n  echo \\\"Next steps:\\\"\\n  echo \\\"1. Review the validate-release job output above.\\\"\\n  echo \\\"2. Resolve the beta/cloud version, build number, or commit mismatch.\\\"\\n  echo \\\"3. Rerun the production workflow.\\\"\\nelif [ \\\"${{ needs.create-release.result }}\\\" != \\\"success\\\" ]; then\\n  echo \\\"Production deploy stopped while creating the GitHub release.\\\"\\n  echo \\\"Next steps:\\\"\\n  echo \\\"1. Review the create-release job output above.\\\"\\n  echo \\\"2. Fix the tagging, release, or changelog sync failure.\\\"\\n  echo \\\"3. Rerun the production workflow.\\\"\\nelif [ \\\"${{ needs.notify.result }}\\\" != \\\"success\\\" ]; then\\n  echo \\\"Production deploy finished the release steps, but the notification step failed.\\\"\\n  echo \\\"Next steps:\\\"\\n  echo \\\"1. Review the notify job output above.\\\"\\n  echo \\\"2. Fix the notification workflow issue.\\\"\\n  echo \\\"3. Rerun the notification or production workflow if needed.\\\"\\nelse\\n  echo \\\"Production deploy completed successfully.\\\"\\n  echo \\\"\\\"\\n  echo \\\"Release: ${{ needs.resolve-beta.outputs.tag_name }}\\\"\\n  echo \\\"Approved Beta Run: ${{ needs.resolve-beta.outputs.beta_run_id }}\\\"\\n  echo \\\"Approved Beta Commit: ${{ needs.resolve-beta.outputs.commit_sha }}\\\"\\n  echo \\\"Approved Beta Version: ${{ needs.resolve-beta.outputs.version }}\\\"\\n  echo \\\"Released Cloud Commit: ${{ needs.build-cloud.outputs.commit_sha }}\\\"\\n  echo \\\"Released Cloud Version: ${{ needs.build-cloud.outputs.version }}\\\"\\n  echo \\\"Released Cloud Archive Artifact: ${{ needs.build-cloud.outputs.cloud_archive_artifact_name }}\\\"\\n  echo \\\"\\\"\\n  echo \\\"Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.resolve-beta.outputs.tag_name }}\\\"\\nfi\\n\"}]},\"validate-release\":{\"name\":\"Validate Release Provenance\",\"needs\":[\"resolve-beta\",\"build-cloud\"],\"runs-on\":\"ubuntu-latest\",\"steps\":[{\"name\":\"Compare beta and cloud provenance\",\"run\":\"if [ \\\"${{ needs.resolve-beta.outputs.commit_sha }}\\\" != \\\"${{ needs.build-cloud.outputs.commit_sha }}\\\" ]; then\\n  echo \\\"::error::Production release stopped because the cloud build commit does not match the approved beta commit.\\\"\\n  echo \\\"::error::Next steps:\\\"\\n  echo \\\"::error::1. Re-run production from the approved beta run.\\\"\\n  exit 1\\nfi\\n\\nif [ \\\"${{ needs.resolve-beta.outputs.marketing_version }}\\\" != \\\"${{ needs.build-cloud.outputs.marketing_version }}\\\" ]; then\\n  echo \\\"::error::Production release stopped because the cloud marketing version does not match the approved beta version.\\\"\\n  echo \\\"::error::Next steps:\\\"\\n  echo \\\"::error::1. Bump the version, or\\\"\\n  echo \\\"::error::2. Rebuild from the correct beta commit.\\\"\\n  exit 1\\nfi\\n\\nif [ \\\"${{ needs.resolve-beta.outputs.build_number }}\\\" != \\\"${{ needs.build-cloud.outputs.build_number }}\\\" ]; then\\n  echo \\\"::error::Production release stopped because the cloud build number does not match the approved beta build number.\\\"\\n  echo \\\"::error::Next steps:\\\"\\n  echo \\\"::error::1. Resolve the App Store Connect build-number conflict.\\\"\\n  echo \\\"::error::2. Rerun production.\\\"\\n  exit 1\\nfi\\n\"}]}},\"on\":{\"workflow_dispatch\":{\"inputs\":{\"beta_run_id\":{\"description\":\"Optional deploy-beta workflow run ID override\",\"required\":false,\"type\":\"string\"},\"expected_version\":{\"description\":\"Optional expected marketing version for validation (e.g. 1.2.3)\",\"required\":false,\"type\":\"string\"},\"release_notes\":{\"description\":\"Additional release notes (optional — added to auto-generated notes)\",\"required\":false,\"type\":\"string\"}}}},\"permissions\":{\"actions\":\"read\",\"contents\":\"write\"}}"
+    },
+    {
+      "path": ".github/workflows/generate-screenshots.yml",
+      "source_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/blob/harrygt/new-actions/.github/workflows/generate-screenshots.yml",
+      "source_blob_sha": "41f5482c2a04973b9b4a66034690b6682d0b906a",
+      "filename": "generate-screenshots.yml",
+      "workflow_name": "Screenshots Generate",
+      "category": "generate-screenshots",
+      "parse_error": null,
+      "triggers": [
+        "workflow_dispatch"
+      ],
+      "job_calls": [
+        {
+          "job_name": "screenshots",
+          "uses": null,
+          "with_keys": [
+
+          ],
+          "with": null,
+          "secret_mode": "none",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        }
+      ],
+      "uses_values": [
+
+      ],
+      "external_uses": [
+
+      ],
+      "local_uses": [
+
+      ],
+      "shared_repo_uses": [
+
+      ],
+      "legacy_actions_uses": [
+
+      ],
+      "referenced_secrets": [
+        "BOT_RELEASE_PRIVATE_KEY",
+        "SCREENSHOT_ACCOUNT_SAP_PASSWORD"
+      ],
+      "referenced_vars": [
+        "BOT_RELEASE_APP_ID",
+        "SCREENSHOT_ACCOUNT_SAP_EMAIL"
+      ],
+      "workflow_call": null,
+      "implicit_secret_dependencies": [
+        "BOT_RELEASE_PRIVATE_KEY",
+        "SCREENSHOT_ACCOUNT_SAP_PASSWORD"
+      ],
+      "implicit_var_dependencies": [
+        "BOT_RELEASE_APP_ID",
+        "SCREENSHOT_ACCOUNT_SAP_EMAIL"
+      ],
+      "environments": [
+
+      ],
+      "top_level_concurrency": null,
+      "structure_key": "{\"jobs\":{\"screenshots\":{\"name\":\"Run fastlane screenshots\",\"runs-on\":\"macos-26-xlarge\",\"steps\":[{\"id\":\"app_token\",\"name\":\"Mint GitHub App token\",\"uses\":\"actions/create-github-app-token@v1\",\"with\":{\"app-id\":\"${{ vars.BOT_RELEASE_APP_ID }}\",\"owner\":\"${{ github.repository_owner }}\",\"private-key\":\"${{ secrets.BOT_RELEASE_PRIVATE_KEY }}\"}},{\"name\":\"Select Xcode\",\"uses\":\"VeamStudios/.github/.github/actions/select-xcode@main\",\"with\":{\"xcode-version\":\"26.2\"}},{\"name\":\"Setup Git authentication\",\"run\":\"git config --global user.email \\\"180547681+veamstudios-release-bot[bot]@users.noreply.github.com\\\"\\ngit config --global user.name \\\"Release Bot\\\"\\necho \\\"machine github.com login 'Release Bot' password ${{ steps.app_token.outputs.token }}\\\" > ~/.netrc\\nchmod 600 ~/.netrc\\n\"},{\"name\":\"Checkout repository\",\"uses\":\"actions/checkout@v6\",\"with\":{\"ref\":\"${{ github.ref }}\",\"token\":\"${{ steps.app_token.outputs.token }}\"}},{\"name\":\"Setup Ruby and Bundler\",\"uses\":\"ruby/setup-ruby@v1\",\"with\":{\"bundler-cache\":true,\"ruby-version\":\".ruby-version\"}},{\"name\":\"Check fastlane version\",\"run\":\"bundle exec fastlane --version\"},{\"name\":\"List available simulators\",\"run\":\"xcrun simctl list devices available\"},{\"env\":{\"UI_TEST_EMAIL\":\"${{ vars.SCREENSHOT_ACCOUNT_SAP_EMAIL }}\",\"UI_TEST_PASSWORD\":\"${{ secrets.SCREENSHOT_ACCOUNT_SAP_PASSWORD }}\"},\"name\":\"Run test screenshots code\",\"run\":\"bundle exec fastlane screenshots_test configuration:dev\"},{\"if\":\"failure()\",\"name\":\"Collect test logs (on failure only)\",\"run\":\"mkdir -p artifacts/ui-tests\\nDERIVED_DIRS=$(find /var/folders -type d -path \\\"*/snapshot_derived*/Logs/Test\\\" 2>/dev/null || true)\\nif [ -n \\\"$DERIVED_DIRS\\\" ]; then\\n  echo \\\"📂 Found snapshot logs:\\\"\\n  echo \\\"$DERIVED_DIRS\\\"\\n  for dir in $DERIVED_DIRS; do\\n    echo \\\"Copying $dir\\\"\\n    cp -R \\\"$dir\\\" artifacts/ui-tests/ || true\\n  done\\nelse\\n  echo \\\"⚠️ No snapshot logs found\\\"\\nfi\\n\\nif [ -f fastlane/screenshots/screenshot_run.log ]; then\\n  cp fastlane/screenshots/screenshot_run.log artifacts/ui-tests/\\nfi\\n\"},{\"if\":\"failure()\",\"name\":\"Upload UI test logs artifacts\",\"uses\":\"actions/upload-artifact@v4\",\"with\":{\"if-no-files-found\":\"warn\",\"name\":\"ui-test-logs\",\"path\":\"artifacts/ui-tests\"}},{\"name\":\"Upload screenshots artifacts\",\"uses\":\"actions/upload-artifact@v4\",\"with\":{\"if-no-files-found\":\"error\",\"name\":\"ios-screenshots\",\"path\":\"fastlane/screenshots\"}}],\"timeout-minutes\":60}},\"on\":{\"workflow_dispatch\":null}}"
+    },
+    {
+      "path": ".github/workflows/hotfix-deploy.yml",
+      "source_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/blob/harrygt/new-actions/.github/workflows/hotfix-deploy.yml",
+      "source_blob_sha": "8f0d6dec61bf665dc7d07f7e32d006304adc95ed",
+      "filename": "hotfix-deploy.yml",
+      "workflow_name": "SiteAuditPro iOS Hotfix Deploy",
+      "category": "hotfix-deploy",
+      "parse_error": null,
+      "triggers": [
+        "workflow_dispatch"
+      ],
+      "job_calls": [
+        {
+          "job_name": "deploy-hotfix",
+          "uses": "VeamStudios/.github/.github/workflows/hotfix-deploy.yml@main",
+          "with_keys": [
+            "archive_name_prefix",
+            "changelog_destination_folder",
+            "changelog_destination_repo",
+            "confirm_deploy_from_pr_head",
+            "expected_version",
+            "ipa_path",
+            "pr_number",
+            "release_notes"
+          ],
+          "with": {
+            "pr_number": "${{ inputs.pr_number }}",
+            "expected_version": "${{ inputs.expected_version }}",
+            "release_notes": "${{ inputs.release_notes }}",
+            "ipa_path": "./fastlane/builds/site-audit-pro-cloud.ipa",
+            "archive_name_prefix": "SiteAuditPro",
+            "changelog_destination_repo": "${{ inputs.sync_changelog_website && 'VeamStudios/siteauditpro.com' || '' }}",
+            "changelog_destination_folder": "${{ inputs.sync_changelog_website && 'src/app/content/changelogs/ios' || '' }}",
+            "confirm_deploy_from_pr_head": true
+          },
+          "secret_mode": "inherit",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        }
+      ],
+      "uses_values": [
+        "VeamStudios/.github/.github/workflows/hotfix-deploy.yml@main"
+      ],
+      "external_uses": [
+        "VeamStudios/.github/.github/workflows/hotfix-deploy.yml@main"
+      ],
+      "local_uses": [
+
+      ],
+      "shared_repo_uses": [
+        "VeamStudios/.github/.github/workflows/hotfix-deploy.yml@main"
+      ],
+      "legacy_actions_uses": [
+
+      ],
+      "referenced_secrets": [
+
+      ],
+      "referenced_vars": [
+
+      ],
+      "workflow_call": null,
+      "implicit_secret_dependencies": [
+
+      ],
+      "implicit_var_dependencies": [
+
+      ],
+      "environments": [
+
+      ],
+      "top_level_concurrency": null,
+      "structure_key": "{\"jobs\":{\"deploy-hotfix\":{\"secrets\":\"inherit\",\"uses\":\"VeamStudios/.github/.github/workflows/hotfix-deploy.yml@main\",\"with\":{\"archive_name_prefix\":\"SiteAuditPro\",\"changelog_destination_folder\":\"${{ inputs.sync_changelog_website && 'src/app/content/changelogs/ios' || '' }}\",\"changelog_destination_repo\":\"${{ inputs.sync_changelog_website && 'VeamStudios/siteauditpro.com' || '' }}\",\"confirm_deploy_from_pr_head\":true,\"expected_version\":\"${{ inputs.expected_version }}\",\"ipa_path\":\"./fastlane/builds/site-audit-pro-cloud.ipa\",\"pr_number\":\"${{ inputs.pr_number }}\",\"release_notes\":\"${{ inputs.release_notes }}\"}}},\"on\":{\"workflow_dispatch\":{\"inputs\":{\"expected_version\":{\"description\":\"Prepared hotfix marketing version from Hotfix Prepare (for example 8.26.2)\",\"required\":true,\"type\":\"string\"},\"pr_number\":{\"description\":\"Hotfix PR number created by Hotfix Prepare\",\"required\":true,\"type\":\"string\"},\"release_notes\":{\"description\":\"Additional release notes for deploy\",\"required\":false,\"type\":\"string\"},\"sync_changelog_website\":{\"default\":true,\"description\":\"Copy CHANGELOG.md to the website repo after deploy\",\"required\":false,\"type\":\"boolean\"}}}}}"
+    },
+    {
+      "path": ".github/workflows/hotfix-prepare.yml",
+      "source_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/blob/harrygt/new-actions/.github/workflows/hotfix-prepare.yml",
+      "source_blob_sha": "26d7671afa26f61e16eb136f10bdc7ed55071738",
+      "filename": "hotfix-prepare.yml",
+      "workflow_name": "SiteAuditPro iOS Hotfix Prepare",
+      "category": "hotfix-prepare",
+      "parse_error": null,
+      "triggers": [
+        "workflow_dispatch"
+      ],
+      "job_calls": [
+        {
+          "job_name": "prepare-hotfix",
+          "uses": "VeamStudios/.github/.github/workflows/hotfix-prepare.yml@main",
+          "with_keys": [
+            "project_file"
+          ],
+          "with": {
+            "project_file": "Site Audit Pro.xcodeproj/project.pbxproj"
+          },
+          "secret_mode": "inherit",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        }
+      ],
+      "uses_values": [
+        "VeamStudios/.github/.github/workflows/hotfix-prepare.yml@main"
+      ],
+      "external_uses": [
+        "VeamStudios/.github/.github/workflows/hotfix-prepare.yml@main"
+      ],
+      "local_uses": [
+
+      ],
+      "shared_repo_uses": [
+        "VeamStudios/.github/.github/workflows/hotfix-prepare.yml@main"
+      ],
+      "legacy_actions_uses": [
+
+      ],
+      "referenced_secrets": [
+
+      ],
+      "referenced_vars": [
+
+      ],
+      "workflow_call": null,
+      "implicit_secret_dependencies": [
+
+      ],
+      "implicit_var_dependencies": [
+
+      ],
+      "environments": [
+
+      ],
+      "top_level_concurrency": null,
+      "structure_key": "{\"jobs\":{\"prepare-hotfix\":{\"secrets\":\"inherit\",\"uses\":\"VeamStudios/.github/.github/workflows/hotfix-prepare.yml@main\",\"with\":{\"project_file\":\"Site Audit Pro.xcodeproj/project.pbxproj\"}}},\"on\":{\"workflow_dispatch\":null}}"
+    },
+    {
+      "path": ".github/workflows/issue-bot.yml",
+      "source_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/blob/harrygt/new-actions/.github/workflows/issue-bot.yml",
+      "source_blob_sha": "d9e96fd193037c383b1b175d90c4667981a8fa3d",
+      "filename": "issue-bot.yml",
+      "workflow_name": "Issue Bot",
+      "category": "issue-bot",
+      "parse_error": null,
+      "triggers": [
+        "issues"
+      ],
+      "job_calls": [
+        {
+          "job_name": "cursor-agent",
+          "uses": "VeamStudios/.github/.github/workflows/issue-cursor-agent.yml@main",
+          "with_keys": [
+            "github-app-id"
+          ],
+          "with": {
+            "github-app-id": "${{ vars.BOT_CURSOR_APP_ID }}"
+          },
+          "secret_mode": "explicit",
+          "mapped_secret_names": [
+            "CURSOR_API_KEY",
+            "GITHUB_APP_PRIVATE_KEY"
+          ],
+          "environment": null
+        }
+      ],
+      "uses_values": [
+        "VeamStudios/.github/.github/workflows/issue-cursor-agent.yml@main"
+      ],
+      "external_uses": [
+        "VeamStudios/.github/.github/workflows/issue-cursor-agent.yml@main"
+      ],
+      "local_uses": [
+
+      ],
+      "shared_repo_uses": [
+        "VeamStudios/.github/.github/workflows/issue-cursor-agent.yml@main"
+      ],
+      "legacy_actions_uses": [
+
+      ],
+      "referenced_secrets": [
+        "BOT_CURSOR_PRIVATE_KEY",
+        "CURSOR_API_KEY"
+      ],
+      "referenced_vars": [
+        "BOT_CURSOR_APP_ID"
+      ],
+      "workflow_call": null,
+      "implicit_secret_dependencies": [
+        "BOT_CURSOR_PRIVATE_KEY",
+        "CURSOR_API_KEY"
+      ],
+      "implicit_var_dependencies": [
+        "BOT_CURSOR_APP_ID"
+      ],
+      "environments": [
+
+      ],
+      "top_level_concurrency": null,
+      "structure_key": "{\"jobs\":{\"cursor-agent\":{\"if\":\"${{ github.event.label.name == 'bot: fix' || github.event.label.name == 'bot: triage' }}\",\"secrets\":{\"CURSOR_API_KEY\":\"${{ secrets.CURSOR_API_KEY }}\",\"GITHUB_APP_PRIVATE_KEY\":\"${{ secrets.BOT_CURSOR_PRIVATE_KEY }}\"},\"uses\":\"VeamStudios/.github/.github/workflows/issue-cursor-agent.yml@main\",\"with\":{\"github-app-id\":\"${{ vars.BOT_CURSOR_APP_ID }}\"}}},\"on\":{\"issues\":{\"types\":[\"labeled\"]}}}"
+    },
+    {
+      "path": ".github/workflows/pr-build.yml",
+      "source_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/blob/harrygt/new-actions/.github/workflows/pr-build.yml",
+      "source_blob_sha": "f1ed644da52fa55e05c0ef958f5b709758069de1",
+      "filename": "pr-build.yml",
+      "workflow_name": "PR Build",
+      "category": "pr-build",
+      "parse_error": null,
+      "triggers": [
+        "pull_request"
+      ],
+      "job_calls": [
+        {
+          "job_name": "build",
+          "uses": "VeamStudios/.github/.github/workflows/pr-ios-build.yml@main",
+          "with_keys": [
+            "xcode_version",
+            "xcodebuild_args"
+          ],
+          "with": {
+            "xcode_version": "26.2",
+            "xcodebuild_args": "-project \"Site Audit Pro.xcodeproj\" -scheme Dev CODE_SIGN_IDENTITY=\"\" CODE_SIGN_ALLOWED=NO CODE_SIGN_ENTITLEMENTS=\"\" CODE_SIGNING_REQUIRED=NO"
+          },
+          "secret_mode": "inherit",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        }
+      ],
+      "uses_values": [
+        "VeamStudios/.github/.github/workflows/pr-ios-build.yml@main"
+      ],
+      "external_uses": [
+        "VeamStudios/.github/.github/workflows/pr-ios-build.yml@main"
+      ],
+      "local_uses": [
+
+      ],
+      "shared_repo_uses": [
+        "VeamStudios/.github/.github/workflows/pr-ios-build.yml@main"
+      ],
+      "legacy_actions_uses": [
+
+      ],
+      "referenced_secrets": [
+
+      ],
+      "referenced_vars": [
+
+      ],
+      "workflow_call": null,
+      "implicit_secret_dependencies": [
+
+      ],
+      "implicit_var_dependencies": [
+
+      ],
+      "environments": [
+
+      ],
+      "top_level_concurrency": null,
+      "structure_key": "{\"jobs\":{\"build\":{\"name\":\"Build iOS app\",\"permissions\":{\"contents\":\"read\"},\"secrets\":\"inherit\",\"uses\":\"VeamStudios/.github/.github/workflows/pr-ios-build.yml@main\",\"with\":{\"xcode_version\":\"26.2\",\"xcodebuild_args\":\"-project \\\"Site Audit Pro.xcodeproj\\\" -scheme Dev CODE_SIGN_IDENTITY=\\\"\\\" CODE_SIGN_ALLOWED=NO CODE_SIGN_ENTITLEMENTS=\\\"\\\" CODE_SIGNING_REQUIRED=NO\"}}},\"on\":[\"pull_request\"]}"
+    },
+    {
+      "path": ".github/workflows/pr-notion-docs-sync.yml",
+      "source_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/blob/harrygt/new-actions/.github/workflows/pr-notion-docs-sync.yml",
+      "source_blob_sha": "004ee5397e6a5a2223bf17a56e4e2b4168a764cf",
+      "filename": "pr-notion-docs-sync.yml",
+      "workflow_name": "PR Sync To Notion Docs",
+      "category": "pr-notion-docs-sync",
+      "parse_error": null,
+      "triggers": [
+        "workflow_dispatch"
+      ],
+      "job_calls": [
+        {
+          "job_name": "notion-docs-sync",
+          "uses": "VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml@main",
+          "with_keys": [
+            "dry-run",
+            "pr-number"
+          ],
+          "with": {
+            "pr-number": "${{ inputs['pr-number'] }}",
+            "dry-run": "${{ inputs['dry-run'] }}"
+          },
+          "secret_mode": "explicit",
+          "mapped_secret_names": [
+            "notion-token"
+          ],
+          "environment": null
+        }
+      ],
+      "uses_values": [
+        "VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml@main"
+      ],
+      "external_uses": [
+        "VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml@main"
+      ],
+      "local_uses": [
+
+      ],
+      "shared_repo_uses": [
+        "VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml@main"
+      ],
+      "legacy_actions_uses": [
+
+      ],
+      "referenced_secrets": [
+        "NOTION_TOKEN"
+      ],
+      "referenced_vars": [
+
+      ],
+      "workflow_call": null,
+      "implicit_secret_dependencies": [
+        "NOTION_TOKEN"
+      ],
+      "implicit_var_dependencies": [
+
+      ],
+      "environments": [
+
+      ],
+      "top_level_concurrency": null,
+      "structure_key": "{\"jobs\":{\"notion-docs-sync\":{\"secrets\":{\"notion-token\":\"${{ secrets.NOTION_TOKEN }}\"},\"uses\":\"VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml@main\",\"with\":{\"dry-run\":\"${{ inputs['dry-run'] }}\",\"pr-number\":\"${{ inputs['pr-number'] }}\"}}},\"on\":{\"workflow_dispatch\":{\"inputs\":{\"dry-run\":{\"default\":false,\"description\":\"Build artifacts only without writing to Notion\",\"required\":false,\"type\":\"boolean\"},\"pr-number\":{\"description\":\"Pull request number to analyze\",\"required\":true,\"type\":\"string\"}}}}}"
+    },
+    {
+      "path": ".github/workflows/pr-title-check.yml",
+      "source_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/blob/harrygt/new-actions/.github/workflows/pr-title-check.yml",
+      "source_blob_sha": "f7ea1da3d9ca8cd733f9781ed65cc1a98d0ca691",
+      "filename": "pr-title-check.yml",
+      "workflow_name": "PR Title Check",
+      "category": "pr-title-check",
+      "parse_error": null,
+      "triggers": [
+        "pull_request"
+      ],
+      "job_calls": [
+        {
+          "job_name": "check_pr_title",
+          "uses": "VeamStudios/.github/.github/workflows/pr-title-conventions.yml@main",
+          "with_keys": [
+
+          ],
+          "with": null,
+          "secret_mode": "none",
+          "mapped_secret_names": [
+
+          ],
+          "environment": null
+        }
+      ],
+      "uses_values": [
+        "VeamStudios/.github/.github/workflows/pr-title-conventions.yml@main"
+      ],
+      "external_uses": [
+        "VeamStudios/.github/.github/workflows/pr-title-conventions.yml@main"
+      ],
+      "local_uses": [
+
+      ],
+      "shared_repo_uses": [
+        "VeamStudios/.github/.github/workflows/pr-title-conventions.yml@main"
+      ],
+      "legacy_actions_uses": [
+
+      ],
+      "referenced_secrets": [
+
+      ],
+      "referenced_vars": [
+
+      ],
+      "workflow_call": null,
+      "implicit_secret_dependencies": [
+
+      ],
+      "implicit_var_dependencies": [
+
+      ],
+      "environments": [
+
+      ],
+      "top_level_concurrency": null,
+      "structure_key": "{\"jobs\":{\"check_pr_title\":{\"uses\":\"VeamStudios/.github/.github/workflows/pr-title-conventions.yml@main\"}},\"on\":{\"pull_request\":{\"types\":[\"opened\",\"edited\",\"synchronize\"]}}}"
+    },
+    {
+      "path": ".github/workflows/qa.yml",
+      "source_url": "https://github.com/VeamStudios/SiteAuditPro-iOS/blob/harrygt/new-actions/.github/workflows/qa.yml",
+      "source_blob_sha": "a84df51798215752b7e5b85fab1ad7b80465c086",
+      "filename": "qa.yml",
+      "workflow_name": "QA Pipeline",
+      "category": "qa",
+      "parse_error": null,
+      "triggers": [
+        "pull_request"
+      ],
+      "job_calls": [
+        {
+          "job_name": "qa-pipeline",
+          "uses": "VeamStudios/.github/.github/workflows/qa-pipeline.yml@main",
+          "with_keys": [
+            "bot-qa-app-id"
+          ],
+          "with": {
+            "bot-qa-app-id": "${{ vars.BOT_QA_APP_ID }}"
+          },
+          "secret_mode": "explicit",
+          "mapped_secret_names": [
+            "BOT_QA_PRIVATE_KEY"
+          ],
+          "environment": null
+        }
+      ],
+      "uses_values": [
+        "VeamStudios/.github/.github/workflows/qa-pipeline.yml@main"
+      ],
+      "external_uses": [
+        "VeamStudios/.github/.github/workflows/qa-pipeline.yml@main"
+      ],
+      "local_uses": [
+
+      ],
+      "shared_repo_uses": [
+        "VeamStudios/.github/.github/workflows/qa-pipeline.yml@main"
+      ],
+      "legacy_actions_uses": [
+
+      ],
+      "referenced_secrets": [
+        "BOT_QA_PRIVATE_KEY"
+      ],
+      "referenced_vars": [
+        "BOT_QA_APP_ID"
+      ],
+      "workflow_call": null,
+      "implicit_secret_dependencies": [
+        "BOT_QA_PRIVATE_KEY"
+      ],
+      "implicit_var_dependencies": [
+        "BOT_QA_APP_ID"
+      ],
+      "environments": [
+
+      ],
+      "top_level_concurrency": null,
+      "structure_key": "{\"jobs\":{\"qa-pipeline\":{\"secrets\":{\"BOT_QA_PRIVATE_KEY\":\"${{ secrets.BOT_QA_PRIVATE_KEY }}\"},\"uses\":\"VeamStudios/.github/.github/workflows/qa-pipeline.yml@main\",\"with\":{\"bot-qa-app-id\":\"${{ vars.BOT_QA_APP_ID }}\"}}},\"on\":{\"pull_request\":{\"types\":[\"labeled\"]}}}"
+    }
+  ],
+  "actions": [
+
+  ]
+}

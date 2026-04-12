@@ -1,0 +1,16 @@
+{
+  "key": "cip-models",
+  "repo": "VeamStudios/ChecklistInspectorPro-Models",
+  "family": "models",
+  "product": "ChecklistInspectorPro",
+  "source_label": "main",
+  "repo_secrets": [
+
+  ],
+  "repo_variables": [
+
+  ],
+  "environments": [
+
+  ]
+}

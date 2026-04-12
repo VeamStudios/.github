@@ -1,0 +1,22 @@
+# QA Pipeline - Caller Workflow
+#
+# Copy this file into your repo's .github/workflows/ directory.
+# It calls the central reusable workflow from the VeamStudios/.github repo.
+#
+# Behavior:
+# - Adding 'qa-needed' generates a QA brief.
+# - Adding 'qa-approved' merges only if 'qa-needed' and 'qa-merge' are both on the PR from the beginning.
+
+name: QA Pipeline
+
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  qa-pipeline:
+    uses: VeamStudios/.github/.github/workflows/qa-pipeline.yml@main
+    with:
+      bot-qa-app-id: ${{ vars.BOT_QA_APP_ID }}
+    secrets:
+      BOT_QA_PRIVATE_KEY: ${{ secrets.BOT_QA_PRIVATE_KEY }}

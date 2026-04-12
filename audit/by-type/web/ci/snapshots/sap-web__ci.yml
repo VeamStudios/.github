@@ -1,0 +1,33 @@
+name: CI
+
+on: [pull_request]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+      - name: Log in to the registry
+        run: |
+          npm set "@veamstudios:registry" "https://npm.pkg.github.com"
+          npm set "//npm.pkg.github.com/:_authToken" "${{ secrets.GITHUB_TOKEN }}"
+      - name: Install project dependencies
+        run: npm ci
+      - name: Check the formatting of the entire codebase
+        run: npm run format-check
+      - name: Lint the codebase
+        run: npm run lint
+      - name: Run the TS compiler
+        run: npm run typecheck
+      - name: Build application
+        run: npm run build

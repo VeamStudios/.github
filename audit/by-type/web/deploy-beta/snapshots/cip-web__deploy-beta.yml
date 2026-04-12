@@ -1,0 +1,68 @@
+name: Deploy Beta
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-beta-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-nightly-merge:
+    name: Check for recent merges to main
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+    steps:
+      - id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const now = new Date();
+            const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            const { owner, repo } = context.repo;
+            let mergedCount = 0;
+            let page = 1;
+
+            while (page <= 10) {
+              const { data } = await github.rest.pulls.list({
+                owner,
+                repo,
+                state: 'closed',
+                base: 'main',
+                sort: 'updated',
+                direction: 'desc',
+                per_page: 100,
+                page
+              });
+
+              mergedCount += data.filter((pr) => (
+                pr.merged_at && new Date(pr.merged_at) >= since
+              )).length;
+
+              if (data.length < 100) break;
+              const oldestUpdated = new Date(data[data.length - 1].updated_at);
+              if (oldestUpdated < since) break;
+              page += 1;
+            }
+
+            const shouldDeploy = mergedCount > 0;
+            core.info(`Merged PRs to main in last 24h: ${mergedCount}`);
+            core.setOutput('should_deploy', shouldDeploy ? 'true' : 'false');
+
+  deploy:
+    needs: check-nightly-merge
+    if: ${{ github.event_name != 'schedule' || needs.check-nightly-merge.outputs.should_deploy == 'true' }}
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      deployment_environment: beta
+      build_script: build-beta
+      firebase_project: checklistinspectorpro-beta
+      service_account_file: sa-beta.json
+      firebase_config_file: firebase-dev-beta.json
+    secrets:
+      SERVICE_ACCOUNT_BASE64: ${{ secrets.SERVICE_ACCOUNT_BASE64 }}

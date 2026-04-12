@@ -1,0 +1,107 @@
+org: VeamStudios
+shared_repo:
+  name: .github
+  workspace_path: /Volumes/Work/Projects/_github/github
+  reusable_workflows_path: .github/workflows
+  reusable_actions_path: .github/actions
+repos:
+  - key: cip-ios
+    owner: VeamStudios
+    name: ChecklistInspectorPro-iOS
+    url: https://github.com/VeamStudios/ChecklistInspectorPro-iOS
+    product: ChecklistInspectorPro
+    family: ios
+    deploy_style: shared-ios-testflight
+    uses_shared_workflows: true
+    source:
+      type: branch
+      ref: main
+      label: main
+  - key: cip-models
+    owner: VeamStudios
+    name: ChecklistInspectorPro-Models
+    url: https://github.com/VeamStudios/ChecklistInspectorPro-Models
+    product: ChecklistInspectorPro
+    family: models
+    deploy_style: release-workflow
+    uses_shared_workflows: partial
+    source:
+      type: branch
+      ref: main
+      label: main
+  - key: cip-backend
+    owner: VeamStudios
+    name: ChecklistInspectorPro-Backend
+    url: https://github.com/VeamStudios/ChecklistInspectorPro-Backend
+    product: ChecklistInspectorPro
+    family: backend
+    deploy_style: local-reusable-deploy
+    uses_shared_workflows: partial
+    source:
+      type: branch
+      ref: main
+      label: main
+  - key: cip-web
+    owner: VeamStudios
+    name: ChecklistInspectorPro-Web
+    url: https://github.com/VeamStudios/ChecklistInspectorPro-Web
+    product: ChecklistInspectorPro
+    family: web
+    deploy_style: local-web-deploy-plus-shared-checks
+    uses_shared_workflows: partial
+    source:
+      type: branch
+      ref: main
+      label: main
+  - key: sap-web
+    owner: VeamStudios
+    name: SiteAuditPro-Web
+    url: https://github.com/VeamStudios/SiteAuditPro-Web
+    product: SiteAuditPro
+    family: web
+    deploy_style: local-web-deploy-plus-shared-checks
+    uses_shared_workflows: partial
+    source:
+      type: branch
+      ref: main
+      label: main
+  - key: sap-ios
+    owner: VeamStudios
+    name: SiteAuditPro-iOS
+    url: https://github.com/VeamStudios/SiteAuditPro-iOS
+    product: SiteAuditPro
+    family: ios
+    deploy_style: shared-ios-testflight
+    uses_shared_workflows: true
+    source:
+      type: pull_request
+      label: pr-2393
+      pr_number: 2393
+      pr_url: https://github.com/VeamStudios/SiteAuditPro-iOS/pull/2393
+      ref: harrygt/new-actions
+      sha: 2c0be9751d74c187e1d290a24b030a8c750029bf
+      base_ref: dev
+  - key: sap-models
+    owner: VeamStudios
+    name: SiteAuditPro-Models
+    url: https://github.com/VeamStudios/SiteAuditPro-Models
+    product: SiteAuditPro
+    family: models
+    deploy_style: release-workflow
+    uses_shared_workflows: partial
+    source:
+      type: branch
+      ref: main
+      label: main
+  - key: sap-backend
+    owner: VeamStudios
+    name: SiteAuditPro-Backend
+    url: https://github.com/VeamStudios/SiteAuditPro-Backend
+    product: SiteAuditPro
+    family: backend
+    deploy_style: local-reusable-deploy
+    uses_shared_workflows: partial
+    source:
+      type: branch
+      ref: main
+      label: main

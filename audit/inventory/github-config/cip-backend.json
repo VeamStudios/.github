@@ -1,0 +1,46 @@
+{
+  "key": "cip-backend",
+  "repo": "VeamStudios/ChecklistInspectorPro-Backend",
+  "family": "backend",
+  "product": "ChecklistInspectorPro",
+  "source_label": "main",
+  "repo_secrets": [
+    "DEPLOY_SSH_KEY",
+    "SERVICE_ACCOUNT_BASE64_TEST"
+  ],
+  "repo_variables": [
+    "PROJECT_ID_TEST"
+  ],
+  "environments": [
+    {
+      "name": "beta",
+      "html_url": "https://github.com/VeamStudios/ChecklistInspectorPro-Backend/deployments/activity_log?environments_filter=beta",
+      "repo_secrets": [
+        "SERVICE_ACCOUNT_BASE64"
+      ],
+      "repo_variables": [
+        "PROJECT_ID"
+      ]
+    },
+    {
+      "name": "dev",
+      "html_url": "https://github.com/VeamStudios/ChecklistInspectorPro-Backend/deployments/activity_log?environments_filter=dev",
+      "repo_secrets": [
+        "SERVICE_ACCOUNT_BASE64"
+      ],
+      "repo_variables": [
+        "PROJECT_ID"
+      ]
+    },
+    {
+      "name": "prod",
+      "html_url": "https://github.com/VeamStudios/ChecklistInspectorPro-Backend/deployments/activity_log?environments_filter=prod",
+      "repo_secrets": [
+        "SERVICE_ACCOUNT_BASE64"
+      ],
+      "repo_variables": [
+        "PROJECT_ID"
+      ]
+    }
+  ]
+}

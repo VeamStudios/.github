@@ -1,0 +1,89 @@
+name: Screenshots Generate
+
+on:
+  workflow_dispatch:
+
+jobs:
+  screenshots:
+    name: Run fastlane screenshots
+    timeout-minutes: 60
+    runs-on: macos-26-xlarge
+    steps:
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Select Xcode
+        uses: VeamStudios/.github/.github/actions/select-xcode@main
+        with:
+          xcode-version: "26.2"
+        
+      - name: Setup Git authentication
+        run: |
+          git config --global user.email "180547681+veamstudios-release-bot[bot]@users.noreply.github.com"
+          git config --global user.name "Release Bot"
+          echo "machine github.com login 'Release Bot' password ${{ steps.app_token.outputs.token }}" > ~/.netrc
+          chmod 600 ~/.netrc
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+          token: ${{ steps.app_token.outputs.token }}
+
+      - name: Setup Ruby and Bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ".ruby-version"
+          bundler-cache: true
+
+      - name: Check fastlane version
+        run: bundle exec fastlane --version
+        
+      - name: List available simulators
+        run: xcrun simctl list devices available
+
+      - name: Run test screenshots code
+        env:
+          UI_TEST_EMAIL: ${{ vars.SCREENSHOT_ACCOUNT_SAP_EMAIL }}
+          UI_TEST_PASSWORD: ${{ secrets.SCREENSHOT_ACCOUNT_SAP_PASSWORD }}
+        run: bundle exec fastlane screenshots_test configuration:dev
+
+      - name: Collect test logs (on failure only)
+        if: failure()
+        run: |
+          mkdir -p artifacts/ui-tests
+          DERIVED_DIRS=$(find /var/folders -type d -path "*/snapshot_derived*/Logs/Test" 2>/dev/null || true)
+          if [ -n "$DERIVED_DIRS" ]; then
+            echo "📂 Found snapshot logs:"
+            echo "$DERIVED_DIRS"
+            for dir in $DERIVED_DIRS; do
+              echo "Copying $dir"
+              cp -R "$dir" artifacts/ui-tests/ || true
+            done
+          else
+            echo "⚠️ No snapshot logs found"
+          fi
+
+          if [ -f fastlane/screenshots/screenshot_run.log ]; then
+            cp fastlane/screenshots/screenshot_run.log artifacts/ui-tests/
+          fi
+
+      - name: Upload UI test logs artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-logs
+          path: artifacts/ui-tests
+          if-no-files-found: warn
+        
+      - name: Upload screenshots artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-screenshots
+          path: fastlane/screenshots
+          if-no-files-found: error

@@ -1,0 +1,37 @@
+name: Run checks
+
+on: [pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      - name: Prepare the '.npmrc' file
+        run: |
+          echo "@veamstudios:registry=https://npm.pkg.github.com" > .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+      - name: Install project dependencies
+        run: yarn install --frozen-lockfile
+      - name: Compile TypeScript
+        run: yarn run compile
+      - name: Lint code
+        run: yarn run lint
+      - name: Check formatting
+        run: yarn run format-check
+      - name: Validate Typesync schema
+        run: yarn run validate-schema
+      - name: Verify changelog entry for next release
+        run: |
+          next_version="$(node -e 'const [major, minor] = require("./package.json").version.split(".").map(Number); process.stdout.write(`${major}.${minor + 1}.0`);')"
+          chmod +x ./scripts/extract-changelog-lines.sh
+          ./scripts/extract-changelog-lines.sh "$next_version" > /dev/null
+      - name: Check if repo contains the correct artifacts for the current schema
+        run: |
+          yarn build
+          git --no-pager diff --exit-code

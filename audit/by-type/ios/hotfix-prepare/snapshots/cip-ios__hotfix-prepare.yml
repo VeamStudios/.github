@@ -1,0 +1,11 @@
+name: Hotfix Prepare
+
+on:
+  workflow_dispatch:
+
+jobs:
+  prepare-hotfix:
+    uses: VeamStudios/.github/.github/workflows/hotfix-prepare.yml@main
+    with:
+      project_file: "Checklist Inspector Pro.xcodeproj/project.pbxproj"
+    secrets: inherit
