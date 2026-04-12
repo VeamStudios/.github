@@ -1,0 +1,29 @@
+name: Setup Node.js with GitHub Packages
+description: Installs Node.js and configures npm/yarn to authenticate with the VeamStudios GitHub Packages registry.
+
+inputs:
+  node-version:
+    description: "Node.js version to install"
+    required: false
+    default: "20.x"
+  cache:
+    description: "Package manager to cache (npm or yarn)"
+    required: false
+    default: "npm"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: ${{ inputs.cache }}
+        registry-url: "https://npm.pkg.github.com"
+        scope: "@veamstudios"
+
+    - name: Export NODE_AUTH_TOKEN for subsequent steps
+      shell: bash
+      run: echo "NODE_AUTH_TOKEN=${GITHUB_TOKEN}" >> "$GITHUB_ENV"
+      env:
+        GITHUB_TOKEN: ${{ github.token }}

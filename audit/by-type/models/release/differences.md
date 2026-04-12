@@ -18,4 +18,3 @@ const results = await Promise.allSettled(
   repos.map((r... -> const repos = ['ChecklistInspectorPro-Backend', 'ChecklistInspectorPro-Web', 'ChecklistInspectorPro-iOS'];
 
 const results = await Promise...
-

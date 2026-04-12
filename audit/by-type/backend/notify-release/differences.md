@@ -1,10 +1,4 @@
-# notify-release -- Differences
+# notify-release -- Migrated
 
-Baseline: `cip-backend__notify-release.yml` (VeamStudios/ChecklistInspectorPro-Backend)
-
-## Identical
-
-- cip-backend (VeamStudios/ChecklistInspectorPro-Backend)
-- sap-backend (VeamStudios/SiteAuditPro-Backend)
-
-All snapshots are structurally identical.
+Local `notify-release.yml` files have been removed from backend repos.
+Callers now use `VeamStudios/.github/.github/workflows/notify-release.yml@main` directly.

@@ -1,0 +1,24 @@
+name: Setup App Store Connect API Key
+description: Writes the App Store Connect API key to the expected filesystem location for Fastlane and xcodebuild.
+
+inputs:
+  key-id:
+    description: "App Store Connect API Key ID"
+    required: true
+  key-content:
+    description: "Base64-decoded .p8 private key content"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Write API key file
+      shell: bash
+      env:
+        ASC_KEY_ID: ${{ inputs.key-id }}
+        ASC_KEY_CONTENT: ${{ inputs.key-content }}
+      run: |
+        KEY_DIR="${HOME}/.appstoreconnect/private_keys"
+        mkdir -p "${KEY_DIR}"
+        printf '%s' "${ASC_KEY_CONTENT}" > "${KEY_DIR}/AuthKey_${ASC_KEY_ID}.p8"
+        chmod 600 "${KEY_DIR}/AuthKey_${ASC_KEY_ID}.p8"

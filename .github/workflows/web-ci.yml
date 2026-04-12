@@ -1,0 +1,46 @@
+name: Web CI
+
+on:
+  workflow_call:
+    inputs:
+      node_version:
+        description: "Node.js version to use"
+        required: false
+        default: "20.x"
+        type: string
+      build_command:
+        description: "npm script to run for the build step (e.g. build, build-dev)"
+        required: false
+        default: "build"
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js with GitHub Packages
+        uses: VeamStudios/.github/.github/actions/setup-node-github-packages@main
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format-check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run ${{ inputs.build_command }}

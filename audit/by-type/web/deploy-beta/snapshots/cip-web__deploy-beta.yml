@@ -12,47 +12,13 @@ concurrency:
 jobs:
   check-nightly-merge:
     name: Check for recent merges to main
-    runs-on: ubuntu-latest
+    uses: VeamStudios/.github/.github/workflows/merge-gate.yml@main
     permissions:
       pull-requests: read
-    outputs:
-      should_deploy: ${{ steps.check.outputs.should_deploy }}
-    steps:
-      - id: check
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const now = new Date();
-            const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-            const { owner, repo } = context.repo;
-            let mergedCount = 0;
-            let page = 1;
-
-            while (page <= 10) {
-              const { data } = await github.rest.pulls.list({
-                owner,
-                repo,
-                state: 'closed',
-                base: 'main',
-                sort: 'updated',
-                direction: 'desc',
-                per_page: 100,
-                page
-              });
-
-              mergedCount += data.filter((pr) => (
-                pr.merged_at && new Date(pr.merged_at) >= since
-              )).length;
-
-              if (data.length < 100) break;
-              const oldestUpdated = new Date(data[data.length - 1].updated_at);
-              if (oldestUpdated < since) break;
-              page += 1;
-            }
-
-            const shouldDeploy = mergedCount > 0;
-            core.info(`Merged PRs to main in last 24h: ${mergedCount}`);
-            core.setOutput('should_deploy', shouldDeploy ? 'true' : 'false');
+    with:
+      base_branch: main
+      window_hours: 24
+      max_pages: 10
 
   deploy:
     needs: check-nightly-merge
