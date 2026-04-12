@@ -1,0 +1,84 @@
+name: Create GitHub Release
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version number for the release tag (e.g. 1.2.3). Will be prefixed with 'v'."
+        required: true
+        type: string
+      deploy_sha:
+        description: "Commit SHA to tag for the release"
+        required: true
+        type: string
+      release_notes:
+        description: "Additional release notes (optional). Combined with auto-generated notes."
+        required: false
+        default: ""
+        type: string
+      generate_notes:
+        description: "Whether to auto-generate release notes from commits"
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      BOT_RELEASE_PRIVATE_KEY:
+        description: "PEM private key for the Release Bot GitHub App"
+        required: true
+    outputs:
+      release_url:
+        description: "URL of the created GitHub release"
+        value: ${{ jobs.release.outputs.release_url }}
+      tag_name:
+        description: "Tag name created for the release"
+        value: ${{ jobs.release.outputs.tag_name }}
+
+jobs:
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    outputs:
+      release_url: ${{ steps.create.outputs.release_url }}
+      tag_name: ${{ steps.create.outputs.tag_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.deploy_sha }}
+          fetch-depth: 1
+
+      - name: Mint GitHub App token (Release Bot)
+        id: release_bot_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Create GitHub Release
+        id: create
+        env:
+          GH_TOKEN: ${{ steps.release_bot_token.outputs.token }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+          GENERATE_NOTES: ${{ inputs.generate_notes }}
+        run: |
+          set -euo pipefail
+          TAG_NAME="v${VERSION}"
+
+          ARGS=("$TAG_NAME" --target "${DEPLOY_SHA}" --title "$TAG_NAME")
+
+          if [ "${GENERATE_NOTES}" = "true" ]; then
+            ARGS+=(--generate-notes)
+          fi
+
+          if [ -n "${RELEASE_NOTES}" ]; then
+            printf '%s' "${RELEASE_NOTES}" | gh release create "${ARGS[@]}" --notes-file -
+          else
+            gh release create "${ARGS[@]}"
+          fi
+
+          RELEASE_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG_NAME}"
+          echo "release_url=${RELEASE_URL}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"

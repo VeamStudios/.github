@@ -1,4 +1,5 @@
 name: Notify Release
+
 on:
   workflow_call:
     inputs:
@@ -10,13 +11,19 @@ on:
         description: "Deployment environment (e.g. production)"
         required: true
         type: string
+      slack_footer_mrkdwn:
+        description: "Footer context block (mrkdwn). Override per app for custom messaging."
+        required: false
+        default: "cc <!subteam^S049Q89D5HA|support-team> — please inform any customers waiting on fixes in this release."
+        type: string
     secrets:
       SLACK_RELEASES_WEBHOOK_URL:
-        description: "Incoming webhook for release notifications"
+        description: "Incoming webhook URL for the Slack releases channel"
         required: true
 
 jobs:
   notify:
+    name: Send Slack notification
     runs-on: ubuntu-latest
     steps:
       - name: Send Slack notification
@@ -26,13 +33,13 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "🚀 *${{ github.repository }}* — <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.version }}|${{ inputs.version }}> deployed to ${{ inputs.environment }}",
+              "text": "*${{ github.repository }}* — <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.version }}|${{ inputs.version }}> deployed to ${{ inputs.environment }}",
               "blocks": [
                 {
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "🚀 *${{ github.repository }}* — <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.version }}|${{ inputs.version }}> deployed to ${{ inputs.environment }}\n\nSee the <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.version }}|full release notes> for details."
+                    "text": "*${{ github.repository }}* — <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.version }}|${{ inputs.version }}> deployed to ${{ inputs.environment }}\n\nSee the <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.version }}|full release notes> for details."
                   }
                 },
                 {
@@ -40,7 +47,7 @@ jobs:
                   "elements": [
                     {
                       "type": "mrkdwn",
-                      "text": "cc <!subteam^S049Q89D5HA|support-team> — please inform any customers waiting on fixes in this release."
+                      "text": "${{ inputs.slack_footer_mrkdwn }}"
                     }
                   ]
                 }

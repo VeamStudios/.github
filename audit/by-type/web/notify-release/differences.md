@@ -1,10 +1,4 @@
-# notify-release -- Differences
+# notify-release -- Migrated
 
-Baseline: `cip-web__notify-release.yml` (VeamStudios/ChecklistInspectorPro-Web)
-
-## Identical
-
-- cip-web (VeamStudios/ChecklistInspectorPro-Web)
-- sap-web (VeamStudios/SiteAuditPro-Web)
-
-All snapshots are structurally identical.
+Local `notify-release.yml` files have been removed from web repos.
+Callers now use `VeamStudios/.github/.github/workflows/notify-release.yml@main` directly.
