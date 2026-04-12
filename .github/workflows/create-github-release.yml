@@ -21,6 +21,10 @@ on:
         required: false
         default: true
         type: boolean
+      environment:
+        description: "GitHub environment to bind the release job to (e.g. prod). Required so environment-scoped secrets, variables, and protection rules apply to the release step."
+        required: true
+        type: string
     secrets:
       BOT_RELEASE_PRIVATE_KEY:
         description: "PEM private key for the Release Bot GitHub App"
@@ -37,6 +41,7 @@ jobs:
   release:
     name: Create release
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     outputs:
       release_url: ${{ steps.create.outputs.release_url }}
       tag_name: ${{ steps.create.outputs.tag_name }}
