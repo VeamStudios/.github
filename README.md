@@ -1,37 +1,143 @@
-# Shared GitHub Repo Defaults
+# VeamStudios/.github
 
-This repository now includes reusable GitHub Actions assets that other repos can call.
+Shared GitHub Actions workflows, composite actions, and organisation defaults for all VeamStudios repositories.
 
-## Reusable Action: Select Xcode
+## Composite Actions
 
-Action path in this repo:
+### `select-xcode`
 
-`/.github/actions/select-xcode`
-
-Example usage from another repository:
+Selects a specific Xcode installation on macOS runners.
 
 ```yaml
-- name: Select Xcode
-  uses: VeamStudios/.github/.github/actions/select-xcode@main
-```
-
-Optional inputs:
-
-```yaml
-- name: Select Xcode
-  uses: VeamStudios/.github/.github/actions/select-xcode@main
+- uses: VeamStudios/.github/.github/actions/select-xcode@main
   # with:
-  #   xcode-version: "26.3"
-  #   print-version: "true"
+  #   xcode-version: "26.3"   # default
 ```
 
-Recommended versioning:
+### `setup-node-github-packages`
 
-1. Use `@main` if you want all repos to pick up updates automatically.
-2. If you prefer a pinned major tag (like `@v1`), create and maintain that tag in this repo.
-3. When a new Xcode version is needed, update only this action default in this repo.
+Installs Node.js and configures npm/yarn to authenticate with the `@veamstudios` GitHub Packages registry. Works with both `npm ci` and `yarn publish`.
 
-Troubleshooting:
+```yaml
+- uses: VeamStudios/.github/.github/actions/setup-node-github-packages@main
+  # with:
+  #   node-version: "20.x"   # default
+  #   cache: "npm"            # or "yarn"
+```
 
-- If you see `Unable to resolve action ... unable to find version v1`, either switch to `@main` or create/push the `v1` tag in this repo.
-- Use the full action path (`VeamStudios/.github/.github/actions/select-xcode@...`), not just `VeamStudios/.github@...`.
+### `setup-asc-api-key`
+
+Writes the App Store Connect API key `.p8` file to the filesystem for Fastlane and xcodebuild.
+
+```yaml
+- uses: VeamStudios/.github/.github/actions/setup-asc-api-key@main
+  with:
+    key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+    key-content: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+```
+
+## Reusable Workflows
+
+All reusable workflows are called with `uses:` at the job level.
+
+### `web-ci.yml`
+
+Full CI pipeline for web apps: format check, lint, typecheck, and build.
+
+```yaml
+jobs:
+  ci:
+    uses: VeamStudios/.github/.github/workflows/web-ci.yml@main
+    # with:
+    #   node_version: "20.x"   # default
+    #   build_command: "build"  # default
+```
+
+### `merge-gate.yml`
+
+Checks whether any PRs were merged to a branch within a time window. Used by nightly deploy workflows to skip builds when nothing changed.
+
+```yaml
+jobs:
+  check:
+    uses: VeamStudios/.github/.github/workflows/merge-gate.yml@main
+    permissions:
+      pull-requests: read
+    # with:
+    #   base_branch: "main"   # default
+    #   window_hours: 24       # default
+```
+
+**Output:** `should_deploy` (`"true"` / `"false"`)
+
+### `create-github-release.yml`
+
+Mints a Release Bot token and creates a GitHub release with optional auto-generated notes.
+
+```yaml
+jobs:
+  release:
+    uses: VeamStudios/.github/.github/workflows/create-github-release.yml@main
+    with:
+      version: ${{ inputs.version }}
+      deploy_sha: ${{ needs.deploy.outputs.commit_sha }}
+      environment: prod
+    secrets:
+      BOT_RELEASE_PRIVATE_KEY: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+```
+
+**Outputs:** `release_url`, `tag_name`
+
+### `notify-release.yml`
+
+Sends a Slack notification to the releases channel.
+
+```yaml
+jobs:
+  notify:
+    uses: VeamStudios/.github/.github/workflows/notify-release.yml@main
+    with:
+      version: v${{ inputs.version }}
+      environment: production
+    secrets:
+      SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+```
+
+### `update-changelog-website.yml`
+
+Copies a `CHANGELOG.md` from the caller repo to a marketing website repo.
+
+```yaml
+jobs:
+  changelog:
+    uses: VeamStudios/.github/.github/workflows/update-changelog-website.yml@main
+    with:
+      source_file: CHANGELOG.md
+      deployed_ref: ${{ needs.deploy.outputs.commit_sha }}
+      destination_repo: VeamStudios/example.com
+      destination_folder: src/assets/changelog
+      version: v${{ inputs.version }}
+    secrets: inherit
+```
+
+### Other workflows
+
+| Workflow | Purpose |
+|---|---|
+| `deploy-ios-testflight.yml` | Build and upload an iOS app to TestFlight |
+| `hotfix-prepare.yml` / `hotfix-deploy.yml` | iOS hotfix branch and deploy flow |
+| `pr-ios-build.yml` | Build iOS app on pull requests |
+| `pr-title-conventions.yml` | Enforce PR title format |
+| `pr-notion-docs-sync.yml` | Sync PR content to Notion |
+| `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
+| `qa-pipeline.yml` | QA test pipeline |
+| `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
+| `release-notifications.yml` | Extended release notifications (iOS) |
+
+## Caller Templates
+
+The `caller-templates/` directory contains example workflow files that repos can copy to adopt shared workflows quickly.
+
+## Versioning
+
+All references use `@main` so repos pick up updates automatically. If you need stability, pin to a specific commit SHA.

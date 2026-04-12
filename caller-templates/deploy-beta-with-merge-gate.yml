@@ -1,3 +1,11 @@
+# Deploy Beta with Merge Gate - Caller Workflow Template
+#
+# Copy this file into your repo's .github/workflows/ directory and
+# customise the deploy job to call your repo's _deploy.yml.
+#
+# The merge-gate job skips the deploy when no PRs have merged to main
+# in the last 24 hours, preventing unnecessary nightly builds.
+
 name: Deploy Beta
 
 on:
@@ -18,7 +26,6 @@ jobs:
     with:
       base_branch: main
       window_hours: 24
-      max_pages: 10
 
   deploy:
     needs: check-nightly-merge
@@ -27,4 +34,3 @@ jobs:
     secrets: inherit
     with:
       env: beta
-      publish_dummy_data: true
