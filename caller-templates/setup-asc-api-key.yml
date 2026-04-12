@@ -1,0 +1,10 @@
+# Setup App Store Connect API Key - Step Template
+#
+# Add this step to any iOS workflow that needs the ASC API key
+# (e.g. before Fastlane or xcodebuild commands).
+
+- name: Setup App Store Connect API Key
+  uses: VeamStudios/.github/.github/actions/setup-asc-api-key@main
+  with:
+    key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+    key-content: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}

@@ -1,0 +1,10 @@
+# Setup Node.js with GitHub Packages - Step Template
+#
+# Add this step to any workflow that needs to install @veamstudios
+# packages from GitHub Packages or publish with yarn/npm.
+
+- name: Setup Node.js with GitHub Packages
+  uses: VeamStudios/.github/.github/actions/setup-node-github-packages@main
+  # with:
+  #   node-version: "20.x"
+  #   cache: "npm"   # or "yarn"

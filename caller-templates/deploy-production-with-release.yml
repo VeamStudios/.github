@@ -1,3 +1,11 @@
+# Deploy Production with Release + Notification - Caller Workflow Template
+#
+# Copy this file into your repo's .github/workflows/ directory and
+# customise the deploy job to call your repo's _deploy.yml.
+#
+# Creates a GitHub release after deploy and sends a Slack notification.
+# Both the release and notification use shared workflows from VeamStudios/.github.
+
 name: Deploy Production
 
 on:
@@ -8,7 +16,7 @@ on:
         required: true
         type: string
       release_notes:
-        description: "Additional release notes (optional - prepended to auto-generated notes)"
+        description: "Additional release notes (optional)"
         required: false
         type: string
 
@@ -32,6 +40,7 @@ jobs:
       version: ${{ inputs.version }}
       deploy_sha: ${{ needs.deploy.outputs.commit_sha }}
       release_notes: ${{ inputs.release_notes }}
+      environment: prod
     secrets:
       BOT_RELEASE_PRIVATE_KEY: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
 
@@ -44,21 +53,3 @@ jobs:
       environment: production
     secrets:
       SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
-
-  summary:
-    name: Deployment Summary
-    runs-on: ubuntu-latest
-    needs: [deploy, create-release, notify]
-    if: always()
-    steps:
-      - name: Display Summary
-        run: |
-          echo "Deploy Production completed!"
-          echo "Release: v${VERSION}"
-          echo "Commit: ${DEPLOY_SHA}"
-          echo "Release URL: ${SERVER_URL}/${REPO}/releases/tag/v${VERSION}"
-        env:
-          VERSION: ${{ inputs.version }}
-          DEPLOY_SHA: ${{ needs.deploy.outputs.commit_sha }}
-          SERVER_URL: ${{ github.server_url }}
-          REPO: ${{ github.repository }}
