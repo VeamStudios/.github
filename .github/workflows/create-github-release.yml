@@ -22,9 +22,8 @@ on:
         default: true
         type: boolean
       environment:
-        description: "GitHub environment to bind the release job to (e.g. prod). Preserves environment-scoped secrets, variables, and protection rules."
-        required: false
-        default: ""
+        description: "GitHub environment to bind the release job to (e.g. prod). Required so environment-scoped secrets, variables, and protection rules apply to the release step."
+        required: true
         type: string
     secrets:
       BOT_RELEASE_PRIVATE_KEY:
@@ -42,7 +41,7 @@ jobs:
   release:
     name: Create release
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment || null }}
+    environment: ${{ inputs.environment }}
     outputs:
       release_url: ${{ steps.create.outputs.release_url }}
       tag_name: ${{ steps.create.outputs.tag_name }}
