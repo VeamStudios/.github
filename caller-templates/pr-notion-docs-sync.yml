@@ -57,3 +57,8 @@ jobs:
       # use-ai-inference: true
       # ai-model: openai/gpt-4.1
       # max-tokens: 3500
+      # CIP: optional excerpt from VeamStudios/ChecklistInspectorPro-Models for accurate Models in the AI brief
+      canonical-models-repo: VeamStudios/ChecklistInspectorPro-Models
+      canonical-models-ref: main
+      canonical-models-path: ios/models.swift
+      data-models-path-hint: Data/Models

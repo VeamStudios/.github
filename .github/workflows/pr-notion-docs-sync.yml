@@ -8,7 +8,7 @@ name: PR Notion Docs Sync
 # repository context. Manual runs: use caller-templates/pr-notion-docs-sync.yml in your app repo.
 #
 # Callers must grant `models: read` for GitHub Models (`actions/ai-inference`) on the documentation brief.
-# Inputs: use-ai-inference (default true), ai-model, max-tokens.
+# Inputs: use-ai-inference (default true), ai-model, max-tokens, canonical-models-repo/ref/path, data-models-path-hint.
 
 on:
   workflow_call:
@@ -37,6 +37,26 @@ on:
         required: false
         type: number
         default: 3500
+      canonical-models-repo:
+        description: "Optional org/repo (e.g. VeamStudios/ChecklistInspectorPro-Models) to include a read-only excerpt in the AI prompt"
+        required: false
+        type: string
+        default: ""
+      canonical-models-ref:
+        description: "Git ref for canonical-models-repo (branch or tag)"
+        required: false
+        type: string
+        default: "main"
+      canonical-models-path:
+        description: "Path within canonical-models-repo to excerpt (capped in workflow)"
+        required: false
+        type: string
+        default: "ios/models.swift"
+      data-models-path-hint:
+        description: "Substring to detect app Data/Models paths in changed files (e.g. Data/Models)"
+        required: false
+        type: string
+        default: "Data/Models"
     secrets:
       notion-token:
         description: "Notion integration token"
@@ -153,6 +173,8 @@ jobs:
           PR_NUMBER: ${{ steps.pr_and_db_ids.outputs.pr_number }}
           APP_NAME: ${{ steps.detect_app.outputs.app_name }}
           PLATFORM: ${{ steps.detect_app.outputs.platform }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DATA_MODELS_PATH_HINT: ${{ inputs['data-models-path-hint'] }}
         run: |
           set -e
           gh pr view "$PR_NUMBER" \
@@ -168,9 +190,12 @@ jobs:
           import os
           import re
           import subprocess
+          import urllib.parse
           from collections import Counter
 
           pr_number = os.environ["PR_NUMBER"]
+          github_repository = os.environ.get("GITHUB_REPOSITORY", "")
+          data_models_hint = (os.environ.get("DATA_MODELS_PATH_HINT") or "Data/Models").strip()
           app_name = os.environ.get("APP_NAME", "").strip()
           platform = os.environ.get("PLATFORM", "").strip()
 
@@ -202,6 +227,32 @@ jobs:
 
           paths = [f.get("path", "") for f in data.get("files", []) if f.get("path")]
           paths_sorted = sorted(set(paths))
+
+          gh_owner, gh_repo = (
+              github_repository.split("/", 1) if "/" in github_repository else ("", "")
+          )
+          data_model_paths = [
+              p
+              for p in paths_sorted
+              if data_models_hint in p.replace("\\", "/")
+          ]
+          blob_lines = []
+          for p in data_model_paths:
+            norm = p.replace("\\", "/")
+            enc = urllib.parse.quote(norm, safe="/")
+            if gh_owner and gh_repo and pr_sha:
+              url = f"https://github.com/{gh_owner}/{gh_repo}/blob/{pr_sha}/{enc}"
+              blob_lines.append(f"- `{norm}` — {url}")
+            else:
+              blob_lines.append(f"- `{norm}`")
+          with open("data_models_prompt.txt", "w", encoding="utf-8") as f:
+            f.write("## Changed files under Data/Models (this PR)\n\n")
+            if blob_lines:
+              f.write("\n".join(blob_lines) + "\n")
+            else:
+              f.write(
+                  "(No changed files matched this PR whose path contains the Data/Models hint.)\n"
+              )
 
           MAX_PATHS = 200
           files_list = paths_sorted[:MAX_PATHS]
@@ -356,6 +407,8 @@ jobs:
             "cross_references_max_chars": 4000,
             "pr_diff_excerpt": pr_diff_excerpt,
             "pr_diff_max_chars": 8000,
+            "data_models_changed": data_model_paths,
+            "data_models_path_hint": data_models_hint,
           }
           with open("signals.json", "w", encoding="utf-8") as f:
             json.dump(signals, f, indent=2)
@@ -397,9 +450,14 @@ jobs:
           ### User-facing summary
           2–4 sentences in plain language. What changed from the customer’s perspective. No stack traces.
 
-          ### Models
-          Firestore (or other backend) data used for this feature: collection paths, document shapes, field names,
-          sync/local caches—only what you can infer from the PR. Use bullet points. If nothing data-related appears: write "None identified from this PR."
+          ### Models (evidence from this PR)
+          Domain and storage tied to this PR. Each bullet MUST start with ONE tag:
+          - [diff] — only if the detail appears literally in the provided code diff.
+          - [file path] — only if the detail is supported by a changed file path or file listed under Data/Models / canonical reference below.
+          - [unverified guess] — only when inferring from naming; never present a guess as fact (keep the tag).
+
+          Include Swift types or Firestore paths only when they meet [diff] or [file path]. If changed files contain no Firestore path
+          literals, state: "No Firestore path literals in changed files (per diff)." If nothing data-related appears: "None identified from this PR."
 
           ### Structure
           Layout of the UI wherever this feature appears: screens, panels, sections, stacks, sheets—where elements live
@@ -424,6 +482,34 @@ jobs:
           - Be specific; avoid generic filler ("verify functionality", "test thoroughly").
           - Prefer product language; cite file or type names only when they disambiguate user-visible behaviour.
           EOF
+
+      - name: Checkout canonical models repo (optional)
+        if: ${{ !inputs['dry-run'] && inputs['use-ai-inference'] && inputs['canonical-models-repo'] != '' }}
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs['canonical-models-repo'] }}
+          ref: ${{ inputs['canonical-models-ref'] }}
+          path: canonical-models
+          fetch-depth: 1
+
+      - name: Write canonical models excerpt
+        if: ${{ !inputs['dry-run'] && inputs['use-ai-inference'] && inputs['canonical-models-repo'] != '' }}
+        env:
+          CANONICAL_PATH: ${{ inputs['canonical-models-path'] }}
+        run: |
+          set -e
+          if [ -f "canonical-models/${CANONICAL_PATH}" ]; then
+            head -c 12000 "canonical-models/${CANONICAL_PATH}" > canonical_models_excerpt.txt
+          else
+            echo "(File not found in canonical repo: ${CANONICAL_PATH})" > canonical_models_excerpt.txt
+          fi
+
+      - name: Ensure canonical models excerpt file exists
+        if: ${{ !inputs['dry-run'] && inputs['use-ai-inference'] }}
+        run: |
+          if [ ! -f canonical_models_excerpt.txt ]; then
+            echo "(Canonical models repo not configured; set workflow_call inputs canonical-models-repo to fetch.)" > canonical_models_excerpt.txt
+          fi
 
       - name: Create documentation brief user prompt
         if: ${{ !inputs['dry-run'] && inputs['use-ai-inference'] }}
@@ -489,6 +575,18 @@ jobs:
           ## Cross-references (files referencing touched symbols)
           ${CROSS_REFS}
           EOF
+          echo "" >> doc_user_prompt.txt
+          if [ -f data_models_prompt.txt ]; then
+            cat data_models_prompt.txt >> doc_user_prompt.txt
+          else
+            echo "## Changed files under Data/Models (this PR)" >> doc_user_prompt.txt
+            echo "(data_models_prompt.txt missing — collect step may have failed.)" >> doc_user_prompt.txt
+          fi
+          echo "" >> doc_user_prompt.txt
+          echo "## Canonical reference (read-only; excerpt from models repo if configured)" >> doc_user_prompt.txt
+          echo '```' >> doc_user_prompt.txt
+          cat canonical_models_excerpt.txt >> doc_user_prompt.txt
+          echo '```' >> doc_user_prompt.txt
 
       - name: Generate documentation brief (AI)
         id: doc_ai
