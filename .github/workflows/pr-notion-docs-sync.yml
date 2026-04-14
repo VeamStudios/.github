@@ -231,13 +231,93 @@ jobs:
             f.write(areas_json)
           PY
 
-      - name: Resolve product from Notion (GitHub Repos → Products)
-        id: resolve_product
+      # Notion API 2025-09-03+ (incl. 2026-03-11): row queries use data sources, not POST .../databases/.../query.
+      # See https://developers.notion.com/docs/upgrade-faqs-2025-09-03
+      - name: Resolve Notion data source IDs (API 2025+)
+        id: notion_data_sources
         env:
           NOTION_TOKEN: ${{ secrets.notion-token }}
           NOTION_VERSION: ${{ env.NOTION_VERSION }}
           GITHUB_REPOS_DB_ID: ${{ steps.pr_and_db_ids.outputs.github_repos_db_id }}
           PRODUCTS_DB_ID: ${{ steps.pr_and_db_ids.outputs.products_db_id }}
+          PROPOSALS_DB_ID: ${{ steps.pr_and_db_ids.outputs.proposals_db_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          token = os.environ["NOTION_TOKEN"]
+          notion_version = os.environ["NOTION_VERSION"]
+
+          def id_to_dashed(uuid_hex: str) -> str:
+            h = uuid_hex.replace("-", "").lower()
+            if len(h) != 32:
+              return uuid_hex
+            return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
+
+          def notion_request(method, path, payload=None):
+            data = None
+            if payload is not None:
+              data = json.dumps(payload).encode("utf-8")
+            headers = {
+              "Authorization": f"Bearer {token}",
+              "Notion-Version": notion_version,
+            }
+            if method in ("POST", "PATCH", "PUT"):
+              headers["Content-Type"] = "application/json"
+            req = urllib.request.Request(
+              f"https://api.notion.com{path}",
+              data=data,
+              method=method,
+              headers=headers,
+            )
+            try:
+              with urllib.request.urlopen(req) as r:
+                raw = r.read().decode("utf-8")
+                return json.loads(raw) if raw.strip() else {}
+            except urllib.error.HTTPError as e:
+              body = e.read().decode("utf-8", "replace")
+              hint = ""
+              if e.code == 404 and "/databases/" in path:
+                hint = " Ensure the database URL/ID is correct and the Notion integration has access to that database."
+              raise RuntimeError(f"Notion API {method} {path} failed with HTTP {e.code}: {body}.{hint}") from e
+
+          def notion_get(path):
+            return notion_request("GET", path, None)
+
+          def first_data_source_id(database_id_hex: str) -> str:
+            dashed = id_to_dashed(database_id_hex)
+            data = notion_get(f"/v1/databases/{dashed}")
+            sources = data.get("data_sources") or []
+            if not sources:
+              raise RuntimeError(
+                f"GET /v1/databases/{dashed} returned no data_sources. "
+                "Notion 2025+ expects a data source per database; check the workspace and integration access."
+              )
+            ds_id = (sources[0] or {}).get("id")
+            if not ds_id:
+              raise RuntimeError("data_sources[0] missing id in retrieve database response.")
+            return str(ds_id).strip()
+
+          repos_ds = first_data_source_id(os.environ["GITHUB_REPOS_DB_ID"])
+          products_ds = first_data_source_id(os.environ["PRODUCTS_DB_ID"])
+          proposals_ds = first_data_source_id(os.environ["PROPOSALS_DB_ID"])
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+            out.write(f"github_repos_data_source_id={repos_ds}\n")
+            out.write(f"products_data_source_id={products_ds}\n")
+            out.write(f"proposals_data_source_id={proposals_ds}\n")
+          PY
+
+      - name: Resolve product from Notion (GitHub Repos → Products)
+        id: resolve_product
+        env:
+          NOTION_TOKEN: ${{ secrets.notion-token }}
+          NOTION_VERSION: ${{ env.NOTION_VERSION }}
+          GITHUB_REPOS_DATA_SOURCE_ID: ${{ steps.notion_data_sources.outputs.github_repos_data_source_id }}
+          PRODUCTS_DATA_SOURCE_ID: ${{ steps.notion_data_sources.outputs.products_data_source_id }}
           REPO_NAME: ${{ steps.pr_and_db_ids.outputs.repo_name }}
         run: |
           python - <<'PY'
@@ -268,17 +348,19 @@ jobs:
               hint = ""
               if e.code == 404 and "/databases/" in path:
                 hint = " Ensure the database URL/ID is correct and the Notion integration has access to that database."
+              if e.code == 404 and "/data_sources/" in path:
+                hint = " Ensure the integration can access this data source (share the database with the integration)."
               raise RuntimeError(f"Notion API {method} {path} failed with HTTP {e.code}: {body}.{hint}") from e
 
           def notion_post(path, payload):
             return notion_request("POST", path, payload)
 
           repo_name = os.environ["REPO_NAME"]
-          repo_db_id = os.environ["GITHUB_REPOS_DB_ID"]
-          products_db_id = os.environ["PRODUCTS_DB_ID"]
+          repos_ds = os.environ["GITHUB_REPOS_DATA_SOURCE_ID"]
+          products_ds = os.environ["PRODUCTS_DATA_SOURCE_ID"]
 
           repo_query = notion_post(
-            f"/v1/databases/{repo_db_id}/query",
+            f"/v1/data_sources/{repos_ds}/query",
             {
               "filter": {
                 "property": "Name",
@@ -301,7 +383,7 @@ jobs:
             )
 
           product_query = notion_post(
-            f"/v1/databases/{products_db_id}/query",
+            f"/v1/data_sources/{products_ds}/query",
             {
               "filter": {
                 "property": "Product name",
@@ -336,7 +418,7 @@ jobs:
         env:
           NOTION_TOKEN: ${{ secrets.notion-token }}
           NOTION_VERSION: ${{ env.NOTION_VERSION }}
-          PROPOSALS_DB_ID: ${{ steps.pr_and_db_ids.outputs.proposals_db_id }}
+          PROPOSALS_DATA_SOURCE_ID: ${{ steps.notion_data_sources.outputs.proposals_data_source_id }}
           PR_URL: ${{ steps.collect_pr.outputs.pr_url }}
           PR_NUMBER: ${{ steps.pr_and_db_ids.outputs.pr_number }}
           PR_TITLE: ${{ steps.collect_pr.outputs.pr_title }}
@@ -383,6 +465,8 @@ jobs:
               hint = ""
               if e.code == 404 and "/databases/" in path:
                 hint = " Ensure the database URL/ID is correct and the Notion integration has access to that database."
+              if e.code == 404 and "/data_sources/" in path:
+                hint = " Ensure the integration can access this data source (share the database with the integration)."
               raise RuntimeError(f"Notion API {method} {path} failed with HTTP {e.code}: {body}.{hint}") from e
 
           def notion_get(path):
@@ -457,7 +541,7 @@ jobs:
           product_name = os.environ["PRODUCT_NAME"]
           product_family = os.environ["PRODUCT_FAMILY"]
           product_page_id = os.environ["PRODUCT_PAGE_ID"]
-          proposals_db_id = os.environ["PROPOSALS_DB_ID"]
+          proposals_ds = os.environ["PROPOSALS_DATA_SOURCE_ID"]
 
           pr_body = open("pr_body.txt", "r", encoding="utf-8").read().strip()
           areas = json.load(open("areas.json", "r", encoding="utf-8"))
@@ -477,7 +561,7 @@ jobs:
           properties_without_status = {k: v for k, v in properties.items() if k != "Status"}
 
           existing = notion_post(
-            f"/v1/databases/{proposals_db_id}/query",
+            f"/v1/data_sources/{proposals_ds}/query",
             {
               "filter": {
                 "property": "PR URL",
@@ -584,7 +668,7 @@ jobs:
               notion_post(
                 "/v1/pages",
                 {
-                  "parent": {"database_id": proposals_db_id},
+                  "parent": {"type": "data_source_id", "data_source_id": proposals_ds},
                   "properties": properties,
                   "children": blocks,
                 },
@@ -593,7 +677,7 @@ jobs:
               created = notion_post(
                 "/v1/pages",
                 {
-                  "parent": {"database_id": proposals_db_id},
+                  "parent": {"type": "data_source_id", "data_source_id": proposals_ds},
                   "properties": properties,
                 },
               )
