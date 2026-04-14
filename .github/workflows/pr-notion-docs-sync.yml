@@ -173,7 +173,8 @@ jobs:
           gh pr view "$PR_NUMBER" --json commits > commits.json 2>/dev/null || echo '{"commits":[]}' > commits.json
           gh pr diff "$PR_NUMBER" --stat 2>/dev/null | head -c 8000 > diff_stat.txt || true
           gh pr diff "$PR_NUMBER" > pr_diff_full.txt 2>/dev/null || echo "(No diff available.)" > pr_diff_full.txt
-          head -c 8000 pr_diff_full.txt > pr_diff.txt
+          # Keep small: GitHub Models gpt-4.1 enforces ~8000-token total input (system + user prompt).
+          head -c 4000 pr_diff_full.txt > pr_diff.txt
 
           python - <<'PY'
           import json
@@ -244,7 +245,7 @@ jobs:
                   "(No changed files matched this PR whose path contains the Data/Models hint.)\n"
               )
 
-          MAX_PATHS = 200
+          MAX_PATHS = 80
           files_list = paths_sorted[:MAX_PATHS]
           files_truncated = len(paths_sorted) > MAX_PATHS
           files_more = max(0, len(paths_sorted) - MAX_PATHS)
@@ -330,7 +331,7 @@ jobs:
                 pass
             return sorted(set(names)), git_paths
 
-          def build_cross_references(components, git_paths, max_chars=4000):
+          def build_cross_references(components, git_paths, max_chars=1200):
             if not components or not git_paths:
               return ""
             lines = []
@@ -483,7 +484,8 @@ jobs:
           import os
           from pathlib import Path
 
-          max_bytes = 12000
+          # Fits GitHub Models input cap with system prompt + rest of doc_user_prompt (~8000 tokens total).
+          max_bytes = 3500
           raw = (os.environ.get("APP_MODELS_EXCERPT_PATH") or "").strip()
           out_path = Path("canonical_models_excerpt.txt")
 
@@ -547,78 +549,110 @@ jobs:
           PLATFORM: ${{ steps.detect_app.outputs.platform }}
         run: |
           set -e
-          printf '%s' "$(cat pr_body.txt 2>/dev/null || true)" > pr_body_raw.txt
-          BODY_LEN=$(wc -c < pr_body_raw.txt | tr -d ' ')
-          head -c 2000 pr_body_raw.txt > pr_body_truncated.txt
-          if [ "${BODY_LEN:-0}" -gt 2000 ]; then
-            echo "" >> pr_body_truncated.txt
-            echo "[... PR description truncated for length ...]" >> pr_body_truncated.txt
-          fi
-          PR_BODY_FINAL=$(cat pr_body_truncated.txt)
-          if [ -z "${PR_BODY_FINAL// }" ]; then
-            PR_BODY_FINAL="No description provided"
-          fi
+          python3 - <<'PY'
+          import os
 
-          CHANGED_FILES=$(cat changed_files.txt 2>/dev/null || echo "No files detected")
-          PR_DIFF=$(cat pr_diff.txt 2>/dev/null || echo "No diff available")
-          CROSS_REFS=$(cat cross_references.txt 2>/dev/null || echo "No cross-references found")
-          IMPACT_ZONES=$(python - <<'PY'
-          import json
+          # GitHub Models (gpt-4.1): 8000-token TOTAL limit for system + user prompt (see 413 errors).
+          # Diffs/code tokenize densely (~1.5–3 chars/token); keep user prompt conservative.
+          MAX_USER_CHARS = 6500
+
+          def clip(s: str, n: int) -> str:
+              s = s or ""
+              if len(s) <= n:
+                  return s
+              return s[:n] + "\n[… truncated …]\n"
+
+          pr_number = os.environ.get("PR_NUMBER", "")
+          pr_title = os.environ.get("PR_TITLE", "")
+          app_name = os.environ.get("APP_NAME", "")
+          platform = os.environ.get("PLATFORM", "")
+
+          pr_body = ""
+          if os.path.isfile("pr_body.txt"):
+              with open("pr_body.txt", "r", encoding="utf-8", errors="replace") as f:
+                  pr_body = f.read()
+          pr_body = clip(pr_body.strip(), 1200) or "No description provided"
+
+          changed = ""
+          if os.path.isfile("changed_files.txt"):
+              with open("changed_files.txt", "r", encoding="utf-8", errors="replace") as f:
+                  changed = f.read()
+          changed = clip(changed, 2000)
+
+          pr_diff = ""
+          if os.path.isfile("pr_diff.txt"):
+              with open("pr_diff.txt", "r", encoding="utf-8", errors="replace") as f:
+                  pr_diff = f.read()
+          pr_diff = clip(pr_diff, 2200)
+
+          cross = ""
+          if os.path.isfile("cross_references.txt"):
+              with open("cross_references.txt", "r", encoding="utf-8", errors="replace") as f:
+                  cross = f.read()
+          cross = clip(cross, 800)
+
+          impact = "(none inferred)"
           try:
-            with open("signals.json", "r", encoding="utf-8") as f:
-              s = json.load(f)
-            z = s.get("impact_zones") or []
-            print("\n".join(f"- {x}" for x in z) if z else "(none inferred)")
+              import json
+              with open("signals.json", "r", encoding="utf-8") as f:
+                  s = json.load(f)
+              z = s.get("impact_zones") or []
+              impact = "\n".join(f"- {x}" for x in z) if z else "(none inferred)"
           except (OSError, json.JSONDecodeError):
-            print("(none inferred)")
-          PY
+              pass
+          impact = clip(impact, 800)
+
+          data_models = ""
+          if os.path.isfile("data_models_prompt.txt"):
+              with open("data_models_prompt.txt", "r", encoding="utf-8", errors="replace") as f:
+                  data_models = f.read()
+          else:
+              data_models = "## Changed files under Data/Models (this PR)\n\n(missing — collect step may have failed.)\n"
+          data_models = clip(data_models, 1200)
+
+          canon = ""
+          if os.path.isfile("canonical_models_excerpt.txt"):
+              with open("canonical_models_excerpt.txt", "r", encoding="utf-8", errors="replace") as f:
+                  canon = f.read()
+          canon = clip(canon, 2000)
+
+          parts = []
+          parts.append(
+              "Generate a documentation brief for this pull request. Structure the answer for our Notion proposal sections:\n\n"
+              "User-facing summary · Models (Firestore / data) · Structure (UI layout) · Behaviour (interactions) · "
+              "Navigation (where from / where to) · Documentation impact · Confidence and gaps.\n"
+          )
+          parts.append(
+              f"## Context\n- **App:** {app_name}\n- **Platform:** {platform}\n- **PR:** #{pr_number} — {pr_title}\n"
+          )
+          parts.append(f"## PR description (author)\n{pr_body}\n")
+          parts.append(f"## Changed files (unique paths)\n{changed}\n")
+          parts.append(f"## Impact zones (path heuristic — use only as a hint)\n{impact}\n")
+          parts.append(f"## Code diff (truncated)\n```\n{pr_diff}\n```\n")
+          parts.append(f"## Cross-references (files referencing touched symbols)\n{cross}\n")
+          parts.append(data_models.rstrip() + "\n")
+          parts.append(
+              "## Canonical reference (read-only; excerpt from this repo — app-models-excerpt-path)\n```\n"
+              + canon
+              + "\n```\n"
           )
 
-          cat > doc_user_prompt.txt << EOF
-          Generate a documentation brief for this pull request. Structure the answer for our Notion proposal sections:
+          text = "\n".join(parts)
+          if len(text) > MAX_USER_CHARS:
+              text = (
+                  text[:MAX_USER_CHARS]
+                  + "\n\n[… User prompt truncated to satisfy GitHub Models 8000-token input limit …]\n"
+              )
 
-          User-facing summary · Models (Firestore / data) · Structure (UI layout) · Behaviour (interactions) ·
-          Navigation (where from / where to) · Documentation impact · Confidence and gaps.
-
-          ## Context
-          - **App:** ${APP_NAME}
-          - **Platform:** ${PLATFORM}
-          - **PR:** #${PR_NUMBER} — ${PR_TITLE}
-
-          ## PR description (author)
-          ${PR_BODY_FINAL}
-
-          ## Changed files (unique paths)
-          ${CHANGED_FILES}
-
-          ## Impact zones (path heuristic — use only as a hint)
-          ${IMPACT_ZONES}
-
-          ## Code diff (truncated)
-          \`\`\`
-          ${PR_DIFF}
-          \`\`\`
-
-          ## Cross-references (files referencing touched symbols)
-          ${CROSS_REFS}
-          EOF
-          echo "" >> doc_user_prompt.txt
-          if [ -f data_models_prompt.txt ]; then
-            cat data_models_prompt.txt >> doc_user_prompt.txt
-          else
-            echo "## Changed files under Data/Models (this PR)" >> doc_user_prompt.txt
-            echo "(data_models_prompt.txt missing — collect step may have failed.)" >> doc_user_prompt.txt
-          fi
-          echo "" >> doc_user_prompt.txt
-          echo "## Canonical reference (read-only; excerpt from this repo — app-models-excerpt-path)" >> doc_user_prompt.txt
-          echo '```' >> doc_user_prompt.txt
-          cat canonical_models_excerpt.txt >> doc_user_prompt.txt
-          echo '```' >> doc_user_prompt.txt
+          with open("doc_user_prompt.txt", "w", encoding="utf-8") as f:
+              f.write(text)
+          PY
 
       - name: Generate documentation brief (AI)
         id: doc_ai
         if: ${{ !inputs['dry-run'] && inputs['use-ai-inference'] }}
         uses: actions/ai-inference@v1
+        # gpt-4.1 on GitHub Models: ~8000-token cap on system + user input (413 if exceeded).
         with:
           model: ${{ inputs['ai-model'] }}
           system-prompt-file: ./doc_system_prompt.txt
@@ -923,7 +957,8 @@ jobs:
                 break
               cursor = data.get("next_cursor")
 
-          def append_blocks_batched(page_id, blocks, batch_size=100):
+          def append_blocks_batched(page_id, blocks, batch_size=15):
+            """Notion rejects oversized request bodies; keep batches small (count + JSON size)."""
             for i in range(0, len(blocks), batch_size):
               chunk = blocks[i : i + batch_size]
               notion_patch(
@@ -976,12 +1011,24 @@ jobs:
               "heading_3": {"rich_text": rich_text_segments((text or "")[:500])},
             }
 
+          PARAGRAPH_MAX_CHARS = 8000  # keep each block's JSON payload bounded
+
           def paragraph_block(text):
             return {
-              "object": "block",
-              "type": "paragraph",
-              "paragraph": {"rich_text": rich_text_segments(text)},
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {"rich_text": rich_text_segments(text)},
             }
+
+          def paragraph_blocks_chunked(text):
+            """One Notion paragraph block per chunk (long AI sections exceed single-block limits)."""
+            t = text or ""
+            if not t.strip():
+                return [paragraph_block(" ")]
+            blocks_out = []
+            for i in range(0, len(t), PARAGRAPH_MAX_CHARS):
+                blocks_out.append(paragraph_block(t[i : i + PARAGRAPH_MAX_CHARS]))
+            return blocks_out
 
           def paragraph_pr_link_block(url):
             u = (url or "")[:2000]
@@ -997,17 +1044,19 @@ jobs:
             }
 
           def bulleted_item_block(text):
+            t = (text or "")[:8000]
             return {
-              "object": "block",
-              "type": "bulleted_list_item",
-              "bulleted_list_item": {"rich_text": rich_text_segments(text)},
+                "object": "block",
+                "type": "bulleted_list_item",
+                "bulleted_list_item": {"rich_text": rich_text_segments(t)},
             }
 
           def numbered_item_block(text):
+            t = (text or "")[:8000]
             return {
-              "object": "block",
-              "type": "numbered_list_item",
-              "numbered_list_item": {"rich_text": rich_text_segments(text)},
+                "object": "block",
+                "type": "numbered_list_item",
+                "numbered_list_item": {"rich_text": rich_text_segments(t)},
             }
 
           pr_url = os.environ["PR_URL"]
@@ -1025,6 +1074,14 @@ jobs:
           if os.path.isfile("doc_brief.txt"):
             with open("doc_brief.txt", "r", encoding="utf-8") as f:
               doc_brief_raw = f.read()
+
+          # Notion API request body limits — avoid "request body too large" on PATCH/POST children.
+          MAX_DOC_BRIEF_CHARS = 55_000
+          if len(doc_brief_raw) > MAX_DOC_BRIEF_CHARS:
+              doc_brief_raw = (
+                  doc_brief_raw[:MAX_DOC_BRIEF_CHARS]
+                  + "\n\n[… Documentation brief truncated for Notion API size limits …]\n"
+              )
 
           def summary_for_notion_property(ai_text, fallback):
             t = (ai_text or "").strip()
@@ -1108,7 +1165,7 @@ jobs:
                 if buf:
                   para = "\n".join(buf).strip()
                   if para:
-                    out.append(paragraph_block(para))
+                    out.extend(paragraph_blocks_chunked(para))
                   buf.clear()
 
               for line in body_lines:
@@ -1143,24 +1200,15 @@ jobs:
               notion_patch(f"/v1/pages/{page_id}", {"properties": properties})
               print(f"Replaced body and updated Proposal page: {page_id}")
           else:
-            if len(blocks) <= 100:
-              notion_post(
+            # Always create the row without inline children — large `children` arrays exceed Notion body limits.
+            created = notion_post(
                 "/v1/pages",
                 {
-                  "parent": {"type": "data_source_id", "data_source_id": proposals_ds},
-                  "properties": properties,
-                  "children": blocks,
+                    "parent": {"type": "data_source_id", "data_source_id": proposals_ds},
+                    "properties": properties,
                 },
-              )
-            else:
-              created = notion_post(
-                "/v1/pages",
-                {
-                  "parent": {"type": "data_source_id", "data_source_id": proposals_ds},
-                  "properties": properties,
-                },
-              )
-              append_blocks_batched(created["id"], blocks)
+            )
+            append_blocks_batched(created["id"], blocks)
             print("Created new Proposal page.")
           PY
 
