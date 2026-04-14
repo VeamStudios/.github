@@ -8,7 +8,7 @@ name: PR Notion Docs Sync
 # repository context. Manual runs: use caller-templates/pr-notion-docs-sync.yml in your app repo.
 #
 # Callers must grant `models: read` for GitHub Models (`actions/ai-inference`) on the documentation brief.
-# Inputs: use-ai-inference (default true), ai-model, max-tokens, canonical-models-repo/ref/path, data-models-path-hint.
+# Inputs: use-ai-inference (default true), ai-model, max-tokens, app-models-excerpt-path, data-models-path-hint.
 
 on:
   workflow_call:
@@ -37,21 +37,11 @@ on:
         required: false
         type: number
         default: 3500
-      canonical-models-repo:
-        description: "Optional org/repo (e.g. VeamStudios/ChecklistInspectorPro-Models) to include a read-only excerpt in the AI prompt"
+      app-models-excerpt-path:
+        description: "Path within this (caller) repo to excerpt for the AI brief — file or directory of Swift models (e.g. iOS App/Data/Models). Capped by workflow."
         required: false
         type: string
-        default: ""
-      canonical-models-ref:
-        description: "Git ref for canonical-models-repo (branch or tag)"
-        required: false
-        type: string
-        default: "main"
-      canonical-models-path:
-        description: "Path within canonical-models-repo to excerpt (capped in workflow)"
-        required: false
-        type: string
-        default: "ios/models.swift"
+        default: "iOS App/Data/Models"
       data-models-path-hint:
         description: "Substring to detect app Data/Models paths in changed files (e.g. Data/Models)"
         required: false
@@ -453,7 +443,7 @@ jobs:
           ### Models (evidence from this PR)
           Domain and storage tied to this PR. Each bullet MUST start with ONE tag:
           - [diff] — only if the detail appears literally in the provided code diff.
-          - [file path] — only if the detail is supported by a changed file path or file listed under Data/Models / canonical reference below.
+          - [file path] — only if the detail is supported by a changed file path or file listed under Data/Models / app models excerpt below.
           - [unverified guess] — only when inferring from naming; never present a guess as fact (keep the tag).
 
           Include Swift types or Firestore paths only when they meet [diff] or [file path]. If changed files contain no Firestore path
@@ -483,33 +473,70 @@ jobs:
           - Prefer product language; cite file or type names only when they disambiguate user-visible behaviour.
           EOF
 
-      - name: Checkout canonical models repo (optional)
-        if: ${{ !inputs['dry-run'] && inputs['use-ai-inference'] && inputs['canonical-models-repo'] != '' }}
-        uses: actions/checkout@v5
-        with:
-          repository: ${{ inputs['canonical-models-repo'] }}
-          ref: ${{ inputs['canonical-models-ref'] }}
-          path: canonical-models
-          fetch-depth: 1
-
-      - name: Write canonical models excerpt
-        if: ${{ !inputs['dry-run'] && inputs['use-ai-inference'] && inputs['canonical-models-repo'] != '' }}
+      - name: Write app models excerpt (this repo)
+        if: ${{ !inputs['dry-run'] && inputs['use-ai-inference'] }}
         env:
-          CANONICAL_PATH: ${{ inputs['canonical-models-path'] }}
+          APP_MODELS_EXCERPT_PATH: ${{ inputs['app-models-excerpt-path'] }}
         run: |
           set -e
-          if [ -f "canonical-models/${CANONICAL_PATH}" ]; then
-            head -c 12000 "canonical-models/${CANONICAL_PATH}" > canonical_models_excerpt.txt
-          else
-            echo "(File not found in canonical repo: ${CANONICAL_PATH})" > canonical_models_excerpt.txt
-          fi
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
 
-      - name: Ensure canonical models excerpt file exists
-        if: ${{ !inputs['dry-run'] && inputs['use-ai-inference'] }}
-        run: |
-          if [ ! -f canonical_models_excerpt.txt ]; then
-            echo "(Canonical models repo not configured; set workflow_call inputs canonical-models-repo to fetch.)" > canonical_models_excerpt.txt
-          fi
+          max_bytes = 12000
+          raw = (os.environ.get("APP_MODELS_EXCERPT_PATH") or "").strip()
+          out_path = Path("canonical_models_excerpt.txt")
+
+          if not raw:
+              out_path.write_text(
+                  "(app-models-excerpt-path is empty; set workflow_call input app-models-excerpt-path to a file or directory.)\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          p = Path(raw)
+          if not p.exists():
+              out_path.write_text(
+                  f"(Path not found in this repository checkout: {raw})\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          def clip(s: str) -> str:
+              b = s.encode("utf-8")
+              if len(b) <= max_bytes:
+                  return s
+              return b[:max_bytes].decode("utf-8", errors="replace")
+
+          if p.is_file():
+              text = p.read_text(encoding="utf-8", errors="replace")
+              out_path.write_text(clip(text), encoding="utf-8")
+              raise SystemExit(0)
+
+          # Directory: concatenate Swift sources with file headers (same tree as checkout)
+          parts: list[str] = []
+          for f in sorted(p.rglob("*.swift")):
+              if not f.is_file():
+                  continue
+              try:
+                  rel = f.resolve().relative_to(Path.cwd().resolve())
+              except ValueError:
+                  rel = f
+              try:
+                  body = f.read_text(encoding="utf-8", errors="replace")
+              except OSError:
+                  continue
+              parts.append(f"\n// --- {rel} ---\n{body}")
+
+          if not parts:
+              out_path.write_text(
+                  f"(No .swift files under directory: {raw})\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          out_path.write_text(clip("".join(parts)), encoding="utf-8")
+          PY
 
       - name: Create documentation brief user prompt
         if: ${{ !inputs['dry-run'] && inputs['use-ai-inference'] }}
@@ -583,7 +610,7 @@ jobs:
             echo "(data_models_prompt.txt missing — collect step may have failed.)" >> doc_user_prompt.txt
           fi
           echo "" >> doc_user_prompt.txt
-          echo "## Canonical reference (read-only; excerpt from models repo if configured)" >> doc_user_prompt.txt
+          echo "## Canonical reference (read-only; excerpt from this repo — app-models-excerpt-path)" >> doc_user_prompt.txt
           echo '```' >> doc_user_prompt.txt
           cat canonical_models_excerpt.txt >> doc_user_prompt.txt
           echo '```' >> doc_user_prompt.txt
