@@ -390,32 +390,39 @@ jobs:
         run: |
           cat > doc_system_prompt.txt << 'EOF'
           You are a senior technical writer and product documentation strategist. Your output will live in Notion and
-          be consumed by Notion AI and human editors to update customer help, in-app guidance, and internal product docs.
+          be consumed by Notion AI and human editors to align with our proposal tabs: Models, Structure, Behaviour, Navigation.
 
-          RESPONSE FORMAT — use exactly these Markdown section headers (###):
+          RESPONSE FORMAT — use exactly these Markdown section headers (###) in this order; British spelling "Behaviour":
 
           ### User-facing summary
-          2–4 sentences in plain language. What changed from the customer’s perspective. No file names or stack traces.
+          2–4 sentences in plain language. What changed from the customer’s perspective. No stack traces.
 
-          ### Features and behavior
-          Bullet list: concrete capabilities, screens, or flows affected. Name UI areas as a user would see them.
+          ### Models
+          Firestore (or other backend) data used for this feature: collection paths, document shapes, field names,
+          sync/local caches—only what you can infer from the PR. Use bullet points. If nothing data-related appears: write "None identified from this PR."
+
+          ### Structure
+          Layout of the UI wherever this feature appears: screens, panels, sections, stacks, sheets—where elements live
+          on screen. Bullet list; name areas as users see them.
+
+          ### Behaviour
+          What happens when the user interacts: taps, toggles, gestures, saves, validation, loading and error states,
+          permissions—outcomes the user notices. Bullet list ordered roughly in flow order.
+
+          ### Navigation
+          Where the user comes from and where they go: entry points, destinations, deep links, tabs, back/dismiss behaviour.
+          Use clear "From → To" bullets or short arrows. Cover only routes touched by this PR.
 
           ### Documentation impact
-          Bullet list: which help topics, articles, or sections to update, merge, or add—or say explicitly if no doc updates are needed.
-
-          ### Terminology and UI strings
-          Bullet list: new or renamed buttons, menus, toggles, settings, or feature names—or "None identified" if none.
-
-          ### Edge cases and limitations
-          Bullet list: platform-specific behavior, offline/permissions caveats, or "None identified".
+          Bullet list: help articles, release notes, or internal docs to add or update—or "None" if not applicable.
 
           ### Confidence and gaps
-          Short paragraph: what you inferred from the PR vs. what remains unclear (especially if the diff or description is thin).
+          Short paragraph: what you inferred from the diff vs. what is unclear. Say if Firestore paths are guessed from naming only.
 
           RULES:
+          - Fill every section. Use "None identified" when a section has no signal in the PR—do not invent Firestore paths or screens.
           - Be specific; avoid generic filler ("verify functionality", "test thoroughly").
-          - Prefer product language over code symbols; mention implementation only when it clarifies user-visible behavior.
-          - If uncertain, say so in Confidence and gaps—do not invent features.
+          - Prefer product language; cite file or type names only when they disambiguate user-visible behaviour.
           EOF
 
       - name: Create documentation brief user prompt
@@ -455,8 +462,10 @@ jobs:
           )
 
           cat > doc_user_prompt.txt << EOF
-          Generate a documentation brief for this pull request. The brief must help Notion AI and writers update
-          product documentation accurately and consistently.
+          Generate a documentation brief for this pull request. Structure the answer for our Notion proposal sections:
+
+          User-facing summary · Models (Firestore / data) · Structure (UI layout) · Behaviour (interactions) ·
+          Navigation (where from / where to) · Documentation impact · Confidence and gaps.
 
           ## Context
           - **App:** ${APP_NAME}
@@ -896,14 +905,29 @@ jobs:
             t = (ai_text or "").strip()
             if not t:
               return (fallback or "")[:2000]
-            m = re.search(
-              r"###\s*User-facing\s+summary\s*\n([\s\S]*?)(?=\n###\s|\Z)",
-              t,
-              re.IGNORECASE,
-            )
-            if m:
-              body = m.group(1).strip().replace("\n", " ")
-              return body[:2000] if body else t[:2000]
+
+            def section_after_heading(name):
+              m = re.search(
+                rf"###\s*{name}\s*\n([\s\S]*?)(?=\n###\s|\Z)",
+                t,
+                re.IGNORECASE,
+              )
+              return (m.group(1) or "").strip() if m else ""
+
+            for heading in ("User-facing summary", "Summary", "Overview"):
+              body = section_after_heading(heading)
+              if body:
+                return body.replace("\n", " ").strip()[:2000]
+
+            for heading in ("Behaviour", "Behavior", "Navigation", "Models"):
+              body = section_after_heading(heading)
+              if not body:
+                continue
+              for line in body.split("\n"):
+                line = re.sub(r"^[-*]\s*", "", line.strip())
+                line = re.sub(r"\*\*", "", line).strip()
+                if line and "none identified" not in line.lower():
+                  return line[:2000]
             return t[:2000]
 
           base_summary = summary_line or f"{total_files} files across {', '.join(areas)}"
