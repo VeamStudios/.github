@@ -797,11 +797,57 @@ jobs:
                 {"position": {"type": "end"}, "children": chunk},
               )
 
+          def _chunk_string(s, max_chunk):
+            return [s[i : i + max_chunk] for i in range(0, len(s), max_chunk)] if s else []
+
+          def _plain_text_segments(plain, max_chunk):
+            out = []
+            for ch in _chunk_string(plain, max_chunk):
+              if ch:
+                ch = ch.replace("**", "")
+                out.append({"type": "text", "text": {"content": ch}})
+            return out
+
+          def rich_text_segments(s, max_chunk=1800):
+            """Map inline Markdown **bold** to Notion rich_text (bold annotation)."""
+            s = (s or "").replace("\r\n", "\n")
+            if not s.strip():
+              return [{"type": "text", "text": {"content": " "}}]
+            segments = []
+            pos = 0
+            for m in re.finditer(r"\*\*(.+?)\*\*", s, re.DOTALL):
+              if m.start() > pos:
+                plain = s[pos : m.start()]
+                segments.extend(_plain_text_segments(plain, max_chunk))
+              for chunk in _chunk_string(m.group(1), max_chunk):
+                if chunk:
+                  segments.append(
+                      {
+                          "type": "text",
+                          "text": {"content": chunk},
+                          "annotations": {"bold": True},
+                      }
+                  )
+              pos = m.end()
+            if pos < len(s):
+              segments.extend(_plain_text_segments(s[pos:], max_chunk))
+            if not segments:
+              return [{"type": "text", "text": {"content": " "}}]
+            return segments
+
           def heading_block(text):
-            return {"object": "block", "type": "heading_3", "heading_3": {"rich_text": [{"type": "text", "text": {"content": text}}]}}
+            return {
+              "object": "block",
+              "type": "heading_3",
+              "heading_3": {"rich_text": rich_text_segments((text or "")[:500])},
+            }
 
           def paragraph_block(text):
-            return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": text[:1800]}}]}}
+            return {
+              "object": "block",
+              "type": "paragraph",
+              "paragraph": {"rich_text": rich_text_segments(text)},
+            }
 
           def paragraph_pr_link_block(url):
             u = (url or "")[:2000]
@@ -820,14 +866,14 @@ jobs:
             return {
               "object": "block",
               "type": "bulleted_list_item",
-              "bulleted_list_item": {"rich_text": [{"type": "text", "text": {"content": text[:1800]}}]},
+              "bulleted_list_item": {"rich_text": rich_text_segments(text)},
             }
 
           def numbered_item_block(text):
             return {
               "object": "block",
               "type": "numbered_list_item",
-              "numbered_list_item": {"rich_text": [{"type": "text", "text": {"content": text[:1800]}}]},
+              "numbered_list_item": {"rich_text": rich_text_segments(text)},
             }
 
           pr_url = os.environ["PR_URL"]
@@ -885,10 +931,6 @@ jobs:
             },
           ).get("results", [])
 
-          def paragraph_chunks(text, size=1800):
-            t = text or ""
-            return [t[i:i+size] for i in range(0, len(t), size)] if t else []
-
           def markdown_doc_brief_to_blocks(text):
             out = []
             t = (text or "").strip()
@@ -917,8 +959,7 @@ jobs:
                 if buf:
                   para = "\n".join(buf).strip()
                   if para:
-                    for chunk in paragraph_chunks(para):
-                      out.append(paragraph_block(chunk))
+                    out.append(paragraph_block(para))
                   buf.clear()
 
               for line in body_lines:
@@ -928,10 +969,10 @@ jobs:
                   continue
                 if stripped.startswith(("- ", "* ")):
                   flush_buf()
-                  out.append(bulleted_item_block(stripped[2:].strip()[:1800]))
+                  out.append(bulleted_item_block(stripped[2:].strip()))
                 elif re.match(r"^\d+\.\s+", stripped):
                   flush_buf()
-                  out.append(numbered_item_block(re.sub(r"^\d+\.\s+", "", stripped)[:1800]))
+                  out.append(numbered_item_block(re.sub(r"^\d+\.\s+", "", stripped)))
                 else:
                   buf.append(stripped)
               flush_buf()
