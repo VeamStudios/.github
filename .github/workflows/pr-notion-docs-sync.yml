@@ -6,6 +6,9 @@ name: PR Notion Docs Sync
 # Only workflow_call: runs in the *caller's* repository (app repo). Do not add
 # workflow_dispatch here — a manual run from this .github repo would use the wrong
 # repository context. Manual runs: use caller-templates/pr-notion-docs-sync.yml in your app repo.
+#
+# Callers must grant `models: read` for GitHub Models (`actions/ai-inference`) on the documentation brief.
+# Inputs: use-ai-inference (default true), ai-model, max-tokens.
 
 on:
   workflow_call:
@@ -19,6 +22,21 @@ on:
         required: false
         type: boolean
         default: false
+      use-ai-inference:
+        description: "Use GitHub Models (actions/ai-inference) to generate a documentation brief for Notion"
+        required: false
+        type: boolean
+        default: true
+      ai-model:
+        description: "Model id for documentation brief generation"
+        required: false
+        type: string
+        default: "openai/gpt-5.2"
+      max-tokens:
+        description: "Max tokens for the documentation brief response"
+        required: false
+        type: number
+        default: 3500
     secrets:
       notion-token:
         description: "Notion integration token"
@@ -30,6 +48,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      models: read
     env:
       # https://developers.notion.com/reference/versioning — bump with Notion upgrade guides
       NOTION_VERSION: "2026-03-11"
@@ -42,6 +61,31 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Detect app and platform (same heuristics as QA Pipeline)
+        id: detect_app
+        run: |
+          REPO_BASENAME=$(basename "${{ github.repository }}")
+
+          PLATFORM="Unknown Platform"
+          IFS='-' read -ra SEGMENTS <<< "$REPO_BASENAME"
+          for SEGMENT in "${SEGMENTS[@]}"; do
+            case "$SEGMENT" in
+              iOS)      PLATFORM="iOS/iPadOS"; break ;;
+              Android)  PLATFORM="Android"; break ;;
+              Web)      PLATFORM="Web"; break ;;
+            esac
+          done
+
+          case "$REPO_BASENAME" in
+            *CIP*|*ChecklistInspector*)  APP_NAME="Checklist Inspector Pro" ;;
+            *SAP*|*SiteAudit*)           APP_NAME="Site Audit Pro" ;;
+            *)                           APP_NAME="${REPO_BASENAME%%-*}" ;;
+          esac
+
+          echo "app_name=$APP_NAME" >> "$GITHUB_OUTPUT"
+          echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
+          echo "Detected app: $APP_NAME | platform: $PLATFORM"
 
       - name: Parse Notion database IDs and resolve PR number
         id: pr_and_db_ids
@@ -107,6 +151,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.pr_and_db_ids.outputs.pr_number }}
+          APP_NAME: ${{ steps.detect_app.outputs.app_name }}
+          PLATFORM: ${{ steps.detect_app.outputs.platform }}
         run: |
           set -e
           gh pr view "$PR_NUMBER" \
@@ -114,13 +160,19 @@ jobs:
             > pr_view.json
           gh pr view "$PR_NUMBER" --json commits > commits.json 2>/dev/null || echo '{"commits":[]}' > commits.json
           gh pr diff "$PR_NUMBER" --stat 2>/dev/null | head -c 8000 > diff_stat.txt || true
+          gh pr diff "$PR_NUMBER" > pr_diff_full.txt 2>/dev/null || echo "(No diff available.)" > pr_diff_full.txt
+          head -c 8000 pr_diff_full.txt > pr_diff.txt
 
           python - <<'PY'
           import json
           import os
+          import re
+          import subprocess
           from collections import Counter
 
           pr_number = os.environ["PR_NUMBER"]
+          app_name = os.environ.get("APP_NAME", "").strip()
+          platform = os.environ.get("PLATFORM", "").strip()
 
           with open("pr_view.json", "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -186,6 +238,91 @@ jobs:
           if area_counts:
             primary_area = max(area_counts.items(), key=lambda x: x[1])[0]
 
+          def impact_zones_from_paths(paths_list):
+            zones = []
+            for p in paths_list:
+              parts = p.replace("\\", "/").split("/")
+              parts = [x for x in parts if x]
+              if not parts:
+                continue
+              if len(parts) >= 2 and parts[0].lower().startswith("ios"):
+                zone = "/".join(parts[1:3]) if len(parts) >= 3 else parts[1]
+              elif len(parts) >= 2:
+                zone = "/".join(parts[:2])
+              else:
+                zone = parts[0]
+              zones.append(zone)
+            return sorted(set(zones))[:30]
+
+          def extract_components_for_platform(plat: str, paths_list):
+            pl = (plat or "").lower()
+            if "ios" in pl or "ipados" in pl:
+              file_re = re.compile(r"\.swift$")
+              pat = re.compile(r"(class|struct|enum|protocol) [A-Za-z0-9_]+")
+              git_paths = ["*.swift"]
+            elif pl == "android":
+              file_re = re.compile(r"\.(kt|java)$")
+              pat = re.compile(r"(class|interface|object) [A-Za-z0-9_]+")
+              git_paths = ["*.kt", "*.java"]
+            elif pl == "web":
+              file_re = re.compile(r"\.(jsx?|tsx?)$")
+              pat = re.compile(r"(export )?(function|const|class) [A-Za-z0-9_]+")
+              git_paths = ["*.js", "*.jsx", "*.ts", "*.tsx"]
+            else:
+              return [], []
+
+            names = []
+            for path in paths_list:
+              if not file_re.search(path):
+                continue
+              if not os.path.isfile(path):
+                continue
+              try:
+                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                  content = f.read()
+                for m in pat.finditer(content):
+                  line = m.group(0)
+                  tail = line.split()[-1]
+                  if tail:
+                    names.append(tail)
+              except OSError:
+                pass
+            return sorted(set(names)), git_paths
+
+          def build_cross_references(components, git_paths, max_chars=4000):
+            if not components or not git_paths:
+              return ""
+            lines = []
+            for comp in components[:40]:
+              lines.append(f"=== Usage of {comp} ===")
+              try:
+                cmd = ["git", "grep", "-l", comp, "--"] + git_paths
+                r = subprocess.run(
+                  cmd,
+                  cwd=os.getcwd(),
+                  capture_output=True,
+                  text=True,
+                  timeout=120,
+                )
+                out = (r.stdout or "").strip().splitlines()[:20]
+                lines.extend(out)
+              except (subprocess.TimeoutExpired, OSError):
+                pass
+              lines.append("")
+            text = "\n".join(lines)
+            if len(text) > max_chars:
+              text = text[:max_chars] + "\n[... truncated ...]"
+            return text
+
+          impact_zones = impact_zones_from_paths(paths_sorted)
+          component_names, git_globs = extract_components_for_platform(platform, paths_sorted)
+          cross_references = build_cross_references(component_names, git_globs)
+
+          pr_diff_excerpt = ""
+          if os.path.isfile("pr_diff.txt"):
+            with open("pr_diff.txt", "r", encoding="utf-8", errors="replace") as f:
+              pr_diff_excerpt = f.read()
+
           def fmt_int(v):
             return str(v) if v is not None else "?"
 
@@ -197,6 +334,8 @@ jobs:
           )[:2000]
 
           signals = {
+            "app_name": app_name,
+            "platform": platform,
             "base_ref": base_ref,
             "head_ref": head_ref,
             "labels": label_names,
@@ -211,6 +350,12 @@ jobs:
             "diff_stat_max_chars": 8000,
             "primary_area": primary_area,
             "areas_breakdown": dict(area_counts),
+            "impact_zones": impact_zones,
+            "component_names": component_names[:80],
+            "cross_references": cross_references,
+            "cross_references_max_chars": 4000,
+            "pr_diff_excerpt": pr_diff_excerpt,
+            "pr_diff_max_chars": 8000,
           }
           with open("signals.json", "w", encoding="utf-8") as f:
             json.dump(signals, f, indent=2)
@@ -226,10 +371,142 @@ jobs:
           with open("pr_body.txt", "w", encoding="utf-8") as f:
             f.write(pr_body)
 
+          with open("pr_title.txt", "w", encoding="utf-8") as f:
+            f.write(pr_title)
+
+          with open("changed_files.txt", "w", encoding="utf-8") as f:
+            f.write("\n".join(paths_sorted))
+
+          with open("cross_references.txt", "w", encoding="utf-8") as f:
+            f.write(cross_references or "")
+
           areas_json = json.dumps(areas)
           with open("areas.json", "w", encoding="utf-8") as f:
             f.write(areas_json)
           PY
+
+      - name: Create documentation brief system prompt
+        if: ${{ !inputs['dry-run'] && inputs['use-ai-inference'] }}
+        run: |
+          cat > doc_system_prompt.txt << 'EOF'
+          You are a senior technical writer and product documentation strategist. Your output will live in Notion and
+          be consumed by Notion AI and human editors to update customer help, in-app guidance, and internal product docs.
+
+          RESPONSE FORMAT — use exactly these Markdown section headers (###):
+
+          ### User-facing summary
+          2–4 sentences in plain language. What changed from the customer’s perspective. No file names or stack traces.
+
+          ### Features and behavior
+          Bullet list: concrete capabilities, screens, or flows affected. Name UI areas as a user would see them.
+
+          ### Documentation impact
+          Bullet list: which help topics, articles, or sections to update, merge, or add—or say explicitly if no doc updates are needed.
+
+          ### Terminology and UI strings
+          Bullet list: new or renamed buttons, menus, toggles, settings, or feature names—or "None identified" if none.
+
+          ### Edge cases and limitations
+          Bullet list: platform-specific behavior, offline/permissions caveats, or "None identified".
+
+          ### Confidence and gaps
+          Short paragraph: what you inferred from the PR vs. what remains unclear (especially if the diff or description is thin).
+
+          RULES:
+          - Be specific; avoid generic filler ("verify functionality", "test thoroughly").
+          - Prefer product language over code symbols; mention implementation only when it clarifies user-visible behavior.
+          - If uncertain, say so in Confidence and gaps—do not invent features.
+          EOF
+
+      - name: Create documentation brief user prompt
+        if: ${{ !inputs['dry-run'] && inputs['use-ai-inference'] }}
+        env:
+          PR_NUMBER: ${{ steps.pr_and_db_ids.outputs.pr_number }}
+          PR_TITLE: ${{ steps.collect_pr.outputs.pr_title }}
+          APP_NAME: ${{ steps.detect_app.outputs.app_name }}
+          PLATFORM: ${{ steps.detect_app.outputs.platform }}
+        run: |
+          set -e
+          printf '%s' "$(cat pr_body.txt 2>/dev/null || true)" > pr_body_raw.txt
+          BODY_LEN=$(wc -c < pr_body_raw.txt | tr -d ' ')
+          head -c 2000 pr_body_raw.txt > pr_body_truncated.txt
+          if [ "${BODY_LEN:-0}" -gt 2000 ]; then
+            echo "" >> pr_body_truncated.txt
+            echo "[... PR description truncated for length ...]" >> pr_body_truncated.txt
+          fi
+          PR_BODY_FINAL=$(cat pr_body_truncated.txt)
+          if [ -z "${PR_BODY_FINAL// }" ]; then
+            PR_BODY_FINAL="No description provided"
+          fi
+
+          CHANGED_FILES=$(cat changed_files.txt 2>/dev/null || echo "No files detected")
+          PR_DIFF=$(cat pr_diff.txt 2>/dev/null || echo "No diff available")
+          CROSS_REFS=$(cat cross_references.txt 2>/dev/null || echo "No cross-references found")
+          IMPACT_ZONES=$(python - <<'PY'
+          import json
+          try:
+            with open("signals.json", "r", encoding="utf-8") as f:
+              s = json.load(f)
+            z = s.get("impact_zones") or []
+            print("\n".join(f"- {x}" for x in z) if z else "(none inferred)")
+          except (OSError, json.JSONDecodeError):
+            print("(none inferred)")
+          PY
+          )
+
+          cat > doc_user_prompt.txt << EOF
+          Generate a documentation brief for this pull request. The brief must help Notion AI and writers update
+          product documentation accurately and consistently.
+
+          ## Context
+          - **App:** ${APP_NAME}
+          - **Platform:** ${PLATFORM}
+          - **PR:** #${PR_NUMBER} — ${PR_TITLE}
+
+          ## PR description (author)
+          ${PR_BODY_FINAL}
+
+          ## Changed files (unique paths)
+          ${CHANGED_FILES}
+
+          ## Impact zones (path heuristic — use only as a hint)
+          ${IMPACT_ZONES}
+
+          ## Code diff (truncated)
+          \`\`\`
+          ${PR_DIFF}
+          \`\`\`
+
+          ## Cross-references (files referencing touched symbols)
+          ${CROSS_REFS}
+          EOF
+
+      - name: Generate documentation brief (AI)
+        id: doc_ai
+        if: ${{ !inputs['dry-run'] && inputs['use-ai-inference'] }}
+        uses: actions/ai-inference@v1
+        with:
+          model: ${{ inputs['ai-model'] }}
+          system-prompt-file: ./doc_system_prompt.txt
+          prompt-file: ./doc_user_prompt.txt
+          max-tokens: ${{ inputs['max-tokens'] }}
+
+      - name: Write documentation brief file for Notion
+        if: ${{ !inputs['dry-run'] }}
+        env:
+          USE_AI_INFERENCE: ${{ inputs['use-ai-inference'] }}
+          RESPONSE_FILE: ${{ steps.doc_ai.outputs.response-file }}
+        run: |
+          set -e
+          if [ "${USE_AI_INFERENCE}" = "true" ]; then
+            if [ -n "${RESPONSE_FILE:-}" ] && [ -f "${RESPONSE_FILE}" ]; then
+              cp "${RESPONSE_FILE}" doc_brief.txt
+            else
+              echo "(AI documentation brief unavailable — check models: read permission and actions/ai-inference output.)" > doc_brief.txt
+            fi
+          else
+            : > doc_brief.txt
+          fi
 
       # Notion API 2025-09-03+ (incl. 2026-03-11): row queries use data sources, not POST .../databases/.../query.
       # See https://developers.notion.com/docs/upgrade-faqs-2025-09-03
@@ -422,17 +699,15 @@ jobs:
           PR_URL: ${{ steps.collect_pr.outputs.pr_url }}
           PR_NUMBER: ${{ steps.pr_and_db_ids.outputs.pr_number }}
           PR_TITLE: ${{ steps.collect_pr.outputs.pr_title }}
-          PR_SHA: ${{ steps.collect_pr.outputs.pr_sha }}
-          CHANGE_SUMMARY: ${{ steps.collect_pr.outputs.change_summary }}
           TOTAL_FILES: ${{ steps.collect_pr.outputs.total_files }}
           SUMMARY_LINE: ${{ steps.collect_pr.outputs.summary_line }}
           PRODUCT_PAGE_ID: ${{ steps.resolve_product.outputs.product_page_id }}
-          PRODUCT_FAMILY: ${{ steps.resolve_product.outputs.product_family }}
           PRODUCT_NAME: ${{ steps.resolve_product.outputs.product_name }}
         run: |
           python - <<'PY'
           import json
           import os
+          import re
           import urllib.error
           import urllib.parse
           import urllib.request
@@ -528,26 +803,65 @@ jobs:
           def paragraph_block(text):
             return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": text[:1800]}}]}}
 
-          def todo_block(text):
-            return {"object": "block", "type": "to_do", "to_do": {"checked": False, "rich_text": [{"type": "text", "text": {"content": text[:1800]}}]}}
+          def paragraph_pr_link_block(url):
+            u = (url or "")[:2000]
+            return {
+              "object": "block",
+              "type": "paragraph",
+              "paragraph": {
+                "rich_text": [
+                  {"type": "text", "text": {"content": "Pull request: "}},
+                  {"type": "text", "text": {"content": u, "link": {"url": u}}},
+                ]
+              },
+            }
+
+          def bulleted_item_block(text):
+            return {
+              "object": "block",
+              "type": "bulleted_list_item",
+              "bulleted_list_item": {"rich_text": [{"type": "text", "text": {"content": text[:1800]}}]},
+            }
+
+          def numbered_item_block(text):
+            return {
+              "object": "block",
+              "type": "numbered_list_item",
+              "numbered_list_item": {"rich_text": [{"type": "text", "text": {"content": text[:1800]}}]},
+            }
 
           pr_url = os.environ["PR_URL"]
           pr_number = os.environ["PR_NUMBER"]
           pr_title = os.environ["PR_TITLE"]
-          pr_sha = os.environ["PR_SHA"]
-          change_summary = os.environ["CHANGE_SUMMARY"]
           total_files = os.environ["TOTAL_FILES"]
           summary_line = (os.environ.get("SUMMARY_LINE") or "").strip()
           product_name = os.environ["PRODUCT_NAME"]
-          product_family = os.environ["PRODUCT_FAMILY"]
           product_page_id = os.environ["PRODUCT_PAGE_ID"]
           proposals_ds = os.environ["PROPOSALS_DATA_SOURCE_ID"]
 
-          pr_body = open("pr_body.txt", "r", encoding="utf-8").read().strip()
           areas = json.load(open("areas.json", "r", encoding="utf-8"))
 
-          summary_prop = summary_line or f"{total_files} files across {', '.join(areas)}"
-          summary_prop = summary_prop[:2000]
+          doc_brief_raw = ""
+          if os.path.isfile("doc_brief.txt"):
+            with open("doc_brief.txt", "r", encoding="utf-8") as f:
+              doc_brief_raw = f.read()
+
+          def summary_for_notion_property(ai_text, fallback):
+            t = (ai_text or "").strip()
+            if not t:
+              return (fallback or "")[:2000]
+            m = re.search(
+              r"###\s*User-facing\s+summary\s*\n([\s\S]*?)(?=\n###\s|\Z)",
+              t,
+              re.IGNORECASE,
+            )
+            if m:
+              body = m.group(1).strip().replace("\n", " ")
+              return body[:2000] if body else t[:2000]
+            return t[:2000]
+
+          base_summary = summary_line or f"{total_files} files across {', '.join(areas)}"
+          summary_prop = summary_for_notion_property(doc_brief_raw, base_summary)[:2000]
 
           properties = {
             "Proposal": {"title": [{"text": {"content": f"PR #{pr_number} - {pr_title}"}}]},
@@ -571,85 +885,60 @@ jobs:
             },
           ).get("results", [])
 
-          blocks = [
-            heading_block("PR Context"),
-            paragraph_block(f"PR: {pr_url}"),
-            paragraph_block(f"Product: {product_name} ({product_family})"),
-            paragraph_block(f"Head SHA: {pr_sha}"),
-            paragraph_block(f"Scope: {total_files} files — {change_summary}"),
-          ]
-
-          if pr_body:
-            blocks.append(heading_block("PR Description"))
-            for chunk in [pr_body[i:i+1800] for i in range(0, min(len(pr_body), 3600), 1800)]:
-              blocks.append(paragraph_block(chunk))
-
-          signals = {}
-          if os.path.isfile("signals.json"):
-            with open("signals.json", "r", encoding="utf-8") as sf:
-              signals = json.load(sf)
-
           def paragraph_chunks(text, size=1800):
             t = text or ""
             return [t[i:i+size] for i in range(0, len(t), size)] if t else []
 
-          blocks.append(heading_block("Signals for documentation agent"))
-          blocks.append(paragraph_block(
-            "Structured inputs for the Notion documentation agent. This is not final Feature Overview text; "
-            "the agent produces that from the Proposals row, PR link, description, and these signals."
-          ))
-          if signals:
-            meta_lines = [
-              f"Base ref: {signals.get('base_ref', '')} / Head ref: {signals.get('head_ref', '')}",
-            ]
-            if signals.get("primary_area"):
-              meta_lines.append(f"Primary area (heuristic): {signals['primary_area']}")
-            ad = signals.get("additions")
-            dd = signals.get("deletions")
-            meta_lines.append(
-              f"Aggregate additions/deletions (GitHub): +{ad if ad is not None else '?'}/-{dd if dd is not None else '?'}"
-            )
-            if signals.get("labels"):
-              meta_lines.append("Labels: " + ", ".join(signals["labels"]))
-            subs = signals.get("commit_subjects") or []
-            if subs:
-              joined = " | ".join(subs[:15])
-              meta_lines.append("Commit subjects (capped): " + joined[:1500])
-            ft = signals.get("files_total", 0)
-            if signals.get("files_truncated"):
-              meta_lines.append(
-                f"Changed files (unique paths): {ft}, listing truncated below (+{signals.get('files_more', 0)} more)"
-              )
-            else:
-              meta_lines.append(f"Changed files (unique paths): {ft}")
-            for chunk in paragraph_chunks("\n".join(meta_lines)):
-              blocks.append(paragraph_block(chunk))
-            fl = signals.get("files") or []
-            if fl:
-              fl_text = "\n".join(fl)
-              blocks.append(heading_block("Changed paths (capped)"))
-              for chunk in paragraph_chunks(fl_text):
-                blocks.append(paragraph_block(chunk))
-            ds = (signals.get("diff_stat") or "").strip()
-            if ds:
-              blocks.append(heading_block("Diff stat (may be truncated)"))
-              for chunk in paragraph_chunks(ds[:8000]):
-                blocks.append(paragraph_block(chunk))
-          else:
-            blocks.append(paragraph_block("(No signals.json — PR context may be incomplete.)"))
+          def markdown_doc_brief_to_blocks(text):
+            out = []
+            t = (text or "").strip()
+            if not t:
+              return [
+                paragraph_block(
+                  "(No AI documentation brief — enable use-ai-inference or inspect the workflow log.)"
+                )
+              ]
+            sections = re.split(r"\n(?=###\s)", t)
+            for sec in sections:
+              sec = sec.strip()
+              if not sec:
+                continue
+              lines = sec.split("\n")
+              first = lines[0].strip()
+              if first.startswith("###"):
+                title = re.sub(r"^#+\s*", "", first).strip()[:200]
+                out.append(heading_block(title))
+                body_lines = lines[1:]
+              else:
+                body_lines = lines
+              buf = []
 
-          blocks.extend([
-            heading_block("Agent task"),
-            paragraph_block("Review the linked PR and propose documentation updates."),
-            todo_block("Read the PR via the link above to understand the changes"),
-            todo_block("Identify impacted existing docs or new docs to create"),
-            todo_block("Write proposed changes with rationale and acceptance criteria"),
-            todo_block("Set Status to Proposed when complete"),
-            heading_block("Review checklist"),
-            todo_block("Validate proposed targets against the PR"),
-            todo_block("Confirm acceptance criteria are concrete and testable"),
-            todo_block("A team member sets Status to Approved or Rejected"),
-          ])
+              def flush_buf():
+                if buf:
+                  para = "\n".join(buf).strip()
+                  if para:
+                    for chunk in paragraph_chunks(para):
+                      out.append(paragraph_block(chunk))
+                  buf.clear()
+
+              for line in body_lines:
+                stripped = line.strip()
+                if not stripped:
+                  flush_buf()
+                  continue
+                if stripped.startswith(("- ", "* ")):
+                  flush_buf()
+                  out.append(bulleted_item_block(stripped[2:].strip()[:1800]))
+                elif re.match(r"^\d+\.\s+", stripped):
+                  flush_buf()
+                  out.append(numbered_item_block(re.sub(r"^\d+\.\s+", "", stripped)[:1800]))
+                else:
+                  buf.append(stripped)
+              flush_buf()
+            return out
+
+          blocks = [paragraph_pr_link_block(pr_url)]
+          blocks.extend(markdown_doc_brief_to_blocks(doc_brief_raw))
 
           if existing:
             page_id = existing[0]["id"]
@@ -694,10 +983,13 @@ jobs:
           TOTAL_FILES: ${{ steps.collect_pr.outputs.total_files }}
           SUMMARY_LINE: ${{ steps.collect_pr.outputs.summary_line }}
           PRODUCT_NAME: ${{ steps.resolve_product.outputs.product_name }}
+          APP_NAME: ${{ steps.detect_app.outputs.app_name }}
+          PLATFORM: ${{ steps.detect_app.outputs.platform }}
         run: |
           echo "Dry run — proposal request summary:"
           echo "  PR: ${PR_URL}"
           echo "  Title: ${PR_TITLE}"
-          echo "  Product: ${PRODUCT_NAME}"
+          echo "  App | Platform (QA-style): ${APP_NAME} | ${PLATFORM}"
+          echo "  Product (Notion): ${PRODUCT_NAME}"
           echo "  Scope: ${TOTAL_FILES} files — ${CHANGE_SUMMARY}"
           echo "  Summary (property): ${SUMMARY_LINE}"

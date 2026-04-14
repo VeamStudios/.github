@@ -3,7 +3,9 @@
 # Triggers on pull_request and workflow_dispatch (manual PR number + optional dry-run).
 # Calls VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml@main.
 #
-# Requirements: repository (or org) secret NOTION_TOKEN — passed to the reusable workflow as notion-token.
+# Requirements:
+# - Secret NOTION_TOKEN (passed as notion-token).
+# - Permission models: read so the reusable workflow can call actions/ai-inference (GitHub Models) for the doc brief.
 # Secrets are not available for pull_request runs from forks; use same-repo PRs or adjust policy.
 # Database URLs / Notion API version: edit only in the reusable workflow in this repo:
 #   VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml
@@ -44,6 +46,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      models: read
 
     uses: VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml@main
     secrets:
@@ -51,3 +54,6 @@ jobs:
     with:
       pr-number: ${{ github.event_name == 'workflow_dispatch' && inputs['pr-number'] || github.event.pull_request.number }}
       dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs['dry-run'] || false }}
+      # use-ai-inference: true
+      # ai-model: openai/gpt-4.1
+      # max-tokens: 3500
