@@ -1,38 +1,53 @@
-# PR Notion Docs Sync - Caller Workflow
+# PR Notion Docs Sync — caller workflow (copy into your repo's .github/workflows/)
 #
-# Copy this file into your repo's .github/workflows/ directory.
-# It calls the central reusable workflow from the VeamStudios/.github repo.
+# Triggers on pull_request and workflow_dispatch (manual PR number + optional dry-run).
+# Calls VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml@main.
 #
-# Manually trigger this workflow with a PR number to create/update
-# a Notion Proposal page with PR context for documentation analysis.
+# Requirements: repository (or org) secret NOTION_TOKEN — passed to the reusable workflow as notion-token.
+# Secrets are not available for pull_request runs from forks; use same-repo PRs or adjust policy.
+# Database URLs / Notion API version: edit only in the reusable workflow in this repo:
+#   VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml
 
 name: PR Notion Docs Sync
 
 on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
   workflow_dispatch:
     inputs:
       pr-number:
-        description: "Pull request number to analyze"
+        description: "Pull request number in this repository to sync to Notion"
         required: true
         type: string
       dry-run:
-        description: "Build artifacts only without writing to Notion"
+        description: "Log only; do not write to Notion"
         required: false
         type: boolean
         default: false
 
+concurrency:
+  group: notion-docs-${{ github.repository }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || inputs['pr-number'] || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
-  notion-docs-sync:
+  sync_pr_to_notion:
+    # Manual runs always; on pull_request skip drafts unless you remove the event check.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
+    #
+    # Optional: only run when the PR has a specific label (uncomment and adjust):
+    # if: github.event.pull_request.draft == false && contains(github.event.pull_request.labels.*.name, 'docs-notion')
+
+    permissions:
+      contents: read
+      pull-requests: read
+
     uses: VeamStudios/.github/.github/workflows/pr-notion-docs-sync.yml@main
     secrets:
       notion-token: ${{ secrets.NOTION_TOKEN }}
-    # IMPORTANT: If you are not using the default VeamStudios Notion workspace/databases,
-    # you must set the database URLs below to your own Notion databases and ensure
-    # your NOTION_TOKEN integration is shared to those databases, or Notion will return 404.
     with:
-      pr-number: ${{ inputs['pr-number'] }}
-      dry-run: ${{ inputs['dry-run'] }}
-    #   product-name-override: 'Checklist Inspector Pro'
-    #   github-repos-db-url: 'https://www.notion.so/veamstudios/...'
-    #   products-db-url: 'https://www.notion.so/veamstudios/...'
-    #   proposals-db-url: 'https://www.notion.so/veamstudios/...'
+      pr-number: ${{ github.event_name == 'workflow_dispatch' && inputs['pr-number'] || github.event.pull_request.number }}
+      dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs['dry-run'] || false }}

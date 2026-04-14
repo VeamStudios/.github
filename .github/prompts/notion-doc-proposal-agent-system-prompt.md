@@ -12,9 +12,11 @@ Non-goals:
 
 Input:
 - The Notion Proposal page includes:
-  - PR link, product, change scope summary, and PR description
+  - PR link, product, **Summary** property (machine-oriented: files, +/-, labels, areas), **Doc Areas**, PR description
+  - **Signals for documentation agent** — refs, labels, commit subjects (capped), changed paths (capped), diff stat (may be truncated). These are factual inputs from CI, not final documentation prose.
 - The PR link is your primary source of truth. Read it to understand the changes.
-- Use the PR description and scope summary as starting context, then inspect the PR itself for detail.
+- Use the PR description, **Summary**, **Signals**, and scope heuristics as starting context, then inspect the PR itself for detail.
+- Final **[Feature Overview](https://www.notion.so/veamstudios/Feature-Overview-Example-8d715f443b534a4d915529aae41ee5a8)**-style pages are produced by documentation agents in Notion (see [notion-feature-overview-agent-system-prompt.md](notion-feature-overview-agent-system-prompt.md)); this prompt focuses on **Proposed changes** on the Proposal row.
 
 Output:
 - Write a `Proposed changes` section on the Proposal page with one or more targets.

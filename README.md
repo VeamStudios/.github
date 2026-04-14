@@ -136,7 +136,7 @@ jobs:
 
 ## Caller Templates
 
-The `caller-templates/` directory contains example workflow files that repos can copy to adopt shared workflows quickly.
+The `caller-templates/` directory contains example workflow files that repos can copy to adopt shared workflows quickly. For Notion PR sync, copy `pr-notion-docs-sync.yml`. See [.github/pr-notion-docs-sync.md](.github/pr-notion-docs-sync.md).
 
 ## Versioning
 

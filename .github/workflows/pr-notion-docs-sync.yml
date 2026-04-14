@@ -1,75 +1,21 @@
 name: PR Notion Docs Sync
 
+# Notion database URLs and API version are set in job env below — change them there only
+# (callers do not pass these).
+#
+# Only workflow_call: runs in the *caller's* repository (app repo). Do not add
+# workflow_dispatch here — a manual run from this .github repo would use the wrong
+# repository context. Manual runs: use caller-templates/pr-notion-docs-sync.yml in your app repo.
+
 on:
-  workflow_dispatch:
-    inputs:
-      pr-number:
-        description: "Pull request number to analyze"
-        required: true
-        type: string
-      notion-version:
-        description: "Notion API version header"
-        required: false
-        type: string
-        default: "2022-06-28"
-      github-repos-db-url:
-        description: "Notion URL or ID for GitHub Repos database"
-        required: false
-        type: string
-        default: "https://www.notion.so/veamstudios/7657c233579e40909b9cf1640e4904f8"
-      products-db-url:
-        description: "Notion URL or ID for Products database"
-        required: false
-        type: string
-        default: "https://www.notion.so/veamstudios/30c069083a03803e9636f97345e2d433"
-      proposals-db-url:
-        description: "Notion URL or ID for Proposals database"
-        required: false
-        type: string
-        default: "https://www.notion.so/veamstudios/2ca691667ea34ddfabee572644ce8290"
-      product-name-override:
-        description: "Optional Product name override if repo mapping is unavailable"
-        required: false
-        type: string
-        default: ""
-      dry-run:
-        description: "Build proposal request context without writing to Notion"
-        required: false
-        type: boolean
-        default: false
   workflow_call:
     inputs:
       pr-number:
-        description: "Optional PR number override"
+        description: "PR number (omit when the caller workflow has pull_request context)"
         required: false
         type: string
-      notion-version:
-        description: "Notion API version header"
-        required: false
-        type: string
-        default: "2022-06-28"
-      github-repos-db-url:
-        description: "Notion URL or ID for GitHub Repos database"
-        required: false
-        type: string
-        default: "https://www.notion.so/veamstudios/7657c233579e40909b9cf1640e4904f8"
-      products-db-url:
-        description: "Notion URL or ID for Products database"
-        required: false
-        type: string
-        default: "https://www.notion.so/veamstudios/30c069083a03803e9636f97345e2d433"
-      proposals-db-url:
-        description: "Notion URL or ID for Proposals database"
-        required: false
-        type: string
-        default: "https://www.notion.so/veamstudios/2ca691667ea34ddfabee572644ce8290"
-      product-name-override:
-        description: "Optional Product name override if repo mapping is unavailable"
-        required: false
-        type: string
-        default: ""
       dry-run:
-        description: "Build proposal request context without writing to Notion"
+        description: "Print summary to the log only; do not create or update Notion"
         required: false
         type: boolean
         default: false
@@ -79,11 +25,17 @@ on:
         required: true
 
 jobs:
-  notion-doc-sync:
+  sync_pr_to_notion:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
+    env:
+      # https://developers.notion.com/reference/versioning — bump with Notion upgrade guides
+      NOTION_VERSION: "2026-03-11"
+      GITHUB_REPOS_DB_URL: "https://www.notion.so/veamstudios/7657c233579e40909b9cf1640e4904f8"
+      PRODUCTS_DB_URL: "https://www.notion.so/veamstudios/30c069083a03803e9636f97345e2d433"
+      PROPOSALS_DB_URL: "https://www.notion.so/veamstudios/2ca691667ea34ddfabee572644ce8290"
 
     steps:
       - name: Checkout repository
@@ -91,14 +43,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve IDs and PR metadata
-        id: meta
+      - name: Parse Notion database IDs and resolve PR number
+        id: pr_and_db_ids
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ inputs['pr-number'] || github.event.pull_request.number }}
-          INPUT_GITHUB_REPOS_DB_URL: ${{ inputs.github-repos-db-url }}
-          INPUT_PRODUCTS_DB_URL: ${{ inputs.products-db-url }}
-          INPUT_PROPOSALS_DB_URL: ${{ inputs.proposals-db-url }}
+          INPUT_GITHUB_REPOS_DB_URL: ${{ env.GITHUB_REPOS_DB_URL }}
+          INPUT_PRODUCTS_DB_URL: ${{ env.PRODUCTS_DB_URL }}
+          INPUT_PROPOSALS_DB_URL: ${{ env.PROPOSALS_DB_URL }}
         run: |
           python - <<'PY'
           import json
@@ -136,7 +88,7 @@ jobs:
 
           pr_number = os.getenv("PR_NUMBER", "").strip()
           if not pr_number:
-            print("PR number is required. Provide inputs.pr-number for manual runs.", file=sys.stderr)
+            print("PR number is required. Pass pr-number from the caller workflow (or pull_request context).", file=sys.stderr)
             sys.exit(1)
 
           payload = {
@@ -150,29 +102,67 @@ jobs:
               out.write(f"{key}={val}\n")
           PY
 
-      - name: Collect PR context
-        id: pr_context
+      - name: Collect PR data and documentation signals
+        id: collect_pr
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.meta.outputs.pr_number }}
+          PR_NUMBER: ${{ steps.pr_and_db_ids.outputs.pr_number }}
         run: |
-          gh pr view "$PR_NUMBER" --json files,headRefOid,url,title,body > pr_view.json
+          set -e
+          gh pr view "$PR_NUMBER" \
+            --json files,headRefOid,url,title,body,labels,baseRefName,headRefName,additions,deletions \
+            > pr_view.json
+          gh pr view "$PR_NUMBER" --json commits > commits.json 2>/dev/null || echo '{"commits":[]}' > commits.json
+          gh pr diff "$PR_NUMBER" --stat 2>/dev/null | head -c 8000 > diff_stat.txt || true
 
           python - <<'PY'
           import json
           import os
           from collections import Counter
 
+          pr_number = os.environ["PR_NUMBER"]
+
           with open("pr_view.json", "r", encoding="utf-8") as f:
             data = json.load(f)
+          try:
+            with open("commits.json", "r", encoding="utf-8") as f:
+              cj = json.load(f)
+            data["commits"] = cj.get("commits") or []
+          except (OSError, json.JSONDecodeError):
+            data["commits"] = []
+
           pr_url = data.get("url", "")
           pr_title = data.get("title", "")
           pr_body = (data.get("body", "") or "")[:4000]
           pr_sha = data.get("headRefOid", "")
+          base_ref = data.get("baseRefName", "") or ""
+          head_ref = data.get("headRefName", "") or ""
+          additions = data.get("additions")
+          deletions = data.get("deletions")
+          label_names = [x.get("name", "") for x in data.get("labels", []) if x.get("name")]
+
+          commits = data.get("commits") or []
+          commit_subjects = []
+          for c in commits[:25]:
+            msg = (c.get("messageHeadline") or c.get("message", "") or "").strip()
+            if msg:
+              commit_subjects.append(msg)
+
           paths = [f.get("path", "") for f in data.get("files", []) if f.get("path")]
+          paths_sorted = sorted(set(paths))
+
+          MAX_PATHS = 200
+          files_list = paths_sorted[:MAX_PATHS]
+          files_truncated = len(paths_sorted) > MAX_PATHS
+          files_more = max(0, len(paths_sorted) - MAX_PATHS)
+
+          diff_stat = ""
+          if os.path.isfile("diff_stat.txt"):
+            with open("diff_stat.txt", "r", encoding="utf-8", errors="replace") as f:
+              diff_stat = f.read()
 
           area_rules = {
-            "iOS": lambda p: p.endswith(".swift") or "/ios " in f" {p} ".lower(),
+            "iOS": lambda p: p.endswith(".swift") or "/ios/" in p.lower(),
             "Web": lambda p: any(p.endswith(e) for e in (".js",".jsx",".ts",".tsx",".css",".scss",".html")) or "/web/" in p.lower(),
             "Backend": lambda p: any(p.endswith(e) for e in (".py",".go",".java")) or any(d in p.lower() for d in ("/backend/","/server/")),
             "CI/Config": lambda p: any(p.endswith(e) for e in (".yml",".yaml",".json",".toml")) or ".github/" in p.lower(),
@@ -192,12 +182,46 @@ jobs:
           change_summary_parts = [f"{area}: {area_counts[area]} file(s)" for area in areas]
           change_summary = ", ".join(change_summary_parts)
 
+          primary_area = ""
+          if area_counts:
+            primary_area = max(area_counts.items(), key=lambda x: x[1])[0]
+
+          def fmt_int(v):
+            return str(v) if v is not None else "?"
+
+          label_part = ", ".join(label_names) if label_names else "none"
+          areas_part = ", ".join(areas) if areas else "none"
+          summary_line = (
+            f"{len(paths)} files | +{fmt_int(additions)}/-{fmt_int(deletions)} | "
+            f"labels: {label_part} | areas: {areas_part}"
+          )[:2000]
+
+          signals = {
+            "base_ref": base_ref,
+            "head_ref": head_ref,
+            "labels": label_names,
+            "additions": additions,
+            "deletions": deletions,
+            "commit_subjects": commit_subjects,
+            "files": files_list,
+            "files_total": len(paths_sorted),
+            "files_truncated": files_truncated,
+            "files_more": files_more,
+            "diff_stat": diff_stat,
+            "diff_stat_max_chars": 8000,
+            "primary_area": primary_area,
+            "areas_breakdown": dict(area_counts),
+          }
+          with open("signals.json", "w", encoding="utf-8") as f:
+            json.dump(signals, f, indent=2)
+
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
             out.write(f"pr_url={str(pr_url).replace(chr(10), ' ')}\n")
             out.write(f"pr_title={str(pr_title).replace(chr(10), ' ')}\n")
             out.write(f"pr_sha={pr_sha}\n")
             out.write(f"change_summary={change_summary}\n")
             out.write(f"total_files={len(paths)}\n")
+            out.write(f"summary_line={summary_line.replace(chr(10), ' ')}\n")
 
           with open("pr_body.txt", "w", encoding="utf-8") as f:
             f.write(pr_body)
@@ -207,15 +231,14 @@ jobs:
             f.write(areas_json)
           PY
 
-      - name: Resolve product mapping
-        id: catalog
+      - name: Resolve product from Notion (GitHub Repos → Products)
+        id: resolve_product
         env:
           NOTION_TOKEN: ${{ secrets.notion-token }}
-          NOTION_VERSION: ${{ inputs.notion-version }}
-          PRODUCT_NAME_OVERRIDE: ${{ inputs.product-name-override }}
-          GITHUB_REPOS_DB_ID: ${{ steps.meta.outputs.github_repos_db_id }}
-          PRODUCTS_DB_ID: ${{ steps.meta.outputs.products_db_id }}
-          REPO_NAME: ${{ steps.meta.outputs.repo_name }}
+          NOTION_VERSION: ${{ env.NOTION_VERSION }}
+          GITHUB_REPOS_DB_ID: ${{ steps.pr_and_db_ids.outputs.github_repos_db_id }}
+          PRODUCTS_DB_ID: ${{ steps.pr_and_db_ids.outputs.products_db_id }}
+          REPO_NAME: ${{ steps.pr_and_db_ids.outputs.repo_name }}
         run: |
           python - <<'PY'
           import json
@@ -265,8 +288,8 @@ jobs:
             },
           )
           repo_rows = repo_query.get("results", [])
-          product_name = os.environ.get("PRODUCT_NAME_OVERRIDE", "").strip()
-          if not product_name and repo_rows:
+          product_name = ""
+          if repo_rows:
             products_prop = repo_rows[0]["properties"].get("Products", {})
             names = [x.get("name", "") for x in products_prop.get("multi_select", []) if x.get("name")]
             if names:
@@ -274,7 +297,7 @@ jobs:
 
           if not product_name:
             raise RuntimeError(
-              f"Unable to resolve product for repo '{repo_name}'. Provide product-name-override or update GitHub Repos mapping."
+              f"Unable to resolve product for repo '{repo_name}'. Update the GitHub Repos database row (Name + Products)."
             )
 
           product_query = notion_post(
@@ -308,45 +331,53 @@ jobs:
             out.write(f"product_family={product_family}\n")
           PY
 
-      - name: Create or update Proposal Request in Notion
+      - name: Upsert Proposal page in Notion Proposals database
         if: ${{ !inputs['dry-run'] }}
         env:
           NOTION_TOKEN: ${{ secrets.notion-token }}
-          NOTION_VERSION: ${{ inputs.notion-version }}
-          PROPOSALS_DB_ID: ${{ steps.meta.outputs.proposals_db_id }}
-          PR_URL: ${{ steps.pr_context.outputs.pr_url }}
-          PR_NUMBER: ${{ steps.meta.outputs.pr_number }}
-          PR_TITLE: ${{ steps.pr_context.outputs.pr_title }}
-          PR_SHA: ${{ steps.pr_context.outputs.pr_sha }}
-          CHANGE_SUMMARY: ${{ steps.pr_context.outputs.change_summary }}
-          TOTAL_FILES: ${{ steps.pr_context.outputs.total_files }}
-          PRODUCT_PAGE_ID: ${{ steps.catalog.outputs.product_page_id }}
-          PRODUCT_FAMILY: ${{ steps.catalog.outputs.product_family }}
-          PRODUCT_NAME: ${{ steps.catalog.outputs.product_name }}
+          NOTION_VERSION: ${{ env.NOTION_VERSION }}
+          PROPOSALS_DB_ID: ${{ steps.pr_and_db_ids.outputs.proposals_db_id }}
+          PR_URL: ${{ steps.collect_pr.outputs.pr_url }}
+          PR_NUMBER: ${{ steps.pr_and_db_ids.outputs.pr_number }}
+          PR_TITLE: ${{ steps.collect_pr.outputs.pr_title }}
+          PR_SHA: ${{ steps.collect_pr.outputs.pr_sha }}
+          CHANGE_SUMMARY: ${{ steps.collect_pr.outputs.change_summary }}
+          TOTAL_FILES: ${{ steps.collect_pr.outputs.total_files }}
+          SUMMARY_LINE: ${{ steps.collect_pr.outputs.summary_line }}
+          PRODUCT_PAGE_ID: ${{ steps.resolve_product.outputs.product_page_id }}
+          PRODUCT_FAMILY: ${{ steps.resolve_product.outputs.product_family }}
+          PRODUCT_NAME: ${{ steps.resolve_product.outputs.product_name }}
         run: |
           python - <<'PY'
           import json
           import os
           import urllib.error
+          import urllib.parse
           import urllib.request
 
           token = os.environ["NOTION_TOKEN"]
           notion_version = os.environ["NOTION_VERSION"]
 
-          def notion_request(method, path, payload):
+          def notion_request(method, path, payload=None):
+            data = None
+            if payload is not None:
+              data = json.dumps(payload).encode("utf-8")
+            headers = {
+              "Authorization": f"Bearer {token}",
+              "Notion-Version": notion_version,
+            }
+            if method in ("POST", "PATCH", "PUT"):
+              headers["Content-Type"] = "application/json"
             req = urllib.request.Request(
               f"https://api.notion.com{path}",
-              data=json.dumps(payload).encode("utf-8"),
+              data=data,
               method=method,
-              headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-                "Notion-Version": notion_version,
-              },
+              headers=headers,
             )
             try:
               with urllib.request.urlopen(req) as r:
-                return json.loads(r.read().decode("utf-8"))
+                raw = r.read().decode("utf-8")
+                return json.loads(raw) if raw.strip() else {}
             except urllib.error.HTTPError as e:
               body = e.read().decode("utf-8", "replace")
               hint = ""
@@ -354,11 +385,58 @@ jobs:
                 hint = " Ensure the database URL/ID is correct and the Notion integration has access to that database."
               raise RuntimeError(f"Notion API {method} {path} failed with HTTP {e.code}: {body}.{hint}") from e
 
+          def notion_get(path):
+            return notion_request("GET", path, None)
+
           def notion_post(path, payload):
             return notion_request("POST", path, payload)
 
           def notion_patch(path, payload):
             return notion_request("PATCH", path, payload)
+
+          def notion_delete(path):
+            return notion_request("DELETE", path, None)
+
+          def read_status_name(properties):
+            prop = properties.get("Status") or {}
+            if prop.get("type") == "status" and prop.get("status"):
+              return prop["status"].get("name")
+            return None
+
+          def delete_block_recursive(block_id):
+            cursor = None
+            while True:
+              q = f"/v1/blocks/{block_id}/children?page_size=100"
+              if cursor:
+                q += f"&start_cursor={urllib.parse.quote(cursor)}"
+              data = notion_get(q)
+              for block in data.get("results", []):
+                delete_block_recursive(block["id"])
+              if not data.get("has_more"):
+                break
+              cursor = data.get("next_cursor")
+            notion_delete(f"/v1/blocks/{block_id}")
+
+          def clear_page_body(page_id):
+            cursor = None
+            while True:
+              q = f"/v1/blocks/{page_id}/children?page_size=100"
+              if cursor:
+                q += f"&start_cursor={urllib.parse.quote(cursor)}"
+              data = notion_get(q)
+              for block in data.get("results", []):
+                delete_block_recursive(block["id"])
+              if not data.get("has_more"):
+                break
+              cursor = data.get("next_cursor")
+
+          def append_blocks_batched(page_id, blocks, batch_size=100):
+            for i in range(0, len(blocks), batch_size):
+              chunk = blocks[i : i + batch_size]
+              notion_patch(
+                f"/v1/blocks/{page_id}/children",
+                {"position": {"type": "end"}, "children": chunk},
+              )
 
           def heading_block(text):
             return {"object": "block", "type": "heading_3", "heading_3": {"rich_text": [{"type": "text", "text": {"content": text}}]}}
@@ -375,6 +453,7 @@ jobs:
           pr_sha = os.environ["PR_SHA"]
           change_summary = os.environ["CHANGE_SUMMARY"]
           total_files = os.environ["TOTAL_FILES"]
+          summary_line = (os.environ.get("SUMMARY_LINE") or "").strip()
           product_name = os.environ["PRODUCT_NAME"]
           product_family = os.environ["PRODUCT_FAMILY"]
           product_page_id = os.environ["PRODUCT_PAGE_ID"]
@@ -383,14 +462,19 @@ jobs:
           pr_body = open("pr_body.txt", "r", encoding="utf-8").read().strip()
           areas = json.load(open("areas.json", "r", encoding="utf-8"))
 
+          summary_prop = summary_line or f"{total_files} files across {', '.join(areas)}"
+          summary_prop = summary_prop[:2000]
+
           properties = {
             "Proposal": {"title": [{"text": {"content": f"PR #{pr_number} - {pr_title}"}}]},
             "Status": {"status": {"name": "Raw Data"}},
             "PR URL": {"url": pr_url},
-            "Summary": {"rich_text": [{"text": {"content": f"{total_files} files across {', '.join(areas)}"}}]},
+            "Summary": {"rich_text": [{"text": {"content": summary_prop}}]},
             "Product": {"relation": [{"id": product_page_id}]},
             "Doc Areas": {"multi_select": [{"name": a} for a in areas if a not in ("Other", "CI/Config")]},
           }
+
+          properties_without_status = {k: v for k, v in properties.items() if k != "Status"}
 
           existing = notion_post(
             f"/v1/databases/{proposals_db_id}/query",
@@ -416,6 +500,60 @@ jobs:
             for chunk in [pr_body[i:i+1800] for i in range(0, min(len(pr_body), 3600), 1800)]:
               blocks.append(paragraph_block(chunk))
 
+          signals = {}
+          if os.path.isfile("signals.json"):
+            with open("signals.json", "r", encoding="utf-8") as sf:
+              signals = json.load(sf)
+
+          def paragraph_chunks(text, size=1800):
+            t = text or ""
+            return [t[i:i+size] for i in range(0, len(t), size)] if t else []
+
+          blocks.append(heading_block("Signals for documentation agent"))
+          blocks.append(paragraph_block(
+            "Structured inputs for the Notion documentation agent. This is not final Feature Overview text; "
+            "the agent produces that from the Proposals row, PR link, description, and these signals."
+          ))
+          if signals:
+            meta_lines = [
+              f"Base ref: {signals.get('base_ref', '')} / Head ref: {signals.get('head_ref', '')}",
+            ]
+            if signals.get("primary_area"):
+              meta_lines.append(f"Primary area (heuristic): {signals['primary_area']}")
+            ad = signals.get("additions")
+            dd = signals.get("deletions")
+            meta_lines.append(
+              f"Aggregate additions/deletions (GitHub): +{ad if ad is not None else '?'}/-{dd if dd is not None else '?'}"
+            )
+            if signals.get("labels"):
+              meta_lines.append("Labels: " + ", ".join(signals["labels"]))
+            subs = signals.get("commit_subjects") or []
+            if subs:
+              joined = " | ".join(subs[:15])
+              meta_lines.append("Commit subjects (capped): " + joined[:1500])
+            ft = signals.get("files_total", 0)
+            if signals.get("files_truncated"):
+              meta_lines.append(
+                f"Changed files (unique paths): {ft}, listing truncated below (+{signals.get('files_more', 0)} more)"
+              )
+            else:
+              meta_lines.append(f"Changed files (unique paths): {ft}")
+            for chunk in paragraph_chunks("\n".join(meta_lines)):
+              blocks.append(paragraph_block(chunk))
+            fl = signals.get("files") or []
+            if fl:
+              fl_text = "\n".join(fl)
+              blocks.append(heading_block("Changed paths (capped)"))
+              for chunk in paragraph_chunks(fl_text):
+                blocks.append(paragraph_block(chunk))
+            ds = (signals.get("diff_stat") or "").strip()
+            if ds:
+              blocks.append(heading_block("Diff stat (may be truncated)"))
+              for chunk in paragraph_chunks(ds[:8000]):
+                blocks.append(paragraph_block(chunk))
+          else:
+            blocks.append(paragraph_block("(No signals.json — PR context may be incomplete.)"))
+
           blocks.extend([
             heading_block("Agent task"),
             paragraph_block("Review the linked PR and propose documentation updates."),
@@ -431,32 +569,51 @@ jobs:
 
           if existing:
             page_id = existing[0]["id"]
-            notion_patch(f"/v1/pages/{page_id}", {"properties": properties})
-            notion_patch(f"/v1/blocks/{page_id}/children", {"children": blocks})
-            print(f"Updated existing Proposal page: {page_id}")
+            row_props = existing[0].get("properties", {})
+            status_name = read_status_name(row_props)
+            if status_name and status_name != "Raw Data":
+              notion_patch(f"/v1/pages/{page_id}", {"properties": properties_without_status})
+              print(f"Updated Proposal properties only (Status is {status_name}): {page_id}")
+            else:
+              clear_page_body(page_id)
+              append_blocks_batched(page_id, blocks)
+              notion_patch(f"/v1/pages/{page_id}", {"properties": properties})
+              print(f"Replaced body and updated Proposal page: {page_id}")
           else:
-            notion_post(
-              "/v1/pages",
-              {
-                "parent": {"database_id": proposals_db_id},
-                "properties": properties,
-                "children": blocks,
-              },
-            )
+            if len(blocks) <= 100:
+              notion_post(
+                "/v1/pages",
+                {
+                  "parent": {"database_id": proposals_db_id},
+                  "properties": properties,
+                  "children": blocks,
+                },
+              )
+            else:
+              created = notion_post(
+                "/v1/pages",
+                {
+                  "parent": {"database_id": proposals_db_id},
+                  "properties": properties,
+                },
+              )
+              append_blocks_batched(created["id"], blocks)
             print("Created new Proposal page.")
           PY
 
-      - name: Dry-run output
+      - name: Print dry-run summary (no Notion write)
         if: ${{ inputs['dry-run'] }}
         env:
-          PR_URL: ${{ steps.pr_context.outputs.pr_url }}
-          PR_TITLE: ${{ steps.pr_context.outputs.pr_title }}
-          CHANGE_SUMMARY: ${{ steps.pr_context.outputs.change_summary }}
-          TOTAL_FILES: ${{ steps.pr_context.outputs.total_files }}
-          PRODUCT_NAME: ${{ steps.catalog.outputs.product_name }}
+          PR_URL: ${{ steps.collect_pr.outputs.pr_url }}
+          PR_TITLE: ${{ steps.collect_pr.outputs.pr_title }}
+          CHANGE_SUMMARY: ${{ steps.collect_pr.outputs.change_summary }}
+          TOTAL_FILES: ${{ steps.collect_pr.outputs.total_files }}
+          SUMMARY_LINE: ${{ steps.collect_pr.outputs.summary_line }}
+          PRODUCT_NAME: ${{ steps.resolve_product.outputs.product_name }}
         run: |
           echo "Dry run — proposal request summary:"
           echo "  PR: ${PR_URL}"
           echo "  Title: ${PR_TITLE}"
           echo "  Product: ${PRODUCT_NAME}"
           echo "  Scope: ${TOTAL_FILES} files — ${CHANGE_SUMMARY}"
+          echo "  Summary (property): ${SUMMARY_LINE}"
