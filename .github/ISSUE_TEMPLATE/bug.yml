@@ -44,11 +44,23 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Dev
+        - Beta
+        - Production
+      multiple: true
+    validations:
+      required: false
+
   - type: input
     id: version
     attributes:
-      label: Version & environment
-      description: App version plus OS / browser / env if known.
-      placeholder: "e.g. 1.4.2 · iOS 17.5 · Production"
+      label: Version
+      description: App version plus OS / browser if known.
+      placeholder: "e.g. 1.4.2 · iOS 17.5 · Safari"
     validations:
       required: false
