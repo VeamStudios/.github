@@ -1,0 +1,31 @@
+# Stale Issues and PRs - Caller Workflow
+#
+# Copy this file into any repo at `.github/workflows/stale.yml`.
+# Intended for: all six app repos (ChecklistInspectorPro-iOS/Web/Backend,
+#               SiteAuditPro-iOS/Web/Backend).
+#
+# Runs daily to mark inactive issues/PRs as stale and eventually close them.
+# Label `keep-open` (or any of the configured exempt labels) prevents the
+# sweep from touching an issue or PR.
+
+name: Stale
+
+on:
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    uses: VeamStudios/.github/.github/workflows/stale.yml@main
+    # with:
+    #   days_before_issue_stale: 60
+    #   days_before_issue_close: 14
+    #   days_before_pr_stale: 30
+    #   days_before_pr_close: 14
+    #   exempt_issue_labels: "pinned,security,roadmap,keep-open"
+    #   exempt_pr_labels: "pinned,security,keep-open,wip"

@@ -1,0 +1,76 @@
+name: Stale Issues and PRs
+
+on:
+  workflow_call:
+    inputs:
+      days_before_issue_stale:
+        description: "Days of inactivity before an issue is marked stale. -1 disables."
+        required: false
+        default: 60
+        type: number
+      days_before_issue_close:
+        description: "Days after stale before an issue is closed. -1 disables."
+        required: false
+        default: 14
+        type: number
+      days_before_pr_stale:
+        description: "Days of inactivity before a PR is marked stale. -1 disables."
+        required: false
+        default: 30
+        type: number
+      days_before_pr_close:
+        description: "Days after stale before a PR is closed. -1 disables."
+        required: false
+        default: 14
+        type: number
+      exempt_issue_labels:
+        description: "Comma-separated labels that prevent issues from going stale"
+        required: false
+        default: "pinned,security,roadmap,keep-open"
+        type: string
+      exempt_pr_labels:
+        description: "Comma-separated labels that prevent PRs from going stale"
+        required: false
+        default: "pinned,security,keep-open,wip"
+        type: string
+      stale_issue_message:
+        description: "Comment posted when an issue becomes stale"
+        required: false
+        default: "This issue has been inactive for a while. It will be closed if no further activity occurs. Add the `keep-open` label or leave a comment to keep it open."
+        type: string
+      stale_pr_message:
+        description: "Comment posted when a PR becomes stale"
+        required: false
+        default: "This PR has been inactive for a while. It will be closed if no further activity occurs. Add the `keep-open` label or push an update to keep it open."
+        type: string
+      operations_per_run:
+        description: "Max API operations per run (tuning knob for large backlogs)"
+        required: false
+        default: 100
+        type: number
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    name: Mark stale and close
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          days-before-issue-stale: ${{ inputs.days_before_issue_stale }}
+          days-before-issue-close: ${{ inputs.days_before_issue_close }}
+          days-before-pr-stale: ${{ inputs.days_before_pr_stale }}
+          days-before-pr-close: ${{ inputs.days_before_pr_close }}
+          stale-issue-label: "stale"
+          stale-pr-label: "stale"
+          exempt-issue-labels: ${{ inputs.exempt_issue_labels }}
+          exempt-pr-labels: ${{ inputs.exempt_pr_labels }}
+          stale-issue-message: ${{ inputs.stale_issue_message }}
+          stale-pr-message: ${{ inputs.stale_pr_message }}
+          close-issue-message: "Closing due to prolonged inactivity. Reopen if still relevant."
+          close-pr-message: "Closing due to prolonged inactivity. Reopen if still relevant."
+          remove-stale-when-updated: true
+          operations-per-run: ${{ inputs.operations_per_run }}

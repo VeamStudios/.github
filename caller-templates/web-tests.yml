@@ -1,0 +1,23 @@
+# Web Tests - Caller Workflow
+#
+# Copy this file into a Node-based repo at `.github/workflows/tests.yml`.
+# Intended for: ChecklistInspectorPro-Web, ChecklistInspectorPro-Backend,
+#               SiteAuditPro-Web, SiteAuditPro-Backend.
+#
+# Runs on every pull request. Pair with `web-ci.yml` (lint/typecheck/build).
+
+name: Tests
+
+on: [pull_request]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  tests:
+    uses: VeamStudios/.github/.github/workflows/web-tests.yml@main
+    # with:
+    #   node_version: "20.x"
+    #   test_command: "test"
+    #   coverage_artifact_path: "coverage"

@@ -1,0 +1,108 @@
+name: Auto-Assign Reviewers
+
+on:
+  workflow_call:
+    inputs:
+      reviewers:
+        description: "Comma-separated list of reviewer usernames. Leave empty to rely solely on CODEOWNERS."
+        required: false
+        default: ""
+        type: string
+      team_reviewers:
+        description: "Comma-separated list of team slugs (without org prefix) to request review from"
+        required: false
+        default: ""
+        type: string
+      number_of_reviewers:
+        description: "How many reviewers to select from the reviewers list (0 = all)"
+        required: false
+        default: 0
+        type: number
+      skip_draft:
+        description: "Skip assigning reviewers when the PR is a draft"
+        required: false
+        default: true
+        type: boolean
+      skip_if_already_assigned:
+        description: "Do nothing if the PR already has reviewers or team reviewers"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  assign:
+    name: Assign reviewers
+    runs-on: ubuntu-latest
+    if: ${{ github.event.pull_request != null }}
+    steps:
+      - name: Assign reviewers
+        uses: actions/github-script@v8
+        env:
+          INPUT_REVIEWERS: ${{ inputs.reviewers }}
+          INPUT_TEAM_REVIEWERS: ${{ inputs.team_reviewers }}
+          INPUT_NUMBER_OF_REVIEWERS: ${{ inputs.number_of_reviewers }}
+          INPUT_SKIP_DRAFT: ${{ inputs.skip_draft }}
+          INPUT_SKIP_IF_ASSIGNED: ${{ inputs.skip_if_already_assigned }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.setFailed('This workflow must be triggered from a pull_request event');
+              return;
+            }
+
+            if (process.env.INPUT_SKIP_DRAFT === 'true' && pr.draft) {
+              core.info('PR is draft — skipping reviewer assignment');
+              return;
+            }
+
+            const author = pr.user.login;
+            const parse = (v) => (v || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+
+            let individuals = parse(process.env.INPUT_REVIEWERS)
+              .filter((u) => u.toLowerCase() !== author.toLowerCase());
+            const teams = parse(process.env.INPUT_TEAM_REVIEWERS);
+
+            const count = Number(process.env.INPUT_NUMBER_OF_REVIEWERS || 0);
+            if (count > 0 && individuals.length > count) {
+              // Random sample without replacement.
+              for (let i = individuals.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [individuals[i], individuals[j]] = [individuals[j], individuals[i]];
+              }
+              individuals = individuals.slice(0, count);
+            }
+
+            if (individuals.length === 0 && teams.length === 0) {
+              core.info('No reviewers resolved after filtering author — nothing to do');
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+
+            if (process.env.INPUT_SKIP_IF_ASSIGNED === 'true') {
+              const existing = pr.requested_reviewers || [];
+              const existingTeams = pr.requested_teams || [];
+              if (existing.length > 0 || existingTeams.length > 0) {
+                core.info('PR already has reviewers assigned — skipping');
+                return;
+              }
+            }
+
+            core.info(`Requesting reviews — users: ${individuals.join(', ') || '(none)'}; teams: ${teams.join(', ') || '(none)'}`);
+
+            await github.rest.pulls.requestReviewers({
+              owner,
+              repo,
+              pull_number: pr.number,
+              reviewers: individuals,
+              team_reviewers: teams,
+            });

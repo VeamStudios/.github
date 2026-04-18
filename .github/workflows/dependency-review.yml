@@ -1,0 +1,46 @@
+name: Dependency Review
+
+on:
+  workflow_call:
+    inputs:
+      fail_on_severity:
+        description: "Minimum severity that causes the job to fail (low, moderate, high, critical)"
+        required: false
+        default: "high"
+        type: string
+      allow_licenses:
+        description: "Comma-separated SPDX license list to allow. Empty means no restriction."
+        required: false
+        default: ""
+        type: string
+      deny_licenses:
+        description: "Comma-separated SPDX license list to block (e.g. GPL-3.0,AGPL-3.0)"
+        required: false
+        default: ""
+        type: string
+      comment_summary_in_pr:
+        description: "Post a summary comment on the PR (on-failure, always, never)"
+        required: false
+        default: "on-failure"
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: Review dependency changes
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: ${{ inputs.fail_on_severity }}
+          allow-licenses: ${{ inputs.allow_licenses }}
+          deny-licenses: ${{ inputs.deny_licenses }}
+          comment-summary-in-pr: ${{ inputs.comment_summary_in_pr }}

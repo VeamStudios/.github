@@ -1,0 +1,66 @@
+name: Web Tests
+
+on:
+  workflow_call:
+    inputs:
+      node_version:
+        description: "Node.js version to use"
+        required: false
+        default: "20.x"
+        type: string
+      test_command:
+        description: "npm script to run for the test step (e.g. test, test:ci)"
+        required: false
+        default: "test"
+        type: string
+      install_command:
+        description: "Command used to install dependencies"
+        required: false
+        default: "npm ci"
+        type: string
+      working_directory:
+        description: "Path relative to the repo root to run the commands in"
+        required: false
+        default: "."
+        type: string
+      coverage_artifact_path:
+        description: "Optional path to a coverage report directory to upload as an artifact"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js with GitHub Packages
+        uses: VeamStudios/.github/.github/actions/setup-node-github-packages@main
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install project dependencies
+        run: ${{ inputs.install_command }}
+
+      - name: Run tests
+        env:
+          CI: true
+        run: npm run ${{ inputs.test_command }}
+
+      - name: Upload coverage artifact
+        if: ${{ inputs.coverage_artifact_path != '' && always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ inputs.working_directory }}/${{ inputs.coverage_artifact_path }}
+          if-no-files-found: ignore
+          retention-days: 14

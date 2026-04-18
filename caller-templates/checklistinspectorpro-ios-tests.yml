@@ -1,0 +1,24 @@
+# ChecklistInspectorPro iOS Tests - Caller Workflow
+#
+# Copy this file into ChecklistInspectorPro-iOS at `.github/workflows/tests.yml`.
+# Adjust `scheme`, `project`/`workspace`, and `test_plan` to match the repo.
+
+name: Tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    uses: VeamStudios/.github/.github/workflows/ios-tests.yml@main
+    with:
+      scheme: "ChecklistInspectorPro"
+      project: "ChecklistInspectorPro.xcodeproj"
+      # workspace: "ChecklistInspectorPro.xcworkspace"
+      destination: "platform=iOS Simulator,name=iPhone 16 Pro,OS=latest"
+      configuration: "Debug"
+      # test_plan: "ChecklistInspectorProTests"
+      result_bundle_path: "build/TestResults.xcresult"
+    secrets:
+      BOT_RELEASE_PRIVATE_KEY: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
