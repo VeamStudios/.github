@@ -107,7 +107,7 @@ Workflows are grouped by platform family and category:
 - **ios/**: `deploy-dev`, `deploy-beta`, `deploy-production`, `pr-build`, `hotfix-prepare`, `hotfix-deploy`, `generate-screenshots`, `update-models`
 - **web/**: `ci`, `deploy-dev`, `deploy-beta`, `deploy-production`, `firebase-hosting-pull-request`, `notify-release`, `update-models`
 - **models/**: `ci`, `release`
-- **cross-repo/**: `pr-title-check`, `qa-pipeline`, `issue-bot`, `pr-notion-docs-sync`
+- **cross-repo/**: `pr-title-check`, `qa-pipeline`, `issue-bot`
 
 ## What Counts as a Difference
 
