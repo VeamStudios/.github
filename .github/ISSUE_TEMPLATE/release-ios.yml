@@ -1,0 +1,57 @@
+name: 🚀 Release — iOS
+description: Checklist for shipping an iOS release.
+title: "[RELEASE] iOS "
+labels: ["release"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Marketing version you're shipping.
+      placeholder: "e.g. 1.8"
+    validations:
+      required: true
+
+  - type: textarea
+    id: pre-release
+    attributes:
+      label: Pre-release
+      value: |
+        - [ ] `Release X.X` branch created with all required changes
+        - [ ] PR opened from `Release X.X` → `main`
+        - [ ] Scheme & environment set to **Production**
+        - [ ] Version and build numbers bumped
+        - [ ] `RELEASE_NOTES.md` and `CHANGELOG.md` updated
+        - [ ] Product-specific config checked (e.g. widget bundle IDs)
+    validations:
+      required: true
+
+  - type: textarea
+    id: app-store-connect
+    attributes:
+      label: App Store Connect
+      value: |
+        - [ ] New release created
+        - [ ] Demo account active in Production
+        - [ ] "What's New" text added
+        - [ ] Promotional text carried over (or updated)
+        - [ ] Build version matches release
+        - [ ] Version release set to **Manually release this version**
+        - [ ] Phased release set to **7-day phased release**
+        - [ ] Reset summary rating set to **Keep existing rating**
+    validations:
+      required: true
+
+  - type: textarea
+    id: post-release
+    attributes:
+      label: Post-release
+      value: |
+        - [ ] `Release X.X` PR merged into `main`
+        - [ ] `Release X.X` merged back into `dev` (and any other active branches)
+        - [ ] GitHub Release created with update notes
+        - [ ] Customer success / support notified (flag any awaited bug fixes)
+        - [ ] Debug symbols downloaded and bundled with the `.xcarchive` zip
+        - [ ] dSYMs uploaded
+    validations:
+      required: true

@@ -1,0 +1,47 @@
+name: 🚀 Release — Web
+description: Checklist for shipping a Web release.
+title: "[RELEASE] Web "
+labels: ["release"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Version you're shipping.
+      placeholder: "e.g. 2.4"
+    validations:
+      required: true
+
+  - type: textarea
+    id: pre-deployment
+    attributes:
+      label: Pre-deployment
+      value: |
+        - [ ] `Release X.X` branch created with all required changes
+        - [ ] PR opened from `Release X.X` → `main`
+        - [ ] `environment.ts` files correct for each env
+        - [ ] `CHANGELOG.md` up to date
+        - [ ] Deployed to Dev **and** Beta — sanity checked
+        - [ ] No stray `console.log`s
+    validations:
+      required: true
+
+  - type: textarea
+    id: deployment
+    attributes:
+      label: Deployment
+      value: |
+        - [ ] Deployed to Production
+    validations:
+      required: true
+
+  - type: textarea
+    id: post-release
+    attributes:
+      label: Post-release
+      value: |
+        - [ ] `Release X.X` PR merged into `main`
+        - [ ] GitHub Release created with update notes
+        - [ ] Customer success / support notified (flag any awaited bug fixes)
+    validations:
+      required: true

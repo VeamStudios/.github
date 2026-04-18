@@ -1,0 +1,49 @@
+name: 🔨 Task
+description: A chunk of work that isn't a bug or a new feature.
+body:
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      description: Matches our PR prefix — pick the closest.
+      options:
+        - chore
+        - refac
+        - perf
+        - docs
+        - test
+        - ci
+        - build
+        - style
+      default: 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What & why
+      description: One or two sentences is plenty.
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: How we'll know this is finished. Bullets are fine.
+      placeholder: |
+        -
+        -
+    validations:
+      required: false
+
+  - type: textarea
+    id: links
+    attributes:
+      label: Links
+      description: Related issues, PRs, Slack threads, Notion pages.
+      placeholder: |
+        Fixes #
+    validations:
+      required: false

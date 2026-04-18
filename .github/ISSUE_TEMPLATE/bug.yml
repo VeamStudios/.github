@@ -1,0 +1,54 @@
+name: 🐞 Bug
+description: Something broken or behaving incorrectly.
+type: "bug"
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what actually happened. Screenshots and logs welcome — drag them in.
+      placeholder: |
+        Steps:
+        1.
+        2.
+
+        Expected:
+        Actual:
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - iOS
+        - Android
+        - Web
+        - Backend
+      multiple: true
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: Your best guess — we'll re-triage.
+      options:
+        - Blocker — unusable / data loss
+        - High — core flow broken
+        - Medium — workaround exists
+        - Low — cosmetic / minor
+      default: 2
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version & environment
+      description: App version plus OS / browser / env if known.
+      placeholder: "e.g. 1.4.2 · iOS 17.5 · Production"
+    validations:
+      required: false
