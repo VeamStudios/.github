@@ -1,0 +1,34 @@
+# Auto-Assign Reviewers - Caller Workflow
+#
+# Copy this file into any repo at `.github/workflows/auto-assign-reviewers.yml`.
+# Intended for: all six app repos (ChecklistInspectorPro-iOS/Web/Backend,
+#               SiteAuditPro-iOS/Web/Backend).
+#
+# Requests reviewers the moment a PR is opened or marked ready for review.
+# CODEOWNERS is still respected by GitHub automatically — this workflow adds
+# coverage where CODEOWNERS isn't set up, or where you want a broader pool.
+#
+# Customise the `reviewers` and/or `team_reviewers` inputs per repo. Leave
+# both empty to rely purely on CODEOWNERS.
+
+name: Auto-Assign Reviewers
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  assign:
+    uses: VeamStudios/.github/.github/workflows/auto-assign-reviewers.yml@main
+    with:
+      # Comma-separated GitHub usernames. Author is always excluded.
+      reviewers: ""
+      # Comma-separated team slugs under VeamStudios (e.g. "ios,backend").
+      team_reviewers: ""
+      number_of_reviewers: 0
+      skip_draft: true
+      skip_if_already_assigned: true

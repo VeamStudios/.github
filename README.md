@@ -120,6 +120,70 @@ jobs:
     secrets: inherit
 ```
 
+### `web-tests.yml`
+
+Runs tests for a Node-based repo. Pairs with `web-ci.yml` (which does lint/typecheck/build).
+
+```yaml
+jobs:
+  tests:
+    uses: VeamStudios/.github/.github/workflows/web-tests.yml@main
+    # with:
+    #   node_version: "20.x"
+    #   test_command: "test"
+    #   coverage_artifact_path: "coverage"
+```
+
+### `ios-tests.yml`
+
+Runs `xcodebuild test` on a scheme against a simulator destination. Uses the Release Bot App for SwiftPM private deps, same as `pr-ios-build.yml`.
+
+```yaml
+jobs:
+  tests:
+    uses: VeamStudios/.github/.github/workflows/ios-tests.yml@main
+    with:
+      scheme: "SiteAuditPro"
+      project: "SiteAuditPro.xcodeproj"
+    secrets:
+      BOT_RELEASE_PRIVATE_KEY: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+```
+
+### `dependency-review.yml`
+
+Blocks PRs that add known-vulnerable packages (GHSA advisories) or disallowed licenses. Thin wrapper around `actions/dependency-review-action`.
+
+```yaml
+jobs:
+  review:
+    uses: VeamStudios/.github/.github/workflows/dependency-review.yml@main
+    with:
+      fail_on_severity: high
+```
+
+### `stale.yml`
+
+Marks inactive issues/PRs as stale and eventually closes them. Schedule from the caller (daily cron is typical). Label `keep-open` exempts an item from the sweep.
+
+```yaml
+jobs:
+  stale:
+    uses: VeamStudios/.github/.github/workflows/stale.yml@main
+```
+
+### `auto-assign-reviewers.yml`
+
+Requests reviewers (users and/or teams) the moment a PR opens or is marked ready. Complements CODEOWNERS.
+
+```yaml
+jobs:
+  assign:
+    uses: VeamStudios/.github/.github/workflows/auto-assign-reviewers.yml@main
+    with:
+      reviewers: "alice,bob,carol"
+      team_reviewers: "ios"
+```
+
 ### Other workflows
 
 | Workflow | Purpose |
@@ -136,6 +200,29 @@ jobs:
 ## Caller Templates
 
 The `caller-templates/` directory contains example workflow files that repos can copy to adopt shared workflows quickly.
+
+### Which templates each repo should adopt
+
+| Repo | Templates to copy |
+|---|---|
+| `ChecklistInspectorPro-iOS` | `checklistinspectorpro-ios-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `ChecklistInspectorPro-Web` | `web-ci.yml`, `web-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `ChecklistInspectorPro-Backend` | `web-tests.yml` (if Node), `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `SiteAuditPro-iOS` | `siteauditpro-ios-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `SiteAuditPro-Web` | `web-ci.yml`, `web-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `SiteAuditPro-Backend` | `web-tests.yml` (if Node), `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+
+### Required secrets
+
+The new templates rely on secrets already configured at the org or repo level:
+
+| Template | Secrets | Notes |
+|---|---|---|
+| `web-tests.yml` | none beyond `GITHUB_TOKEN` | `packages: read` is granted by the caller |
+| `ios-tests.yml` | `BOT_RELEASE_PRIVATE_KEY`, `vars.BOT_RELEASE_APP_ID` | Same Release Bot App used by `pr-ios-build.yml` |
+| `dependency-review.yml` | `GITHUB_TOKEN` | None required; uses `actions/dependency-review-action` |
+| `stale.yml` | `GITHUB_TOKEN` | `issues: write`, `pull-requests: write` granted by reusable |
+| `auto-assign-reviewers.yml` | `GITHUB_TOKEN` | `pull-requests: write` granted by reusable |
 
 ## Versioning
 

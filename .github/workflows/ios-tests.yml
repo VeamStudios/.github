@@ -1,0 +1,153 @@
+name: iOS Tests
+
+on:
+  workflow_call:
+    inputs:
+      xcode_version:
+        description: "Xcode version passed to select-xcode"
+        required: false
+        default: "26.2"
+        type: string
+      scheme:
+        description: "Xcode scheme to test"
+        required: true
+        type: string
+      project:
+        description: "Path to .xcodeproj (mutually exclusive with workspace)"
+        required: false
+        default: ""
+        type: string
+      workspace:
+        description: "Path to .xcworkspace (mutually exclusive with project)"
+        required: false
+        default: ""
+        type: string
+      destination:
+        description: "xcodebuild -destination value"
+        required: false
+        default: "platform=iOS Simulator,name=iPhone 16 Pro,OS=latest"
+        type: string
+      configuration:
+        description: "Xcode configuration to test (e.g. Debug)"
+        required: false
+        default: "Debug"
+        type: string
+      test_plan:
+        description: "Optional xctestplan name to run"
+        required: false
+        default: ""
+        type: string
+      extra_xcodebuild_args:
+        description: "Additional flags appended to the xcodebuild invocation"
+        required: false
+        default: ""
+        type: string
+      result_bundle_path:
+        description: "Optional path to write the .xcresult bundle. Uploaded as artifact if set."
+        required: false
+        default: ""
+        type: string
+    secrets:
+      BOT_RELEASE_PRIVATE_KEY:
+        description: "PEM private key for the Release Bot GitHub App (for private SwiftPM deps)"
+        required: true
+
+jobs:
+  test:
+    name: Test iOS app
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Validate inputs
+        shell: bash
+        env:
+          PROJECT: ${{ inputs.project }}
+          WORKSPACE: ${{ inputs.workspace }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PROJECT" ] && [ -z "$WORKSPACE" ]; then
+            echo "::error::Either 'project' or 'workspace' must be provided"
+            exit 1
+          fi
+          if [ -n "$PROJECT" ] && [ -n "$WORKSPACE" ]; then
+            echo "::error::Only one of 'project' or 'workspace' may be provided"
+            exit 1
+          fi
+
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Select Xcode
+        uses: VeamStudios/.github/.github/actions/select-xcode@main
+        with:
+          xcode-version: "${{ inputs.xcode_version }}"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          token: ${{ steps.app_token.outputs.token }}
+
+      - name: Restore SwiftPM cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.swiftpm
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+          key: ${{ runner.os }}-xcode-${{ inputs.xcode_version }}-swiftpm-${{ hashFiles('**/swiftpm/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-${{ inputs.xcode_version }}-swiftpm-
+
+      - name: Configure git for private dependencies
+        run: |
+          git config --global user.name 'Veam Bot'
+          git config --global user.email 'veamstudios@users.noreply.github.com'
+          echo "machine github.com login 'Veam Bot' password ${{ steps.app_token.outputs.token }}" > ~/.netrc
+          chmod 600 ~/.netrc
+
+      - name: Run tests
+        shell: bash
+        env:
+          SCHEME: ${{ inputs.scheme }}
+          PROJECT: ${{ inputs.project }}
+          WORKSPACE: ${{ inputs.workspace }}
+          DESTINATION: ${{ inputs.destination }}
+          CONFIGURATION: ${{ inputs.configuration }}
+          TEST_PLAN: ${{ inputs.test_plan }}
+          RESULT_BUNDLE_PATH: ${{ inputs.result_bundle_path }}
+          EXTRA_ARGS: ${{ inputs.extra_xcodebuild_args }}
+        run: |
+          set -euo pipefail
+          ARGS=(test -scheme "$SCHEME" -destination "$DESTINATION" -configuration "$CONFIGURATION")
+          if [ -n "$PROJECT" ]; then
+            ARGS+=(-project "$PROJECT")
+          fi
+          if [ -n "$WORKSPACE" ]; then
+            ARGS+=(-workspace "$WORKSPACE")
+          fi
+          if [ -n "$TEST_PLAN" ]; then
+            ARGS+=(-testPlan "$TEST_PLAN")
+          fi
+          if [ -n "$RESULT_BUNDLE_PATH" ]; then
+            ARGS+=(-resultBundlePath "$RESULT_BUNDLE_PATH")
+          fi
+          if [ -n "$EXTRA_ARGS" ]; then
+            # shellcheck disable=SC2206
+            EXTRA=($EXTRA_ARGS)
+            ARGS+=("${EXTRA[@]}")
+          fi
+          xcodebuild "${ARGS[@]}"
+
+      - name: Upload xcresult bundle
+        if: ${{ inputs.result_bundle_path != '' && always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcresult-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ inputs.result_bundle_path }}
+          if-no-files-found: ignore
+          retention-days: 14

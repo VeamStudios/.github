@@ -1,0 +1,25 @@
+# Dependency Review - Caller Workflow
+#
+# Copy this file into any repo at `.github/workflows/dependency-review.yml`.
+# Intended for: all six app repos (ChecklistInspectorPro-iOS/Web/Backend,
+#               SiteAuditPro-iOS/Web/Backend).
+#
+# Blocks PRs that introduce known-vulnerable dependencies (GHSA advisories)
+# or licenses we don't accept.
+
+name: Dependency Review
+
+on: [pull_request]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    uses: VeamStudios/.github/.github/workflows/dependency-review.yml@main
+    with:
+      fail_on_severity: high
+      # deny_licenses: "GPL-3.0,AGPL-3.0"
+      # allow_licenses: ""
+      comment_summary_in_pr: on-failure
