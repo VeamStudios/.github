@@ -7,7 +7,7 @@ This document describes the [PR Notion Docs Sync workflow](workflows/pr-notion-d
 | Layer | Role |
 |--------|------|
 | **[Proposals database](https://www.notion.so/veamstudios/2ca691667ea34ddfabee572644ce8290?v=6a69b479eb1c477c96578aeb45c1eb6c&source=copy_link)** | **Only destination** for GitHub sync output (Proposal rows, keyed by **PR URL**). |
-| **GitHub Actions** | Supplies **structured inputs** (properties + body, including **Signals for documentation agent**). Does **not** author final Feature Overview prose. |
+| **GitHub Actions** | Supplies **properties** (title, Summary, PR URL, Product, Doc Areas, Status) and a **page body** that is primarily the **AI documentation brief** (GitHub Models), rendered from PR context. Does **not** author final Feature Overview prose. |
 | **Notion AI agents** | Watch Proposals and **produce / upsert** documentation (including Feature Overview–style pages). See [notion-feature-overview-agent-system-prompt.md](prompts/notion-feature-overview-agent-system-prompt.md), [notion-doc-proposal-agent-system-prompt.md](prompts/notion-doc-proposal-agent-system-prompt.md), [notion-doc-implementation-agent-system-prompt.md](prompts/notion-doc-implementation-agent-system-prompt.md). |
 
 **Goal:** Few moving parts across repos: defaults live in the workflow; repos wire `NOTION_TOKEN` and pick a caller template.
@@ -70,7 +70,7 @@ Database URLs and Notion API version are **not** inputs; they are `env` on the j
 
 ### Job and step names
 
-The reusable workflow defines a single job, **`sync_pr_to_notion`**. Caller templates use the same job id so runs are easy to recognize across repos. Steps (in order): **Checkout repository** → **Parse Notion database IDs and resolve PR number** (`pr_and_db_ids`) → **Collect PR data and documentation signals** (`collect_pr`) → **Resolve product from Notion (GitHub Repos → Products)** (`resolve_product`) → **Upsert Proposal page in Notion Proposals database** or **Print dry-run summary (no Notion write)**.
+The reusable workflow defines a single job, **`sync_pr_to_notion`**. Caller templates use the same job id so runs are easy to recognize across repos. Steps (in order): **Checkout** → **Detect app and platform** → **Parse Notion database IDs and resolve PR number** (`pr_and_db_ids`) → **Collect PR data and documentation signals** (`collect_pr`) → (when not `dry-run`) **documentation brief via GitHub Models** (`actions/ai-inference`, unless `use-ai-inference: false`) → **Resolve Notion data source IDs** → **Resolve product from Notion (GitHub Repos → Products)** (`resolve_product`) → **Upsert Proposal page** or **Print dry-run summary (no Notion write)**.
 
 ---
 
@@ -88,6 +88,7 @@ flowchart TB
     S1["Checkout"]
     S2["Parse Notion DB IDs + PR number"]
     S3["Collect PR data + signals"]
+    S3b["AI doc brief\n(optional)"]
     S4["Resolve product\nGitHub Repos → Products"]
     S5["Upsert Proposal in Notion\nor dry-run log"]
   end
@@ -101,7 +102,7 @@ flowchart TB
   Manual --> WC
   PR --> WC
   WC --> S1
-  S1 --> S2 --> S3 --> S4 --> S5
+  S1 --> S2 --> S3 --> S3b --> S4 --> S5
   S5 --> PDB
   PDB --> Agent
   Agent --> Docs
@@ -118,20 +119,24 @@ flowchart TB
 | **Proposal** | `PR #{n} - {title}` |
 | **Status** | `Raw Data` on full body sync; preserved when not `Raw Data` (see below). |
 | **PR URL** | Canonical PR link. |
-| **Summary** | **Machine-oriented single line** (no new Notion property): `N files \| +add/-del \| labels: … \| areas: …`. Aggregate `+/-` come from GitHub when available; otherwise `?`. |
+| **Summary** | Prefer the **User-facing summary** line from the AI brief when present; otherwise a machine-oriented line: `N files \| +add/-del \| labels: … \| areas: …`. Aggregate `+/-` come from GitHub when available; otherwise `?`. |
 | **Product** | Relation from GitHub Repos → Products. |
 | **Doc Areas** | From path heuristics; excludes `Other` and `CI/Config` in multi_select. |
 
 ### Page body (order)
 
-1. **PR Context** — Link, product, family, SHA, scope line (area counts).
-2. **PR Description** — Truncated PR body (same limits as before).
-3. **Signals for documentation agent** — Intro paragraph plus: base/head refs, primary area heuristic, aggregate +/-, labels, capped commit subjects, capped sorted path list, **Diff stat** (truncated). This is **input material** for Notion agents, not Feature Overview copy.
-4. **Agent task** / **Review checklist** — Boilerplate to-dos.
+1. **Pull request** — One paragraph with a link to the PR.
+2. **AI documentation brief** — Markdown sections from `actions/ai-inference` (see the **Documentation brief** system prompt in [`pr-notion-docs-sync.yml`](workflows/pr-notion-docs-sync.yml)): User-facing summary, Models, Structure, Behaviour, Navigation, Documentation impact, Confidence and gaps. Built from PR metadata, truncated diff, cross-references, Data/Models hints, and an optional **canonical models excerpt** (`app-models-excerpt-path`).
 
-### Signals (no LLM in CI)
+When **`use-ai-inference`** is `false`, the body is empty except the PR link (or a short placeholder if AI output is missing).
 
-- Labels, refs, additions/deletions (when `gh` exposes them), commit subjects (capped), up to **200** unique paths with overflow note, **`gh pr diff --stat`** capped at 8k chars.
+### What the collect step computes (not written verbatim to Notion)
+
+The workflow still gathers **signals** (labels, paths, diff stat, impact zones, etc.) in `signals.json` to build the AI prompts and the **Summary** property. Those structured signals are **not** appended as a separate “Signals for documentation agent” block on the page in the current implementation.
+
+### Signals (for AI prompts and Summary)
+
+- Labels, refs, additions/deletions (when `gh` exposes them), commit subjects (capped), capped unique paths, **`gh pr diff --stat`** capped at 8k chars (see workflow for exact caps).
 - Path **area** tags remain heuristic (iOS, Web, Backend, CI/Config, Docs, Other).
 
 ---
