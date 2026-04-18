@@ -128,7 +128,6 @@ jobs:
 | `hotfix-prepare.yml` / `hotfix-deploy.yml` | iOS hotfix branch and deploy flow |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-title-conventions.yml` | Enforce PR title format |
-| `pr-notion-docs-sync.yml` | Sync PR content to Notion |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
 | `qa-pipeline.yml` | QA test pipeline |
 | `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
@@ -136,7 +135,7 @@ jobs:
 
 ## Caller Templates
 
-The `caller-templates/` directory contains example workflow files that repos can copy to adopt shared workflows quickly. For Notion PR sync, copy `pr-notion-docs-sync.yml`. See [.github/pr-notion-docs-sync.md](.github/pr-notion-docs-sync.md).
+The `caller-templates/` directory contains example workflow files that repos can copy to adopt shared workflows quickly.
 
 ## Versioning
 

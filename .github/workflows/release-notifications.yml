@@ -44,9 +44,9 @@ on:
         required: true
         type: string
       slack_footer_mrkdwn:
-        description: "Final context block (mrkdwn). Override per app (e.g. Slack subteam cc vs plain text)."
+        description: "Final context block (mrkdwn). Override per app to mention a subteam or add custom messaging."
         required: false
-        default: "cc <!subteam^S049Q89D5HA|support-team> — please inform any customers waiting on fixes in this release."
+        default: "Please inform any customers waiting on fixes in this release."
         type: string
     secrets:
       SLACK_RELEASES_WEBHOOK_URL:
