@@ -59,12 +59,17 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Validate inputs
+        shell: bash
+        env:
+          PROJECT: ${{ inputs.project }}
+          WORKSPACE: ${{ inputs.workspace }}
         run: |
-          if [ -z "${{ inputs.project }}" ] && [ -z "${{ inputs.workspace }}" ]; then
+          set -euo pipefail
+          if [ -z "$PROJECT" ] && [ -z "$WORKSPACE" ]; then
             echo "::error::Either 'project' or 'workspace' must be provided"
             exit 1
           fi
-          if [ -n "${{ inputs.project }}" ] && [ -n "${{ inputs.workspace }}" ]; then
+          if [ -n "$PROJECT" ] && [ -n "$WORKSPACE" ]; then
             echo "::error::Only one of 'project' or 'workspace' may be provided"
             exit 1
           fi
