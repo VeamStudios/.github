@@ -21,7 +21,7 @@ Installs Node.js and configures npm/yarn to authenticate with the `@veamstudios`
 ```yaml
 - uses: VeamStudios/.github/.github/actions/setup-node-github-packages@main
   # with:
-  #   node-version: "20.x"   # default
+  #   node-version: "24.x"   # default
   #   cache: "npm"            # or "yarn"
 ```
 
@@ -49,7 +49,7 @@ jobs:
   ci:
     uses: VeamStudios/.github/.github/workflows/web-ci.yml@main
     # with:
-    #   node_version: "20.x"   # default
+    #   node_version: "24.x"   # default
     #   build_command: "build"  # default
 ```
 
@@ -129,7 +129,7 @@ jobs:
   tests:
     uses: VeamStudios/.github/.github/workflows/web-tests.yml@main
     # with:
-    #   node_version: "20.x"
+    #   node_version: "24.x"
     #   test_command: "test"
     #   coverage_artifact_path: "coverage"
 ```

@@ -18,6 +18,6 @@ jobs:
   tests:
     uses: VeamStudios/.github/.github/workflows/web-tests.yml@main
     # with:
-    #   node_version: "20.x"
+    #   node_version: "24.x"
     #   test_command: "test"
     #   coverage_artifact_path: "coverage"
