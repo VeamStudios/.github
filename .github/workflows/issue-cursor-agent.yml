@@ -21,7 +21,7 @@ on:
         description: "Cursor model passed to the headless agent"
         required: false
         type: string
-        default: "gpt-5.2"
+        default: "gpt-5.4"
       branch-prefix:
         description: "Branch prefix used for fix PR branches"
         required: false
