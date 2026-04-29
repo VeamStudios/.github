@@ -1,0 +1,201 @@
+name: Notify dependent Web/iOS PRs
+
+on:
+  workflow_call:
+    inputs:
+      backend_repo:
+        description: "Full repo name (e.g. VeamStudios/SiteAuditPro-Backend)"
+        required: true
+        type: string
+      web_repo:
+        description: "Full Web repo name"
+        required: true
+        type: string
+      ios_repo:
+        description: "Full iOS repo name"
+        required: true
+        type: string
+      product_name:
+        description: 'Human-readable product name (e.g. "Site Audit Pro")'
+        required: true
+        type: string
+      deploy_environment:
+        description: "dev | beta | production"
+        required: true
+        type: string
+      deploy_sha:
+        description: "Commit SHA that was deployed"
+        required: true
+        type: string
+      backend_pr_numbers:
+        description: "Optional comma-separated backend PR numbers; if empty, resolved via commits API"
+        required: false
+        default: ""
+        type: string
+      release_tag:
+        description: "Optional release tag (e.g. v1.2.3) for production comments"
+        required: false
+        default: ""
+        type: string
+      release_url:
+        description: "Optional GitHub Release URL for production comments"
+        required: false
+        default: ""
+        type: string
+      workflow_run_url:
+        description: "Optional URL to the backend deploy workflow run"
+        required: false
+        default: ""
+        type: string
+      dependent_pr_urls:
+        description: "Optional newline-separated full GitHub PR URLs on Web/iOS to always notify"
+        required: false
+        default: ""
+        type: string
+    secrets:
+      BOT_RELEASE_PRIVATE_KEY:
+        description: PEM private key for the Release Bot GitHub App
+        required: true
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint GitHub App token (Release Bot)
+        id: release_bot_token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Find client PRs and comment
+        env:
+          GH_TOKEN: ${{ steps.release_bot_token.outputs.token }}
+          BACKEND_REPO: ${{ inputs.backend_repo }}
+          WEB_REPO: ${{ inputs.web_repo }}
+          IOS_REPO: ${{ inputs.ios_repo }}
+          PRODUCT_NAME: ${{ inputs.product_name }}
+          DEPLOY_ENV: ${{ inputs.deploy_environment }}
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+          BACKEND_PR_NUMBERS: ${{ inputs.backend_pr_numbers }}
+          DEPENDENT_PR_URLS: ${{ inputs.dependent_pr_urls }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_URL: ${{ inputs.release_url }}
+          WORKFLOW_RUN_URL: ${{ inputs.workflow_run_url }}
+        run: |
+          set -euo pipefail
+
+          case "${DEPLOY_ENV}" in
+            dev) ENV_TITLE="Dev" ;;
+            beta) ENV_TITLE="Beta" ;;
+            production) ENV_TITLE="Production" ;;
+            *)
+              echo "Invalid deploy_environment: ${DEPLOY_ENV} (expected dev, beta, or production)"
+              exit 1
+              ;;
+          esac
+
+          SHORT_SHA="${DEPLOY_SHA:0:7}"
+
+          RESOLVED_NUMBERS=""
+          RAW="${BACKEND_PR_NUMBERS:-}"
+          RAW="${RAW//[$'\t\r\n']/}"
+          if [ -n "${RAW}" ]; then
+            RESOLVED_NUMBERS="$(echo "${RAW}" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -E '^[0-9]+$' | sort -nu | tr '\n' ' ' | xargs)"
+          else
+            RESOLVED_NUMBERS="$(gh api --paginate "repos/${BACKEND_REPO}/commits/${DEPLOY_SHA}/pulls" --jq '.[].number' | sort -nu | tr '\n' ' ' | xargs)"
+          fi
+          echo "Resolved backend PR numbers: ${RESOLVED_NUMBERS:-<none>}"
+
+          MENTION="${BACKEND_REPO}#"
+          TARGET_URLS_FILE="$(mktemp)"
+          : >"${TARGET_URLS_FILE}"
+
+          if [ -n "${RESOLVED_NUMBERS}" ]; then
+            for N in ${RESOLVED_NUMBERS}; do
+              Q="${MENTION}${N}"
+              for R in "${WEB_REPO}" "${IOS_REPO}"; do
+                gh search issues \
+                  --limit 100 \
+                  --json url \
+                  --jq '.[].url' \
+                  "repo:${R} is:pr is:open ${Q}" >>"${TARGET_URLS_FILE}" || true
+              done
+            done
+          fi
+
+          if [ -n "${DEPENDENT_PR_URLS:-}" ]; then
+            printf '%s\n' "${DEPENDENT_PR_URLS}" | while IFS= read -r line || [ -n "${line}" ]; do
+              line="$(echo "${line}" | xargs)"
+              [ -z "${line}" ] && continue
+              echo "${line}" >>"${TARGET_URLS_FILE}"
+            done
+          fi
+
+          if [ ! -s "${TARGET_URLS_FILE}" ]; then
+            echo "No dependent client PRs to notify."
+            rm -f "${TARGET_URLS_FILE}"
+            exit 0
+          fi
+
+          sort -u "${TARGET_URLS_FILE}" -o "${TARGET_URLS_FILE}"
+          echo "Comment targets:"
+          cat "${TARGET_URLS_FILE}"
+
+          LINK_LIST=""
+          if [ -n "${RESOLVED_NUMBERS}" ]; then
+            FIRST_LINK=1
+            for N in ${RESOLVED_NUMBERS}; do
+              if [ "${FIRST_LINK}" -eq 1 ]; then FIRST_LINK=0; else LINK_LIST+=", "; fi
+              LINK_LIST+="[#${N}](https://github.com/${BACKEND_REPO}/pull/${N})"
+            done
+          else
+            LINK_LIST="_None listed — use workflow inputs or Dependent PR URLs._"
+          fi
+
+          FOOTER=""
+          if [ -n "${WORKFLOW_RUN_URL}" ]; then
+            if [ "${DEPLOY_ENV}" = "production" ]; then
+              FOOTER="$(printf '\n\n<sub>[Workflow run](%s)</sub>' "${WORKFLOW_RUN_URL}")"
+            else
+              FOOTER="$(printf '\n\n<sub>Ref: `%s` · [Workflow run](%s)</sub>' "${SHORT_SHA}" "${WORKFLOW_RUN_URL}")"
+            fi
+          elif [ "${DEPLOY_ENV}" != "production" ]; then
+            FOOTER="$(printf '\n\n<sub>Ref: `%s`</sub>' "${SHORT_SHA}")"
+          fi
+
+          BODY_FILE="$(mktemp)"
+          if [ "${DEPLOY_ENV}" = "production" ]; then
+            {
+              echo "### Backend deployed to **Production**"
+              echo ""
+              echo "**Product:** ${PRODUCT_NAME}"
+              echo "**Backend:** \`${BACKEND_REPO}\`"
+              echo "**Backend PRs included in this deploy:** ${LINK_LIST}"
+              if [ -n "${RELEASE_TAG}" ] && [ -n "${RELEASE_URL}" ]; then
+                echo "**Release:** [${RELEASE_TAG}](${RELEASE_URL})"
+              fi
+              echo ""
+              echo "You can deploy **Web** and **iOS** to **production** when your changes are ready.${FOOTER}"
+            } >"${BODY_FILE}"
+          else
+            {
+              echo "### Backend deployed to **${ENV_TITLE}**"
+              echo ""
+              echo "**Product:** ${PRODUCT_NAME}"
+              echo "**Backend:** \`${BACKEND_REPO}\`"
+              echo "**Backend PRs included in this deploy:** ${LINK_LIST}"
+              echo ""
+              echo "You can deploy **Web** and **iOS** to **${ENV_TITLE}** when your changes are ready.${FOOTER}"
+            } >"${BODY_FILE}"
+          fi
+
+          while IFS= read -r PR_URL || [ -n "${PR_URL}" ]; do
+            PR_URL="$(echo "${PR_URL}" | xargs)"
+            [ -z "${PR_URL}" ] && continue
+            echo "Commenting ${PR_URL}"
+            gh pr comment "${PR_URL}" --body-file "${BODY_FILE}"
+          done <"${TARGET_URLS_FILE}"
+
+          rm -f "${TARGET_URLS_FILE}" "${BODY_FILE}"
