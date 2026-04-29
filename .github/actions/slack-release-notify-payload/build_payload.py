@@ -50,6 +50,10 @@ def markdown_to_slack_mrkdwn(section_md: str) -> str:
     return "\n".join(out).strip()
 
 
+# Slack: context block mrkdwn must be ≤ 2000 characters (smaller / “footer” style in the client).
+CONTEXT_MRKDWN_MAX = 2000
+
+
 def chunk_mrkdwn(text: str, max_len: int) -> list[str]:
     if len(text) <= max_len:
         return [text] if text else []
@@ -65,6 +69,13 @@ def chunk_mrkdwn(text: str, max_len: int) -> list[str]:
         chunks.append(rest[:cut].rstrip())
         rest = rest[cut:].lstrip()
     return chunks
+
+
+def append_changelog_as_context_blocks(blocks: list[dict], title: str, excerpt: str) -> None:
+    """Muted footer-style text (Slack context blocks), not primary section text."""
+    combined = f"{title}\n\n{excerpt}".strip()
+    for chunk in chunk_mrkdwn(combined, CONTEXT_MRKDWN_MAX):
+        blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": chunk}]})
 
 
 def build_web_payload() -> dict:
@@ -95,8 +106,7 @@ def build_web_payload() -> dict:
 
     if excerpt:
         title = os.environ.get("CHANGELOG_BLOCK_TITLE", "*Latest CHANGELOG*")
-        for chunk in chunk_mrkdwn(f"{title}\n\n{excerpt}", 2900):
-            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": chunk}})
+        append_changelog_as_context_blocks(blocks, title, excerpt)
     else:
         blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": fallback}]})
 
@@ -132,8 +142,7 @@ def build_ios_payload() -> dict:
 
     if excerpt:
         title = os.environ.get("CHANGELOG_BLOCK_TITLE", "*Latest CHANGELOG*")
-        for chunk in chunk_mrkdwn(f"{title}\n\n{excerpt}", 2900):
-            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": chunk}})
+        append_changelog_as_context_blocks(blocks, title, excerpt)
 
     ctx_lines = [
         (
