@@ -90,7 +90,7 @@ jobs:
 
 ### `notify-release.yml`
 
-Sends a Slack notification to the releases channel.
+Sends a Slack notification to the releases channel. Optionally checks out `changelog_git_ref` and excerpts the matching section from `CHANGELOG.md` (same repo as the caller) so Slack shows per-release notes plus links to the repository and GitHub release.
 
 ```yaml
 jobs:
@@ -99,9 +99,13 @@ jobs:
     with:
       version: v${{ inputs.version }}
       environment: production
+      changelog_git_ref: ${{ needs.deploy.outputs.commit_sha }}
     secrets:
       SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
 ```
+
+- `changelog_git_ref` — set to the deployed commit (or other ref) so `CHANGELOG.md` at that SHA is used. When empty, only the generic `slack_footer_mrkdwn` line is sent.
+- `slack_footer_mrkdwn` — used when the changelog is missing or has no `##` section for the version.
 
 ### `update-changelog-website.yml`
 
@@ -195,7 +199,7 @@ jobs:
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
 | `qa-pipeline.yml` | QA test pipeline |
 | `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
-| `release-notifications.yml` | Extended release notifications (iOS) |
+| `release-notifications.yml` | iOS production Slack notification (beta/cloud provenance + optional CHANGELOG excerpt) |
 
 ## Caller Templates
 

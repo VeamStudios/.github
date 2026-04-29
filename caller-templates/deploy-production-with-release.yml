@@ -51,5 +51,6 @@ jobs:
     with:
       version: v${{ inputs.version }}
       environment: production
+      changelog_git_ref: ${{ needs.deploy.outputs.commit_sha }}
     secrets:
       SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}

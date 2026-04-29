@@ -11,8 +11,17 @@ on:
         description: "Deployment environment (e.g. production)"
         required: true
         type: string
+      changelog_git_ref:
+        description: >-
+          Git ref (commit SHA recommended) to checkout when reading CHANGELOG.md.
+          When empty, Slack uses slack_footer_mrkdwn only (no changelog excerpt).
+        required: false
+        default: ""
+        type: string
       slack_footer_mrkdwn:
-        description: "Footer context block (mrkdwn). Override per app to mention a subteam or add custom messaging."
+        description: >-
+          Fallback footer when CHANGELOG.md is missing or has no section for this version.
+          Ignored when a changelog excerpt is shown.
         required: false
         default: "Please inform any customers waiting on fixes in this release."
         type: string
@@ -26,30 +35,24 @@ jobs:
     name: Send Slack notification
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository (changelog)
+        if: ${{ inputs.changelog_git_ref != '' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.changelog_git_ref }}
+          fetch-depth: 1
+
+      - name: Build Slack payload
+        uses: ./.github/actions/slack-release-notify-payload
+        with:
+          variant: web
+          version: ${{ inputs.version }}
+          environment: ${{ inputs.environment }}
+          slack_footer_fallback: ${{ inputs.slack_footer_mrkdwn }}
+
       - name: Send Slack notification
         uses: slackapi/slack-github-action@v2.1.0
         with:
           webhook: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
           webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": "*${{ github.repository }}* — <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.version }}|${{ inputs.version }}> deployed to ${{ inputs.environment }}",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*${{ github.repository }}* — <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.version }}|${{ inputs.version }}> deployed to ${{ inputs.environment }}\n\nSee the <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.version }}|full release notes> for details."
-                  }
-                },
-                {
-                  "type": "context",
-                  "elements": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "${{ inputs.slack_footer_mrkdwn }}"
-                    }
-                  ]
-                }
-              ]
-            }
+          payload-file-path: slack-payload.json
