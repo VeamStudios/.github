@@ -73,7 +73,7 @@ jobs:
           fetch-depth: 1
 
       - name: Build Slack payload
-        uses: ./.github/actions/slack-release-notify-payload
+        uses: VeamStudios/.github/.github/actions/slack-release-notify-payload@main
         with:
           variant: ios
           version: ${{ inputs.version }}

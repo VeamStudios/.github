@@ -43,7 +43,8 @@ jobs:
           fetch-depth: 1
 
       - name: Build Slack payload
-        uses: ./.github/actions/slack-release-notify-payload
+        # Must use repo/path — `./` resolves from the *caller* repo, not VeamStudios/.github.
+        uses: VeamStudios/.github/.github/actions/slack-release-notify-payload@main
         with:
           variant: web
           version: ${{ inputs.version }}
