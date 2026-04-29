@@ -40,7 +40,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.changelog_git_ref }}
-          fetch-depth: 1
+          # depth=1 breaks fetch for many commit SHAs (short or full). 0 = full history so any ref resolves.
+          fetch-depth: 0
 
       - name: Build Slack payload
         # Must use repo/path — `./` resolves from the *caller* repo, not VeamStudios/.github.
