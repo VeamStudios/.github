@@ -258,6 +258,8 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           git add -A
+          git reset -- cursor_agent_output.md cursor_fix_prompt.txt
+
           if git diff --cached --quiet; then
             echo "::error::No staged changes were found after the Cursor run."
             exit 1
