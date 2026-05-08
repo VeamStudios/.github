@@ -1,0 +1,363 @@
+name: Sync GitHub Link to Notion
+
+on:
+  workflow_call:
+    inputs:
+      notion_github_links_database_id:
+        description: "Notion database ID for the GitHub Links database"
+        required: true
+        type: string
+      notion_repo_page_id:
+        description: "Notion page ID for the Repo relation row for this repository"
+        required: false
+        default: ""
+        type: string
+      clear_work_item_when_missing:
+        description: "If true, clear the Work Item relation when no Work Item URL is found in the PR/Issue body"
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      NOTION_TOKEN:
+        required: true
+
+jobs:
+  sync:
+    name: Sync PR/Issue to Notion
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync GitHub item to Notion
+        uses: actions/github-script@v7
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_GITHUB_LINKS_DATABASE_ID: ${{ inputs.notion_github_links_database_id }}
+          NOTION_REPO_PAGE_ID: ${{ inputs.notion_repo_page_id }}
+          CLEAR_WORK_ITEM_WHEN_MISSING: ${{ inputs.clear_work_item_when_missing }}
+        with:
+          script: |
+            const notionToken = process.env.NOTION_TOKEN;
+            const databaseId = normalizeNotionId(process.env.NOTION_GITHUB_LINKS_DATABASE_ID);
+            const repoPageIdInput = normalizeNotionId(process.env.NOTION_REPO_PAGE_ID);
+            const clearWorkItemWhenMissing = process.env.CLEAR_WORK_ITEM_WHEN_MISSING === "true";
+
+            const isPullRequest = !!context.payload.pull_request;
+            const isIssue = !!context.payload.issue && !context.payload.issue.pull_request;
+
+            if (!isPullRequest && !isIssue) {
+              console.log("No supported pull_request or issue payload found. Skipping.");
+              return;
+            }
+
+            const item = isPullRequest
+              ? context.payload.pull_request
+              : context.payload.issue;
+
+            const link = item.html_url;
+            const repoUrl = normalizeUrl(
+              context.payload.repository?.html_url || `https://github.com/${context.repo.owner}/${context.repo.repo}`
+            );
+            const name = item.title;
+            const type = isPullRequest ? "PR" : "Issue";
+            const state = getNotionState({ isPullRequest, item });
+
+            const workItemPageId = extractWorkItemPageId(item.body || "");
+
+            const notionHeaders = {
+              "Authorization": `Bearer ${notionToken}`,
+              "Content-Type": "application/json",
+              "Notion-Version": "2022-06-28"
+            };
+
+            async function notionRequest(path, method, body) {
+              const response = await fetch(`https://api.notion.com/v1${path}`, {
+                method,
+                headers: notionHeaders,
+                body: body ? JSON.stringify(body) : undefined
+              });
+
+              if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`Notion API error: ${response.status} ${text}`);
+              }
+
+              return response.json();
+            }
+
+            const queryResult = await notionRequest(
+              `/databases/${databaseId}/query`,
+              "POST",
+              {
+                filter: {
+                  property: "Link",
+                  url: {
+                    equals: link
+                  }
+                }
+              }
+            );
+            const existingPage = queryResult.results.length > 0 ? queryResult.results[0] : null;
+            const inferredRepoPageId = await resolveRepoPageId({
+              explicitRepoPageId: repoPageIdInput,
+              existingPage,
+              repoUrl
+            });
+
+            const properties = {
+              "Name": {
+                title: [
+                  {
+                    text: {
+                      content: name
+                    }
+                  }
+                ]
+              },
+              "Type": {
+                select: {
+                  name: type
+                }
+              },
+              "Link": {
+                url: link
+              },
+              "State": {
+                select: {
+                  name: state
+                }
+              }
+            };
+
+            if (inferredRepoPageId) {
+              properties["Repo"] = {
+                relation: [{ id: inferredRepoPageId }]
+              };
+            }
+
+            if (workItemPageId) {
+              properties["Work Item"] = {
+                relation: [{ id: workItemPageId }]
+              };
+            } else if (clearWorkItemWhenMissing) {
+              properties["Work Item"] = {
+                relation: []
+              };
+            }
+
+            if (queryResult.results.length > 0) {
+              const pageId = queryResult.results[0].id;
+
+              await notionRequest(`/pages/${pageId}`, "PATCH", {
+                properties
+              });
+
+              console.log(`Updated Notion GitHub Link: ${link}`);
+            } else {
+              await notionRequest("/pages", "POST", {
+                parent: {
+                  database_id: databaseId
+                },
+                properties
+              });
+
+              console.log(`Created Notion GitHub Link: ${link}`);
+            }
+
+            function getNotionState({ isPullRequest, item }) {
+              if (isPullRequest) {
+                if (item.state === "closed" && item.merged) {
+                  return "Merged";
+                }
+
+                if (item.state === "closed") {
+                  return "Closed";
+                }
+
+                return "Open";
+              }
+
+              if (item.state === "closed") {
+                return "Closed";
+              }
+
+              return "Open";
+            }
+
+            function extractWorkItemPageId(body) {
+              const explicitPatterns = [
+                /Work Item:\s*(https?:\/\/[^\s)]+)/i,
+                /Notion Work Item:\s*(https?:\/\/[^\s)]+)/i,
+                /Notion:\s*(https?:\/\/[^\s)]+)/i
+              ];
+
+              for (const pattern of explicitPatterns) {
+                const match = body.match(pattern);
+
+                if (match?.[1]) {
+                  const pageId = extractNotionPageIdFromUrl(match[1]);
+
+                  if (pageId) {
+                    return pageId;
+                  }
+                }
+              }
+
+              return null;
+            }
+
+            async function resolveRepoPageId({ explicitRepoPageId, existingPage, repoUrl }) {
+              if (explicitRepoPageId) {
+                return explicitRepoPageId;
+              }
+
+              const existingRelationPageId = getExistingRepoRelationPageId(existingPage);
+
+              if (existingRelationPageId) {
+                return existingRelationPageId;
+              }
+
+              const repoDatabaseId = await getRepoRelationDatabaseId();
+
+              if (!repoDatabaseId) {
+                return "";
+              }
+
+              return await findRepoPageIdByUrl({
+                repoDatabaseId,
+                repoUrl
+              });
+            }
+
+            function getExistingRepoRelationPageId(page) {
+              const relation = page?.properties?.Repo?.relation;
+
+              if (Array.isArray(relation) && relation.length > 0 && relation[0]?.id) {
+                return relation[0].id;
+              }
+
+              return "";
+            }
+
+            function pageHasMatchingRepoUrl(page, targetRepoUrl) {
+              if (!page || !targetRepoUrl) {
+                return false;
+              }
+
+              const properties = page.properties || {};
+
+              for (const value of Object.values(properties)) {
+                if (value?.type === "url" && normalizeUrl(value.url) === targetRepoUrl) {
+                  return true;
+                }
+
+                if (value?.type === "rich_text") {
+                  for (const richText of value.rich_text || []) {
+                    if (normalizeUrl(richText?.plain_text || "") === targetRepoUrl) {
+                      return true;
+                    }
+                  }
+                }
+              }
+
+              return false;
+            }
+
+            async function getRepoRelationDatabaseId() {
+              const database = await notionRequest(`/databases/${databaseId}`, "GET");
+              const properties = database?.properties || {};
+              const repoProperty = properties["Repo"];
+
+              if (repoProperty?.type === "relation" && repoProperty?.relation?.database_id) {
+                return normalizeNotionId(repoProperty.relation.database_id);
+              }
+
+              for (const value of Object.values(properties)) {
+                if (value?.type === "relation" && value?.relation?.database_id) {
+                  return normalizeNotionId(value.relation.database_id);
+                }
+              }
+
+              return "";
+            }
+
+            async function findRepoPageIdByUrl({ repoDatabaseId, repoUrl }) {
+              if (!repoDatabaseId || !repoUrl) {
+                return "";
+              }
+
+              let startCursor = undefined;
+
+              while (true) {
+                const body = { page_size: 100 };
+
+                if (startCursor) {
+                  body.start_cursor = startCursor;
+                }
+
+                const result = await notionRequest(`/databases/${repoDatabaseId}/query`, "POST", body);
+
+                for (const page of result.results || []) {
+                  if (pageHasMatchingRepoUrl(page, repoUrl)) {
+                    return page.id;
+                  }
+                }
+
+                if (!result.has_more || !result.next_cursor) {
+                  break;
+                }
+
+                startCursor = result.next_cursor;
+              }
+
+              return "";
+            }
+
+            function normalizeUrl(value) {
+              if (!value) {
+                return "";
+              }
+
+              return String(value).trim().replace(/\/+$/, "").toLowerCase();
+            }
+
+            function extractNotionPageIdFromUrl(url) {
+              const cleaned = url
+                .replace(/[>,.]+$/, "")
+                .split("?")[0]
+                .split("#")[0];
+
+              const uuidMatch = cleaned.match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
+
+              if (uuidMatch) {
+                return normalizeNotionId(uuidMatch[0]);
+              }
+
+              const compactIdMatch = cleaned.match(/[0-9a-fA-F]{32}/);
+
+              if (compactIdMatch) {
+                return normalizeNotionId(compactIdMatch[0]);
+              }
+
+              return null;
+            }
+
+            function normalizeNotionId(value) {
+              if (!value) {
+                return "";
+              }
+
+              const cleaned = value
+                .trim()
+                .replace(/-/g, "");
+
+              if (!/^[0-9a-fA-F]{32}$/.test(cleaned)) {
+                return value.trim();
+              }
+
+              return [
+                cleaned.slice(0, 8),
+                cleaned.slice(8, 12),
+                cleaned.slice(12, 16),
+                cleaned.slice(16, 20),
+                cleaned.slice(20)
+              ].join("-");
+            }
