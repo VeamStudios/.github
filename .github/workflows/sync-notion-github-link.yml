@@ -56,7 +56,6 @@ jobs:
             const repoUrl = normalizeUrl(
               context.payload.repository?.html_url || `https://github.com/${context.repo.owner}/${context.repo.repo}`
             );
-            const repoFullName = context.payload.repository?.full_name || `${context.repo.owner}/${context.repo.repo}`;
             const name = item.title;
             const type = isPullRequest ? "PR" : "Issue";
             const state = getNotionState({ isPullRequest, item });
@@ -100,8 +99,7 @@ jobs:
             const inferredRepoPageId = await resolveRepoPageId({
               explicitRepoPageId: repoPageIdInput,
               existingPage,
-              repoUrl,
-              repoFullName
+              repoUrl
             });
 
             const properties = {
@@ -206,7 +204,7 @@ jobs:
               return null;
             }
 
-            async function resolveRepoPageId({ explicitRepoPageId, existingPage, repoUrl, repoFullName }) {
+            async function resolveRepoPageId({ explicitRepoPageId, existingPage, repoUrl }) {
               if (explicitRepoPageId) {
                 return explicitRepoPageId;
               }
@@ -217,22 +215,16 @@ jobs:
                 return existingRelationPageId;
               }
 
-              const searchResult = await notionRequest("/search", "POST", {
-                query: repoFullName,
-                filter: {
-                  property: "object",
-                  value: "page"
-                },
-                page_size: 100
-              });
+              const repoDatabaseId = await getRepoRelationDatabaseId();
 
-              for (const page of searchResult.results || []) {
-                if (pageHasMatchingRepoUrl(page, repoUrl)) {
-                  return page.id;
-                }
+              if (!repoDatabaseId) {
+                return "";
               }
 
-              return "";
+              return await findRepoPageIdByUrl({
+                repoDatabaseId,
+                repoUrl
+              });
             }
 
             function getExistingRepoRelationPageId(page) {
@@ -267,6 +259,56 @@ jobs:
               }
 
               return false;
+            }
+
+            async function getRepoRelationDatabaseId() {
+              const database = await notionRequest(`/databases/${databaseId}`, "GET");
+              const properties = database?.properties || {};
+              const repoProperty = properties["Repo"];
+
+              if (repoProperty?.type === "relation" && repoProperty?.relation?.database_id) {
+                return normalizeNotionId(repoProperty.relation.database_id);
+              }
+
+              for (const value of Object.values(properties)) {
+                if (value?.type === "relation" && value?.relation?.database_id) {
+                  return normalizeNotionId(value.relation.database_id);
+                }
+              }
+
+              return "";
+            }
+
+            async function findRepoPageIdByUrl({ repoDatabaseId, repoUrl }) {
+              if (!repoDatabaseId || !repoUrl) {
+                return "";
+              }
+
+              let startCursor = undefined;
+
+              while (true) {
+                const body = { page_size: 100 };
+
+                if (startCursor) {
+                  body.start_cursor = startCursor;
+                }
+
+                const result = await notionRequest(`/databases/${repoDatabaseId}/query`, "POST", body);
+
+                for (const page of result.results || []) {
+                  if (pageHasMatchingRepoUrl(page, repoUrl)) {
+                    return page.id;
+                  }
+                }
+
+                if (!result.has_more || !result.next_cursor) {
+                  break;
+                }
+
+                startCursor = result.next_cursor;
+              }
+
+              return "";
             }
 
             function normalizeUrl(value) {
