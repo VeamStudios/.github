@@ -195,7 +195,6 @@ jobs:
 | `deploy-ios-testflight.yml` | Build and upload an iOS app to TestFlight |
 | `hotfix-prepare.yml` / `hotfix-deploy.yml` | iOS hotfix branch and deploy flow |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
-| `pr-title-conventions.yml` | Enforce PR title format |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
 | `qa-pipeline.yml` | QA test pipeline |
 | `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |

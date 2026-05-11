@@ -67,7 +67,7 @@ jobs:
     steps:
       - name: Checkout repository (changelog)
         if: ${{ inputs.changelog_git_ref != '' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ inputs.changelog_git_ref }}
           fetch-depth: 0

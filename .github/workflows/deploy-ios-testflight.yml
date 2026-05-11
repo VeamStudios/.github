@@ -122,10 +122,10 @@ jobs:
           bundler-cache: true
 
       - name: Setup App Store Connect API Key
-        run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo -n "${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
-          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+        uses: VeamStudios/.github/.github/actions/setup-asc-api-key@main
+        with:
+          key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          key-content: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
 
       - name: Validate deploy version
         shell: bash
@@ -237,10 +237,10 @@ jobs:
           bundler-cache: true
 
       - name: Setup App Store Connect API Key
-        run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo -n "${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
-          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+        uses: VeamStudios/.github/.github/actions/setup-asc-api-key@main
+        with:
+          key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          key-content: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
 
       - name: Setup Git authentication
         run: |

@@ -7,6 +7,3 @@
 <!-- Optional: Any additional context -->
 - 
 
-<!--  PR Title should have one of the following prefixes -->
-<!--  fix | feat | build | chore | ci | docs | style | refac | perf | test -->
-

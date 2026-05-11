@@ -23,6 +23,9 @@ on:
         description: "Version string used in the changelog sync commit message"
         required: true
         type: string
+    secrets:
+      BOT_RELEASE_PRIVATE_KEY:
+        required: true
 
 permissions:
   contents: read
@@ -53,15 +56,58 @@ jobs:
           MESSAGE="Update changelog for ${{ inputs.version }}"
           echo "value=$MESSAGE" >> "$GITHUB_OUTPUT"
 
-      - name: Update changelog website
-        uses: dmnemec/copy_file_to_another_repo_action@v1.1.1
+      - name: Stage source changelog
+        shell: bash
         env:
-          API_TOKEN_GITHUB: ${{ steps.app_token.outputs.token }}
+          SOURCE_FILE: ${{ inputs.source_file }}
+        run: |
+          set -euo pipefail
+
+          if [ ! -f "$SOURCE_FILE" ]; then
+            echo "::error::Source changelog not found: $SOURCE_FILE"
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/changelog-sync"
+          cp "$SOURCE_FILE" "$RUNNER_TEMP/changelog-sync/source-file"
+
+      - name: Checkout destination repository
+        uses: actions/checkout@v6
         with:
-          source_file: ${{ inputs.source_file }}
-          destination_repo: ${{ inputs.destination_repo }}
-          destination_folder: ${{ inputs.destination_folder }}
-          destination_branch: "main"
-          user_email: "180547681+veamstudios-release-bot[bot]@users.noreply.github.com"
-          user_name: "Release Bot"
-          commit_message: ${{ steps.commit_message.outputs.value }}
+          repository: ${{ inputs.destination_repo }}
+          ref: main
+          path: changelog-destination
+          token: ${{ steps.app_token.outputs.token }}
+
+      - name: Commit changelog to destination
+        shell: bash
+        env:
+          SOURCE_FILE: ${{ inputs.source_file }}
+          DESTINATION_FOLDER: ${{ inputs.destination_folder }}
+          COMMIT_MESSAGE: ${{ steps.commit_message.outputs.value }}
+        run: |
+          set -euo pipefail
+
+          case "$DESTINATION_FOLDER" in
+            ""|/*|*../*|../*)
+              echo "::error::destination_folder must be a relative folder inside the destination repository"
+              exit 1
+              ;;
+          esac
+
+          destination_file="changelog-destination/${DESTINATION_FOLDER}/$(basename "$SOURCE_FILE")"
+          mkdir -p "$(dirname "$destination_file")"
+          cp "$RUNNER_TEMP/changelog-sync/source-file" "$destination_file"
+
+          cd changelog-destination
+          git config user.email "180547681+veamstudios-release-bot[bot]@users.noreply.github.com"
+          git config user.name "Release Bot"
+          git add "${DESTINATION_FOLDER}/$(basename "$SOURCE_FILE")"
+
+          if git diff --cached --quiet; then
+            echo "No changelog changes to commit."
+            exit 0
+          fi
+
+          git commit -m "$COMMIT_MESSAGE"
+          git push origin HEAD:main

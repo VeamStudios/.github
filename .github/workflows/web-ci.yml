@@ -23,7 +23,7 @@ jobs:
     name: Validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js with GitHub Packages
         uses: VeamStudios/.github/.github/actions/setup-node-github-packages@main
