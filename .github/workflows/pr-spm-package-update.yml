@@ -74,9 +74,16 @@ jobs:
           VERSION: ${{ inputs.version }}
           PACKAGE_URL: ${{ inputs.package_repo_url }}
         run: |
-          REVISION=$(git ls-remote "$PACKAGE_URL" "refs/tags/$VERSION" | awk '{print $1}')
+          TAG_NAME="v$VERSION"
+          REVISION=$(git ls-remote "$PACKAGE_URL" "refs/tags/$TAG_NAME" | awk '{print $1}')
+
           if [ -z "$REVISION" ]; then
-            echo "::error::Could not resolve tag $VERSION from $PACKAGE_URL"
+            TAG_NAME="$VERSION"
+            REVISION=$(git ls-remote "$PACKAGE_URL" "refs/tags/$TAG_NAME" | awk '{print $1}')
+          fi
+
+          if [ -z "$REVISION" ]; then
+            echo "::error::Could not resolve tag v$VERSION or $VERSION from $PACKAGE_URL"
             exit 1
           fi
 
@@ -86,7 +93,7 @@ jobs:
             exit 1
           fi
 
-          echo "Updating $RESOLVED → $VERSION ($REVISION)"
+          echo "Updating $RESOLVED → $VERSION using tag $TAG_NAME ($REVISION)"
 
           jq --arg url "$PACKAGE_URL" \
              --arg rev "$REVISION" \
