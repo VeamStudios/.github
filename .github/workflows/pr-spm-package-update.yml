@@ -74,12 +74,24 @@ jobs:
           VERSION: ${{ inputs.version }}
           PACKAGE_URL: ${{ inputs.package_repo_url }}
         run: |
+          resolve_tag_revision() {
+            local tag_name="$1"
+            local revision
+
+            revision=$(git ls-remote "$PACKAGE_URL" "refs/tags/$tag_name^{}" | awk '{print $1}')
+            if [ -z "$revision" ]; then
+              revision=$(git ls-remote "$PACKAGE_URL" "refs/tags/$tag_name" | awk '{print $1}')
+            fi
+
+            echo "$revision"
+          }
+
           TAG_NAME="v$VERSION"
-          REVISION=$(git ls-remote "$PACKAGE_URL" "refs/tags/$TAG_NAME" | awk '{print $1}')
+          REVISION=$(resolve_tag_revision "$TAG_NAME")
 
           if [ -z "$REVISION" ]; then
             TAG_NAME="$VERSION"
-            REVISION=$(git ls-remote "$PACKAGE_URL" "refs/tags/$TAG_NAME" | awk '{print $1}')
+            REVISION=$(resolve_tag_revision "$TAG_NAME")
           fi
 
           if [ -z "$REVISION" ]; then
@@ -94,6 +106,56 @@ jobs:
           fi
 
           echo "Updating $RESOLVED → $VERSION using tag $TAG_NAME ($REVISION)"
+
+          PROJECT_FILE="$(find . -maxdepth 1 -name '*.xcodeproj' -type d | head -1)/project.pbxproj"
+          if [ ! -f "$PROJECT_FILE" ]; then
+            echo "::error::project.pbxproj not found"
+            exit 1
+          fi
+
+          python3 - "$PROJECT_FILE" "$PACKAGE_URL" "$VERSION" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          project_file = Path(sys.argv[1])
+          package_url = sys.argv[2]
+          version = sys.argv[3]
+
+          lines = project_file.read_text().splitlines(keepends=True)
+          updated = False
+          i = 0
+
+          while i < len(lines):
+              if "XCRemoteSwiftPackageReference" not in lines[i] or " = {" not in lines[i]:
+                  i += 1
+                  continue
+
+              start = i
+              depth = lines[i].count("{") - lines[i].count("}")
+              i += 1
+              while i < len(lines) and depth > 0:
+                  depth += lines[i].count("{") - lines[i].count("}")
+                  i += 1
+
+              end = i
+              block = "".join(lines[start:end])
+              if f'repositoryURL = "{package_url}";' not in block:
+                  continue
+
+              for index in range(start, end):
+                  if re.match(r"^\s*version = [^;]+;\s*$", lines[index]):
+                      indent = lines[index].split("version =", 1)[0]
+                      lines[index] = f"{indent}version = {version};\n"
+                      updated = True
+                      break
+
+          if not updated:
+              print(f"::error::Could not update exactVersion for {package_url} in {project_file}")
+              sys.exit(1)
+
+          project_file.write_text("".join(lines))
+          PY
 
           jq --arg url "$PACKAGE_URL" \
              --arg rev "$REVISION" \
