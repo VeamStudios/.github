@@ -1,0 +1,25 @@
+# Master Flow ⑤ Content — placeholder (draft generation not wired here yet).
+# Future: trigger on bot: beta approved; Workers or Actions write Content DB rows.
+
+name: Content Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      note:
+        description: "Optional note for stub runs (debug only)"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  stub:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Content pipeline placeholder
+        run: |
+          echo "::notice::content-pipeline is a Master Flow stage placeholder."
+          echo "Content drafts are not automated in GitHub Actions yet."
+          if [ -n "${{ inputs.note }}" ]; then
+            echo "Note: ${{ inputs.note }}"
+          fi

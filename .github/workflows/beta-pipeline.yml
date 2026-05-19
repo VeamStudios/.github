@@ -1,0 +1,26 @@
+# Master Flow ④ Beta QA — placeholder.
+# Existing deploy workflows (e.g. deploy-ios-testflight, caller deploy templates) are unchanged.
+# Future: compose merge-gate, beta deploy, and bot: beta approved hooks here.
+
+name: Beta Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      note:
+        description: "Optional note for stub runs (debug only)"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  stub:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Beta pipeline placeholder
+        run: |
+          echo "::notice::beta-pipeline is a Master Flow stage placeholder."
+          echo "Use existing deploy-ios-testflight / deploy-beta caller workflows until this is implemented."
+          if [ -n "${{ inputs.note }}" ]; then
+            echo "Note: ${{ inputs.note }}"
+          fi

@@ -1,0 +1,27 @@
+# Master Flow ⑥ Release — placeholder.
+# Existing atomics are unchanged: create-github-release, notify-release,
+# update-changelog-website, notify-dependent-client-prs, deploy-production callers.
+# Future: orchestrate those from this workflow_call entry point.
+
+name: Release Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      note:
+        description: "Optional note for stub runs (debug only)"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  stub:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release pipeline placeholder
+        run: |
+          echo "::notice::release-pipeline is a Master Flow stage placeholder."
+          echo "Keep using deploy-production-with-release and related caller templates."
+          if [ -n "${{ inputs.note }}" ]; then
+            echo "Note: ${{ inputs.note }}"
+          fi

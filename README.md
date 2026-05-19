@@ -40,6 +40,25 @@ Writes the App Store Connect API key `.p8` file to the filesystem for Fastlane a
 
 All reusable workflows are called with `uses:` at the job level.
 
+### Master Flow stage pipelines
+
+One reusable workflow per Master Flow stage. **Existing callers are unchanged** — these are additive.
+
+| Workflow | Status | Behaviour |
+|----------|--------|-----------|
+| `capture-pipeline.yml` | Stub | Placeholder (capture is Notion-first today). |
+| `prepare-pipeline.yml` | **Wrapper** | Forwards to `issue-cursor-agent.yml` (same inputs/secrets). |
+| `dev-pipeline.yml` | **Wrapper** | Forwards to `qa-pipeline.yml` (same inputs/secrets). |
+| `beta-pipeline.yml` | Stub | Placeholder; use existing deploy callers until implemented. |
+| `content-pipeline.yml` | Stub | Placeholder; content drafts not wired in Actions yet. |
+| `release-pipeline.yml` | Stub | Placeholder; use `deploy-production-with-release` etc. until implemented. |
+
+**Migration (optional, later):** point app `qa.yml` at `dev-pipeline.yml@main` instead of `qa-pipeline.yml@main` — behaviour is identical today because `dev-pipeline` only wraps `qa-pipeline`.
+
+Optional caller templates: `caller-templates/dev-pipeline.yml`, `caller-templates/prepare-pipeline.yml`.
+
+Legacy names (`qa-pipeline.yml`, `issue-cursor-agent.yml`) remain supported indefinitely until callers switch.
+
 ### `web-ci.yml`
 
 Full CI pipeline for web apps: format check, lint, typecheck, and build.
@@ -196,8 +215,14 @@ jobs:
 | `hotfix-prepare.yml` / `hotfix-deploy.yml` | iOS hotfix branch and deploy flow |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
-| `qa-pipeline.yml` | QA test pipeline |
-| `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
+| `qa-pipeline.yml` | PR QA brief on `bot: qa needed` (also callable via `dev-pipeline.yml`) |
+| `issue-cursor-agent.yml` | Issue triage/fix on `bot: triage` / `bot: fix` (also via `prepare-pipeline.yml`) |
+| `capture-pipeline.yml` | Master Flow ① stub |
+| `prepare-pipeline.yml` | Master Flow ② wrapper → `issue-cursor-agent` |
+| `dev-pipeline.yml` | Master Flow ③ wrapper → `qa-pipeline` |
+| `beta-pipeline.yml` | Master Flow ④ stub |
+| `content-pipeline.yml` | Master Flow ⑤ stub |
+| `release-pipeline.yml` | Master Flow ⑥ stub |
 | `release-notifications.yml` | iOS production Slack notification (beta/cloud provenance + optional CHANGELOG excerpt) |
 
 ## Caller Templates

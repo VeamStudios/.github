@@ -1,0 +1,25 @@
+# Master Flow ① Capture — placeholder (no GitHub automation yet).
+# Does not replace or call any existing workflow. Safe until callers opt in.
+
+name: Capture Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      note:
+        description: "Optional note for stub runs (debug only)"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  stub:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Capture pipeline placeholder
+        run: |
+          echo "::notice::capture-pipeline is a Master Flow stage placeholder."
+          echo "Capture/triage today lives in Notion Work Items, not GitHub Actions."
+          if [ -n "${{ inputs.note }}" ]; then
+            echo "Note: ${{ inputs.note }}"
+          fi

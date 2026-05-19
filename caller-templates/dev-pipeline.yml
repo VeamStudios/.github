@@ -1,0 +1,20 @@
+# OPTIONAL — Master Flow ③ Dev (PR QA)
+#
+# Do not replace an existing qa.yml until you are ready to migrate.
+# Today, CIP/SAP repos call qa-pipeline.yml@main directly; that keeps working.
+#
+# When adopting: copy to .github/workflows/dev-pipeline.yml and wire the same secrets as qa.yml.
+
+name: Dev Pipeline
+
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  dev-pipeline:
+    uses: VeamStudios/.github/.github/workflows/dev-pipeline.yml@main
+    with:
+      bot-qa-app-id: ${{ vars.BOT_QA_APP_ID }}
+    secrets:
+      BOT_QA_PRIVATE_KEY: ${{ secrets.BOT_QA_PRIVATE_KEY }}

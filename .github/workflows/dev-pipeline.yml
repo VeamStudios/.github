@@ -1,0 +1,53 @@
+# Master Flow ③ Dev (PR QA) — wrapper around the existing qa-pipeline workflow.
+# Safe to adopt in app repos later; callers can keep using qa-pipeline.yml@main unchanged.
+
+name: Dev Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      bot-qa-app-id:
+        description: "GitHub App ID used to mint the QA bot token"
+        required: true
+        type: string
+      merge-method:
+        description: "Merge method to use (merge, squash, rebase)"
+        required: false
+        type: string
+        default: "squash"
+      app-name:
+        description: "Override auto-detected app name (leave empty to detect from repo name)"
+        required: false
+        type: string
+        default: ""
+      platform:
+        description: "Override auto-detected platform (leave empty to detect from repo name)"
+        required: false
+        type: string
+        default: ""
+      ai-model:
+        description: "AI model to use for QA brief generation"
+        required: false
+        type: string
+        default: "openai/gpt-4.1"
+      max-tokens:
+        description: "Max tokens for AI response"
+        required: false
+        type: number
+        default: 2000
+    secrets:
+      BOT_QA_PRIVATE_KEY:
+        required: true
+
+jobs:
+  dev:
+    uses: ./.github/workflows/qa-pipeline.yml
+    with:
+      bot-qa-app-id: ${{ inputs.bot-qa-app-id }}
+      merge-method: ${{ inputs.merge-method }}
+      app-name: ${{ inputs.app-name }}
+      platform: ${{ inputs.platform }}
+      ai-model: ${{ inputs.ai-model }}
+      max-tokens: ${{ inputs.max-tokens }}
+    secrets:
+      BOT_QA_PRIVATE_KEY: ${{ secrets.BOT_QA_PRIVATE_KEY }}

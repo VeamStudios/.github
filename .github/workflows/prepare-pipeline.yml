@@ -1,0 +1,74 @@
+# Master Flow ② Prepare — wrapper around the existing issue-cursor-agent workflow.
+# Safe to adopt in app repos later; callers can keep using issue-cursor-agent.yml@main unchanged.
+
+name: Prepare Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      github-app-id:
+        description: "GitHub App ID used to mint the bot token"
+        required: true
+        type: string
+      fix-label:
+        description: "Issue label that should trigger a code-fix run"
+        required: false
+        type: string
+        default: "bot: fix"
+      triage-label:
+        description: "Issue label that should trigger a triage-only run"
+        required: false
+        type: string
+        default: "bot: triage"
+      cursor-model:
+        description: "Cursor model passed to the headless agent"
+        required: false
+        type: string
+        default: "gpt-5.5-high"
+      branch-prefix:
+        description: "Branch prefix used for fix PR branches"
+        required: false
+        type: string
+        default: "cursor/issue"
+      setup-command:
+        description: "Optional repo setup command run before invoking Cursor"
+        required: false
+        type: string
+        default: ""
+      test-command:
+        description: "Optional deterministic verification command run after a fix"
+        required: false
+        type: string
+        default: ""
+      extra-prompt:
+        description: "Optional extra instructions appended to the Cursor prompt"
+        required: false
+        type: string
+        default: ""
+      post-start-comment:
+        description: "Whether to post a status comment when the workflow starts"
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      GITHUB_APP_PRIVATE_KEY:
+        required: true
+      CURSOR_API_KEY:
+        required: true
+
+jobs:
+  prepare:
+    uses: ./.github/workflows/issue-cursor-agent.yml
+    with:
+      github-app-id: ${{ inputs.github-app-id }}
+      fix-label: ${{ inputs.fix-label }}
+      triage-label: ${{ inputs.triage-label }}
+      cursor-model: ${{ inputs.cursor-model }}
+      branch-prefix: ${{ inputs.branch-prefix }}
+      setup-command: ${{ inputs.setup-command }}
+      test-command: ${{ inputs.test-command }}
+      extra-prompt: ${{ inputs.extra-prompt }}
+      post-start-comment: ${{ inputs.post-start-comment }}
+    secrets:
+      GITHUB_APP_PRIVATE_KEY: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
+      CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}

@@ -1,0 +1,19 @@
+# OPTIONAL — Master Flow ② Prepare (issue triage / fix via Cursor)
+#
+# Adopt when you want bot: triage / bot: fix automation on issues.
+# Requires GITHUB_APP_PRIVATE_KEY, CURSOR_API_KEY, and vars.GITHUB_APP_ID (or your app id var).
+
+name: Prepare Pipeline
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  prepare-pipeline:
+    uses: VeamStudios/.github/.github/workflows/prepare-pipeline.yml@main
+    with:
+      github-app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+    secrets:
+      GITHUB_APP_PRIVATE_KEY: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+      CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
