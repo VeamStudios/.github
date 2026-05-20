@@ -71,6 +71,35 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Require Work Item URL in PR
+        env:
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          printf '%s\n%s\n' "$PR_TITLE" "$PR_BODY" > pr_text.txt
+
+          if grep -qiE 'notion\.(so|site)/[^[:space:]]*([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})' pr_text.txt; then
+            echo "Work Item URL found in PR title or description."
+            exit 0
+          fi
+
+          {
+            echo "## QA blocked — missing Work Item link"
+            echo ""
+            echo "Add a **Notion Work Item URL** to the PR description (or title) before applying \`bot: qa needed\`."
+            echo ""
+            echo "Example: \`https://www.notion.so/…/<work-item-page-id>\`"
+            echo ""
+            echo "The GitHub ↔ Work Item linker and Handoff use this link to attach QA context."
+          } > wi_missing_comment.md
+
+          gh pr comment "${PR_NUMBER}" --body-file wi_missing_comment.md
+          echo "::error::PR #${PR_NUMBER} has no Notion Work Item URL in title or body"
+          exit 1
+
       - name: Detect App and Platform
         id: detect
         run: |

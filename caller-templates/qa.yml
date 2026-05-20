@@ -1,0 +1,24 @@
+# QA Pipeline - Caller Workflow
+#
+# Copy to .github/workflows/qa.yml in app repos.
+# Calls VeamStudios/.github qa-pipeline.yml (QA brief on bot: qa needed).
+#
+# Requires: vars.BOT_QA_APP_ID, secrets.BOT_QA_PRIVATE_KEY
+#
+# Behaviour:
+# - bot: qa needed → AI QA brief (requires Notion Work Item URL in PR body/title)
+# - bot: qa approved + bot: qa automerge (+ bot: qa needed) → optional automerge
+
+name: QA Pipeline
+
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  qa-pipeline:
+    uses: VeamStudios/.github/.github/workflows/qa-pipeline.yml@main
+    with:
+      bot-qa-app-id: ${{ vars.BOT_QA_APP_ID }}
+    secrets:
+      BOT_QA_PRIVATE_KEY: ${{ secrets.BOT_QA_PRIVATE_KEY }}
