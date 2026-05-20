@@ -1,6 +1,6 @@
 # Acceptance Criteria
-<!-- Notion or GitHub Issue Link -->
-<!-- If one does not exist, create it -->
+<!-- **Required for QA:** Notion Work Item URL (needed before `bot: qa needed`) -->
+<!-- Optional: linked GitHub issue -->
 - 
 
 ## Notes for Reviewers
