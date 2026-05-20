@@ -196,7 +196,7 @@ jobs:
 | `hotfix-prepare.yml` / `hotfix-deploy.yml` | iOS hotfix branch and deploy flow |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
-| `qa-pipeline.yml` | QA test pipeline |
+| `qa-pipeline.yml` | PR QA brief on `bot: qa needed`; requires Notion Work Item URL in PR body/title |
 | `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
 | `release-notifications.yml` | iOS production Slack notification (beta/cloud provenance + optional CHANGELOG excerpt) |
 
@@ -208,12 +208,12 @@ The `caller-templates/` directory contains example workflow files that repos can
 
 | Repo | Templates to copy |
 |---|---|
-| `ChecklistInspectorPro-iOS` | `checklistinspectorpro-ios-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
-| `ChecklistInspectorPro-Web` | `web-ci.yml`, `web-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
-| `ChecklistInspectorPro-Backend` | `web-tests.yml` (if Node), `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
-| `SiteAuditPro-iOS` | `siteauditpro-ios-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
-| `SiteAuditPro-Web` | `web-ci.yml`, `web-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
-| `SiteAuditPro-Backend` | `web-tests.yml` (if Node), `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `ChecklistInspectorPro-iOS` | `qa.yml`, `checklistinspectorpro-ios-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `ChecklistInspectorPro-Web` | `qa.yml`, `web-ci.yml`, `web-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `ChecklistInspectorPro-Backend` | `qa.yml`, `web-tests.yml` (if Node), `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `SiteAuditPro-iOS` | `qa.yml`, `siteauditpro-ios-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `SiteAuditPro-Web` | `qa.yml`, `web-ci.yml`, `web-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `SiteAuditPro-Backend` | `qa.yml`, `web-tests.yml` (if Node), `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
 
 ### Required secrets
 
@@ -221,6 +221,7 @@ The new templates rely on secrets already configured at the org or repo level:
 
 | Template | Secrets | Notes |
 |---|---|---|
+| `qa.yml` | `BOT_QA_PRIVATE_KEY`, `vars.BOT_QA_APP_ID` | Caller for `qa-pipeline.yml` |
 | `web-tests.yml` | none beyond `GITHUB_TOKEN` | `packages: read` is granted by the caller |
 | `ios-tests.yml` | `BOT_RELEASE_PRIVATE_KEY`, `vars.BOT_RELEASE_APP_ID` | Same Release Bot App used by `pr-ios-build.yml` |
 | `dependency-review.yml` | `GITHUB_TOKEN` | None required; uses `actions/dependency-review-action` |
