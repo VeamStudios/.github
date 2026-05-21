@@ -89,7 +89,7 @@ jobs:
           cloud_build_number: ${{ inputs.cloud_build_number }}
 
       - name: Send Slack notification
-        uses: slackapi/slack-github-action@v2.1.0
+        uses: slackapi/slack-github-action@v3.0.3
         with:
           webhook: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
           webhook-type: incoming-webhook
