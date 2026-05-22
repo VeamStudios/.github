@@ -98,16 +98,27 @@ jobs:
           } > wi_missing_comment.md
 
           REPO="${{ github.repository }}"
+          WI_MISSING_JQ='.[] | select(
+            (.body | contains("veamstudios-qa:wi-missing"))
+            or (
+              (.body | contains("## QA blocked — missing Work Item link"))
+              and (.user.login == "veamstudios-qa-bot")
+            )
+          ) | .id'
+
           LAST_COMMENT_ID=$(
-            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
-              --jq '.[-1].id // empty'
+            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate --slurp \
+              --jq '(add // []) | if length > 0 then .[-1].id else empty end'
           )
           mapfile -t MATCHING_COMMENT_IDS < <(
-            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
-              --jq '.[] | select(.body | contains("veamstudios-qa:wi-missing") or contains("## QA blocked — missing Work Item link")) | .id'
+            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate --slurp \
+              --jq "(add // []) | ${WI_MISSING_JQ}"
           )
 
-          MOST_RECENT_MATCHING_ID="${MATCHING_COMMENT_IDS[${#MATCHING_COMMENT_IDS[@]}-1]:-}"
+          MOST_RECENT_MATCHING_ID=""
+          if [ "${#MATCHING_COMMENT_IDS[@]}" -gt 0 ]; then
+            MOST_RECENT_MATCHING_ID="${MATCHING_COMMENT_IDS[${#MATCHING_COMMENT_IDS[@]}-1]}"
+          fi
 
           if [ -n "$MOST_RECENT_MATCHING_ID" ] && [ "$LAST_COMMENT_ID" = "$MOST_RECENT_MATCHING_ID" ]; then
             gh api --method PATCH \
