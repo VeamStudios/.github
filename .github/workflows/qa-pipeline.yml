@@ -98,21 +98,13 @@ jobs:
           } > wi_missing_comment.md
 
           REPO="${{ github.repository }}"
-          WI_MISSING_JQ='.[] | select(
-            (.body | contains("veamstudios-qa:wi-missing"))
-            or (
-              (.body | contains("## QA blocked — missing Work Item link"))
-              and (.user.login == "veamstudios-qa-bot")
-            )
-          ) | .id'
-
           LAST_COMMENT_ID=$(
-            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate --slurp \
-              --jq '(add // []) | if length > 0 then .[-1].id else empty end'
+            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+              | jq -s '(add // []) | if length > 0 then .[-1].id else empty end'
           )
           mapfile -t MATCHING_COMMENT_IDS < <(
-            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate --slurp \
-              --jq "(add // []) | ${WI_MISSING_JQ}"
+            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+              | jq -s '(add // []) | .[] | select((.body | contains("veamstudios-qa:wi-missing")) or ((.body | contains("## QA blocked — missing Work Item link")) and (.user.login | startswith("veamstudios-qa-bot")))) | .id'
           )
 
           MOST_RECENT_MATCHING_ID=""
