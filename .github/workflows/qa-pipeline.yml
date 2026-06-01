@@ -37,7 +37,7 @@ on:
         required: true
 
 jobs:
-  wi-linked:
+  has-linked-notion-work-item:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -45,10 +45,11 @@ jobs:
       pull-requests: read
 
     steps:
-      - name: Post wi/linked check
+      - name: Post "Has Linked Notion Work Item" check
         uses: actions/github-script@v8
         with:
           script: |
+            const CHECK_NAME = 'Has Linked Notion Work Item';
             const pr = context.payload.pull_request;
             if (!pr) {
               core.setFailed('Expected pull_request event payload');
@@ -64,7 +65,7 @@ jobs:
               await github.rest.checks.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                name: 'wi/linked',
+                name: CHECK_NAME,
                 head_sha: pr.head.sha,
                 status: 'completed',
                 conclusion: 'success',
@@ -88,7 +89,7 @@ jobs:
             await github.rest.checks.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              name: 'wi/linked',
+              name: CHECK_NAME,
               head_sha: pr.head.sha,
               status: 'completed',
               conclusion,
@@ -104,7 +105,7 @@ jobs:
 
   qa-brief:
     if: "github.event.label.name == 'bot: qa needed'"
-    needs: [wi-linked]
+    needs: [has-linked-notion-work-item]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -153,7 +154,7 @@ jobs:
             exit 0
           fi
 
-          echo "::error::PR has no Notion Work Item URL. Add a link to the title or body (see the wi/linked check on this PR)."
+          echo "::error::PR has no Notion Work Item URL. Add a link to the title or body (see the \"Has Linked Notion Work Item\" check on this PR)."
           exit 1
 
       - name: Detect App and Platform
