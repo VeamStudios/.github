@@ -23,7 +23,7 @@ jobs:
     uses: VeamStudios/.github/.github/workflows/qa-pipeline.yml@main
     permissions:
       checks: write
-      contents: read
+      contents: write
       pull-requests: write
       models: read
     with:
