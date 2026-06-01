@@ -6,8 +6,8 @@
 # Requires: vars.BOT_QA_APP_ID, secrets.BOT_QA_PRIVATE_KEY
 #
 # Behaviour:
-# - PR opened / updated → wi/linked status check (Notion Work Item URL in title or body)
-# - bot: qa needed → AI QA brief (same WI URL requirement; no blocking comment)
+# - PR opened / updated → wi/linked check (Notion WI URL required only for feat/ or feature/ branches)
+# - bot: qa needed → AI QA brief (same WI rule on feat branches; no blocking comment)
 # - bot: qa approved + bot: qa automerge (+ bot: qa needed) → optional automerge
 #
 # Branch protection: require status check "wi/linked" on main when ready.

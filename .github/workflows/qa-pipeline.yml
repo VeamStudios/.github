@@ -55,6 +55,27 @@ jobs:
               return;
             }
 
+            const headRef = pr.head?.ref ?? '';
+            const featBranch = /^(feat|feature)\//i.test(headRef);
+
+            if (!featBranch) {
+              const summary =
+                `Work Item link is only required for PRs from \`feat/\` or \`feature/\` branches (this branch: \`${headRef}\`).`;
+              await github.rest.checks.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'wi/linked',
+                head_sha: pr.head.sha,
+                status: 'completed',
+                conclusion: 'success',
+                output: {
+                  title: 'Not required',
+                  summary,
+                },
+              });
+              return;
+            }
+
             const text = `${pr.title ?? ''}\n${pr.body ?? ''}`;
             const notionUrl =
               /notion\.(so|site)\/[^\s]*([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
@@ -119,6 +140,12 @@ jobs:
       - name: Require Work Item URL in PR
         run: |
           set -euo pipefail
+          HEAD_REF="${{ github.event.pull_request.head.ref }}"
+          if [[ ! "$HEAD_REF" =~ ^(feat|feature)/ ]]; then
+            echo "Work Item URL not required for branch: ${HEAD_REF}"
+            exit 0
+          fi
+
           printf '%s\n%s\n' "${{ github.event.pull_request.title }}" "${{ github.event.pull_request.body }}" > pr_text.txt
 
           if grep -qiE 'notion\.(so|site)/[^[:space:]]*([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})' pr_text.txt; then
