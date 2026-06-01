@@ -37,8 +37,53 @@ on:
         required: true
 
 jobs:
+  wi-linked:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: read
+
+    steps:
+      - name: Post wi/linked check
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.setFailed('Expected pull_request event payload');
+              return;
+            }
+
+            const text = `${pr.title ?? ''}\n${pr.body ?? ''}`;
+            const notionUrl =
+              /notion\.(so|site)\/[^\s]*([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+            const linked = notionUrl.test(text);
+            const conclusion = linked ? 'success' : 'failure';
+            const summary = linked
+              ? 'Notion Work Item URL found in PR title or description.'
+              : 'Add a Notion Work Item URL to the PR title or description (e.g. https://www.notion.so/…). Required for merge when branch protection enables this check.';
+
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'wi/linked',
+              head_sha: pr.head.sha,
+              status: 'completed',
+              conclusion,
+              output: {
+                title: linked ? 'Work Item linked' : 'Work Item not linked',
+                summary,
+              },
+            });
+
+            if (!linked) {
+              core.setFailed(summary);
+            }
+
   qa-brief:
     if: "github.event.label.name == 'bot: qa needed'"
+    needs: [wi-linked]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -72,60 +117,16 @@ jobs:
           fetch-depth: 0
 
       - name: Require Work Item URL in PR
-        env:
-          GH_TOKEN: ${{ steps.app_token.outputs.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           set -euo pipefail
-          printf '%s\n%s\n' "$PR_TITLE" "$PR_BODY" > pr_text.txt
+          printf '%s\n%s\n' "${{ github.event.pull_request.title }}" "${{ github.event.pull_request.body }}" > pr_text.txt
 
           if grep -qiE 'notion\.(so|site)/[^[:space:]]*([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})' pr_text.txt; then
             echo "Work Item URL found in PR title or description."
             exit 0
           fi
 
-          {
-            echo "<!-- veamstudios-qa:wi-missing -->"
-            echo "## QA blocked — missing Work Item link"
-            echo ""
-            echo "Add a **Notion Work Item URL** to the PR description (or title) before applying \`bot: qa needed\`."
-            echo ""
-            echo "Example: \`https://www.notion.so/…/<work-item-page-id>\`"
-            echo ""
-            echo "The GitHub ↔ Work Item linker and Handoff use this link to attach QA context."
-          } > wi_missing_comment.md
-
-          REPO="${{ github.repository }}"
-          LAST_COMMENT_ID=$(
-            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
-              | jq -s '(add // []) | if length > 0 then .[-1].id else empty end'
-          )
-          mapfile -t MATCHING_COMMENT_IDS < <(
-            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
-              | jq -s '(add // []) | .[] | select((.body | contains("veamstudios-qa:wi-missing")) or ((.body | contains("## QA blocked — missing Work Item link")) and (.user.login | startswith("veamstudios-qa-bot")))) | .id'
-          )
-
-          MOST_RECENT_MATCHING_ID=""
-          if [ "${#MATCHING_COMMENT_IDS[@]}" -gt 0 ]; then
-            MOST_RECENT_MATCHING_ID="${MATCHING_COMMENT_IDS[${#MATCHING_COMMENT_IDS[@]}-1]}"
-          fi
-
-          if [ -n "$MOST_RECENT_MATCHING_ID" ] && [ "$LAST_COMMENT_ID" = "$MOST_RECENT_MATCHING_ID" ]; then
-            gh api --method PATCH \
-              "repos/${REPO}/issues/comments/${MOST_RECENT_MATCHING_ID}" \
-              -f body="$(cat wi_missing_comment.md)"
-            echo "Updated existing Work Item missing comment on PR #${PR_NUMBER}"
-            for COMMENT_ID in "${MATCHING_COMMENT_IDS[@]:0:${#MATCHING_COMMENT_IDS[@]}-1}"; do
-              gh api --method DELETE "repos/${REPO}/issues/comments/${COMMENT_ID}" || true
-            done
-          else
-            gh pr comment "${PR_NUMBER}" --body-file wi_missing_comment.md
-            echo "Posted Work Item missing comment on PR #${PR_NUMBER}"
-          fi
-
-          echo "::error::PR #${PR_NUMBER} has no Notion Work Item URL in title or body"
+          echo "::error::PR has no Notion Work Item URL. Add a link to the title or body (see the wi/linked check on this PR)."
           exit 1
 
       - name: Detect App and Platform
