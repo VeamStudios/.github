@@ -196,7 +196,7 @@ jobs:
 | `hotfix-prepare.yml` / `hotfix-deploy.yml` | iOS hotfix branch and deploy flow |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
-| `qa-pipeline.yml` | `Has Linked Notion Work Item` on PR open/update (WI URL required for `feat/` / `feature/` branches only); QA brief on `bot: qa needed` |
+| `qa-pipeline.yml` | `Has Linked Notion Work Item` on PR open/update (WI URL required when PR title starts with `feat:`); QA brief on `bot: qa needed` |
 | `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
 | `release-notifications.yml` | iOS production Slack notification (beta/cloud provenance + optional CHANGELOG excerpt) |
 

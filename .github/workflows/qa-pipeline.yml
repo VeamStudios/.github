@@ -56,12 +56,12 @@ jobs:
               return;
             }
 
-            const headRef = pr.head?.ref ?? '';
-            const featBranch = /^(feat|feature)\//i.test(headRef);
+            const prTitle = (pr.title ?? '').trim();
+            const featPr = /^feat:/i.test(prTitle);
 
-            if (!featBranch) {
+            if (!featPr) {
               const summary =
-                `Work Item link is only required for PRs from \`feat/\` or \`feature/\` branches (this branch: \`${headRef}\`).`;
+                `Work Item link is only required when the PR title starts with \`feat:\` (this title: \`${prTitle}\`).`;
               await github.rest.checks.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -141,13 +141,13 @@ jobs:
       - name: Require Work Item URL in PR
         run: |
           set -euo pipefail
-          HEAD_REF="${{ github.event.pull_request.head.ref }}"
-          if [[ ! "$HEAD_REF" =~ ^(feat|feature)/ ]]; then
-            echo "Work Item URL not required for branch: ${HEAD_REF}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          if [[ ! "$PR_TITLE" =~ ^[Ff][Ee][Aa][Tt]: ]]; then
+            echo "Work Item URL not required for PR title: ${PR_TITLE}"
             exit 0
           fi
 
-          printf '%s\n%s\n' "${{ github.event.pull_request.title }}" "${{ github.event.pull_request.body }}" > pr_text.txt
+          printf '%s\n%s\n' "$PR_TITLE" "${{ github.event.pull_request.body }}" > pr_text.txt
 
           if grep -qiE 'notion\.(so|site)/[^[:space:]]*([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})' pr_text.txt; then
             echo "Work Item URL found in PR title or description."
