@@ -79,7 +79,7 @@ jobs:
 
             const text = `${pr.title ?? ''}\n${pr.body ?? ''}`;
             const notionUrl =
-              /notion\.(so|site)\/[^\s]*([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+              /notion\.(so|site|com)\/[^\s]*([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
             const linked = notionUrl.test(text);
             const conclusion = linked ? 'success' : 'failure';
             const summary = linked
@@ -149,7 +149,7 @@ jobs:
 
           printf '%s\n%s\n' "$PR_TITLE" "${{ github.event.pull_request.body }}" > pr_text.txt
 
-          if grep -qiE 'notion\.(so|site)/[^[:space:]]*([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})' pr_text.txt; then
+          if grep -qiE 'notion\.(so|site|com)/[^[:space:]]*([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})' pr_text.txt; then
             echo "Work Item URL found in PR title or description."
             exit 0
           fi
