@@ -7,7 +7,7 @@
 #
 # Behaviour:
 # - PR opened / updated → "Has Linked Notion Work Item" check (WI URL required when PR title starts with feat:)
-# - bot: qa needed → AI QA brief (same WI rule on feat branches; no blocking comment)
+# - bot: qa needed → AI QA brief (independent of the WI gate)
 # - bot: qa approved + bot: qa automerge (+ bot: qa needed) → optional automerge
 #
 # Branch protection: require status check "Has Linked Notion Work Item" on main when ready.
