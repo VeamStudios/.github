@@ -1,0 +1,56 @@
+name: iOS App Store live monitor
+description: Polls App Store Connect and posts a Slack release notification once a marked iOS GitHub release is live.
+
+inputs:
+  bundle_id:
+    description: Production app bundle identifier to monitor.
+    required: true
+  release_tag:
+    description: Optional GitHub release tag to check. When empty, recent releases are scanned for pending monitor markers.
+    required: false
+    default: ""
+  release_limit:
+    description: Number of recent GitHub releases to scan when release_tag is empty.
+    required: false
+    default: "20"
+  live_states:
+    description: Comma-separated App Store Connect states treated as live.
+    required: false
+    default: "READY_FOR_DISTRIBUTION,READY_FOR_SALE"
+  dry_run:
+    description: Check state without sending Slack or updating the GitHub release marker.
+    required: false
+    default: "false"
+  github_token:
+    description: Token used to read and update GitHub releases in the caller repository.
+    required: true
+  app_store_connect_api_key_id:
+    description: App Store Connect API key ID.
+    required: true
+  app_store_connect_issuer_id:
+    description: App Store Connect issuer ID.
+    required: true
+  app_store_connect_api_key_content:
+    description: App Store Connect private key content.
+    required: true
+  slack_releases_webhook_url:
+    description: Incoming webhook URL for the Slack releases channel.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Monitor App Store live state
+      shell: bash
+      env:
+        INPUT_BUNDLE_ID: ${{ inputs.bundle_id }}
+        INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+        INPUT_RELEASE_LIMIT: ${{ inputs.release_limit }}
+        INPUT_LIVE_STATES: ${{ inputs.live_states }}
+        INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_APP_STORE_CONNECT_API_KEY_ID: ${{ inputs.app_store_connect_api_key_id }}
+        INPUT_APP_STORE_CONNECT_ISSUER_ID: ${{ inputs.app_store_connect_issuer_id }}
+        INPUT_APP_STORE_CONNECT_API_KEY_CONTENT: ${{ inputs.app_store_connect_api_key_content }}
+        INPUT_SLACK_RELEASES_WEBHOOK_URL: ${{ inputs.slack_releases_webhook_url }}
+      run: node "${{ github.action_path }}/monitor.js"

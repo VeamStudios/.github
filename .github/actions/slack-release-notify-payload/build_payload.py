@@ -123,7 +123,7 @@ def build_ios_payload() -> dict:
 
     repo_url = f"{server}/{repo}"
     tag_url = f"{repo_url}/releases/tag/{version}"
-    header = f"🚀 *<{repo_url}|{repo}>* — <{tag_url}|{version}> deployed to {environment}"
+    header = f"📦 *<{repo_url}|{repo}>* — <{tag_url}|{version}> uploaded to App Store Connect for {environment}"
 
     blocks: list[dict] = [{"type": "section", "text": {"type": "mrkdwn", "text": header}}]
 
@@ -149,7 +149,7 @@ def build_ios_payload() -> dict:
             f"run #{os.environ['BETA_RUN_ID']}>"
         ),
         (
-            f"*Released Cloud:* {os.environ['CLOUD_VERSION']}  |  "
+            f"*Uploaded Cloud:* {os.environ['CLOUD_VERSION']}  |  "
             f"*Cloud Build Number:* {os.environ['CLOUD_BUILD_NUMBER']}"
         ),
         f"*Cloud Commit:* `{os.environ['CLOUD_COMMIT_SHA']}`",
@@ -160,7 +160,7 @@ def build_ios_payload() -> dict:
     elements = [{"type": "mrkdwn", "text": line} for line in ctx_lines]
     blocks.append({"type": "context", "elements": elements})
 
-    plain = f"{repo} — {version} deployed to {environment}"
+    plain = f"{repo} — {version} uploaded to App Store Connect for {environment}"
     return {"text": plain, "blocks": blocks}
 
 
