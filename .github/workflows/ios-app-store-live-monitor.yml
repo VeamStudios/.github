@@ -1,0 +1,60 @@
+name: iOS App Store Live Monitor
+
+on:
+  workflow_call:
+    inputs:
+      bundle_id:
+        description: "Production app bundle identifier to monitor"
+        required: true
+        type: string
+      release_tag:
+        description: "Optional GitHub release tag to check. When empty, recent releases are scanned."
+        required: false
+        default: ""
+        type: string
+      release_limit:
+        description: "Number of recent GitHub releases to scan when release_tag is empty"
+        required: false
+        default: 20
+        type: number
+      live_states:
+        description: "Comma-separated App Store Connect states treated as live"
+        required: false
+        default: "READY_FOR_DISTRIBUTION,READY_FOR_SALE"
+        type: string
+      dry_run:
+        description: "Check state without sending Slack or updating the GitHub release marker"
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      APP_STORE_CONNECT_API_KEY_CONTENT:
+        required: true
+      APP_STORE_CONNECT_API_KEY_ID:
+        required: true
+      APP_STORE_CONNECT_ISSUER_ID:
+        required: true
+      SLACK_RELEASES_WEBHOOK_URL:
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  monitor:
+    name: Monitor App Store live release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check App Store Connect and notify Slack
+        uses: VeamStudios/.github/.github/actions/ios-app-store-live-monitor@main
+        with:
+          bundle_id: ${{ inputs.bundle_id }}
+          release_tag: ${{ inputs.release_tag }}
+          release_limit: ${{ inputs.release_limit }}
+          live_states: ${{ inputs.live_states }}
+          dry_run: ${{ inputs.dry_run }}
+          github_token: ${{ github.token }}
+          app_store_connect_api_key_id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          app_store_connect_issuer_id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          app_store_connect_api_key_content: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          slack_releases_webhook_url: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}

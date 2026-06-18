@@ -107,6 +107,24 @@ jobs:
 - `changelog_git_ref` — set to the deployed commit (or other ref) so `CHANGELOG.md` at that SHA is used. When empty, only the generic `slack_footer_mrkdwn` line is sent.
 - `slack_footer_mrkdwn` — used when the changelog is missing or has no `##` section for the version.
 
+### `ios-app-store-live-monitor.yml`
+
+Polls App Store Connect for GitHub releases marked with `<!-- veamstudios:app-store-live-monitor:pending ... -->` and sends a short Slack notification once the matching App Store version is live.
+
+```yaml
+jobs:
+  monitor:
+    uses: VeamStudios/.github/.github/workflows/ios-app-store-live-monitor.yml@main
+    with:
+      bundle_id: com.veamstudios.example
+    secrets: inherit
+```
+
+- `release_tag` — optional; when empty, recent releases are scanned for pending monitor markers.
+- `release_limit` — number of recent releases to scan when `release_tag` is empty. Defaults to `20`.
+- `live_states` — App Store Connect states treated as live. Defaults to `READY_FOR_DISTRIBUTION,READY_FOR_SALE`.
+- `dry_run` — checks state without sending Slack or replacing the release marker.
+
 ### `update-changelog-website.yml`
 
 Copies a `CHANGELOG.md` from the caller repo to a marketing website repo.
@@ -194,11 +212,12 @@ jobs:
 |---|---|
 | `deploy-ios-testflight.yml` | Build and upload an iOS app to TestFlight |
 | `hotfix-prepare.yml` / `hotfix-deploy.yml` | iOS hotfix branch and deploy flow |
+| `ios-app-store-live-monitor.yml` | Poll App Store Connect and notify Slack once a marked iOS release is live |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
 | `qa-pipeline.yml` | `Has Linked Notion Work Item` on PR open/update (WI URL required when PR title starts with `feat:`); QA brief on `bot: qa needed` independent of the WI gate |
 | `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
-| `release-notifications.yml` | iOS production Slack notification (beta/cloud provenance + optional CHANGELOG excerpt) |
+| `release-notifications.yml` | Legacy iOS App Store Connect upload Slack notification (beta/cloud provenance + optional CHANGELOG excerpt) |
 
 ## Caller Templates
 

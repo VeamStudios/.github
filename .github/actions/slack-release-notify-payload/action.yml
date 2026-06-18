@@ -5,7 +5,7 @@ description: >-
 
 inputs:
   variant:
-    description: '"web" (notify-release style) or "ios" (release-notifications style)'
+    description: '"web" (notify-release style) or "ios" (App Store Connect upload notification style)'
     required: true
   version:
     description: Release tag (e.g. v1.2.3)
