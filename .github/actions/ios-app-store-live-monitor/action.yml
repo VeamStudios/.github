@@ -37,10 +37,22 @@ inputs:
     description: Incoming webhook URL for the Slack releases channel.
     required: true
 
+outputs:
+  live_version:
+    description: GitHub release tag that was confirmed live and notified.
+    value: ${{ steps.monitor.outputs.live_version }}
+  live_state:
+    description: App Store Connect state for the confirmed live release.
+    value: ${{ steps.monitor.outputs.live_state }}
+  live_release_url:
+    description: GitHub release URL for the confirmed live release.
+    value: ${{ steps.monitor.outputs.live_release_url }}
+
 runs:
   using: composite
   steps:
     - name: Monitor App Store live state
+      id: monitor
       shell: bash
       env:
         INPUT_BUNDLE_ID: ${{ inputs.bundle_id }}

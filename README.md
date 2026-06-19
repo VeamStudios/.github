@@ -124,6 +124,33 @@ jobs:
 - `release_limit` — number of recent releases to scan when `release_tag` is empty. Defaults to `20`.
 - `live_states` — App Store Connect states treated as live. Defaults to `READY_FOR_DISTRIBUTION,READY_FOR_SALE`.
 - `dry_run` — checks state without sending Slack or replacing the release marker.
+- `launch_hub_product` — optional product slug, `cip` or `sap`. When set, a newly notified live App Store release also writes `iOS Production State`, `Production Version`, `Last Production Sync`, and `Production Evidence` to Launch Hub.
+- `launch_hub_product_page_id` — optional Notion Product page ID override for unusual cases.
+
+### `launch-hub-production-mirror.yml`
+
+Mirrors production reality into Launch Hub Work Items. It writes exact production Remote Config values such as `missing`, `false`, `research-preview`, `true`, or any other live Firebase string, plus production deployment/release evidence. It does not block deploys or decide whether a feature should be enabled.
+
+```yaml
+jobs:
+  sync-launch-hub:
+    uses: VeamStudios/.github/.github/workflows/launch-hub-production-mirror.yml@main
+    with:
+      product: cip
+      platform: web
+      production_state: Deployed
+      production_version: v1.2.3
+      production_evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      firebase_project_id: checklistinspectorpro
+    secrets: inherit
+```
+
+- `product` — product slug used to filter Launch Hub Work Items. Supported values are `cip` and `sap`.
+- `product_page_id` — optional Notion Product page ID override.
+- `platform` — one of `ios`, `web`, `backend`, or `all`; production-state writes only touch rows with a relevant RC key for that platform.
+- `firebase_project_id` — optional production Firebase project ID. When set with `SERVICE_ACCOUNT_BASE64`, the workflow reads the production Remote Config template and writes exact values to `iOS Prod RC Value` and `Web Prod RC Value`.
+- `production_state`, `production_version`, and `production_evidence` — optional deployment/release mirror fields.
+- `dry_run` — prints the planned updates without changing Notion.
 
 ### `update-changelog-website.yml`
 
@@ -213,6 +240,7 @@ jobs:
 | `deploy-ios-testflight.yml` | Build and upload an iOS app to TestFlight |
 | `hotfix-prepare.yml` / `hotfix-deploy.yml` | iOS hotfix branch and deploy flow |
 | `ios-app-store-live-monitor.yml` | Poll App Store Connect and notify Slack once a marked iOS release is live |
+| `launch-hub-production-mirror.yml` | Mirror production Remote Config values and deployment/release state into Launch Hub |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
 | `qa-pipeline.yml` | `Has Linked Notion Work Item` on PR open/update (WI URL required when PR title starts with `feat:`); QA brief on `bot: qa needed` independent of the WI gate |
@@ -243,6 +271,7 @@ The new templates rely on secrets already configured at the org or repo level:
 | `qa.yml` | `BOT_QA_PRIVATE_KEY`, `vars.BOT_QA_APP_ID` | Caller for `qa-pipeline.yml` |
 | `web-tests.yml` | none beyond `GITHUB_TOKEN` | `packages: read` is granted by the caller |
 | `ios-tests.yml` | `BOT_RELEASE_PRIVATE_KEY`, `vars.BOT_RELEASE_APP_ID` | Same Release Bot App used by `pr-ios-build.yml` |
+| `launch-hub-production-mirror.yml` | `NOTION_API_TOKEN`, `SERVICE_ACCOUNT_BASE64` | `SERVICE_ACCOUNT_BASE64` is only required when reading Firebase Remote Config |
 | `dependency-review.yml` | `GITHUB_TOKEN` | None required; uses `actions/dependency-review-action` |
 | `stale.yml` | `GITHUB_TOKEN` | `issues: write`, `pull-requests: write` granted by reusable |
 | `auto-assign-reviewers.yml` | `GITHUB_TOKEN` | `pull-requests: write` granted by reusable |

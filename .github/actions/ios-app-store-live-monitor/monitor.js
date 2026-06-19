@@ -346,6 +346,9 @@ async function runMonitor(config, clients) {
     missingVersion: 0,
     alreadyNotified: 0,
     noPendingMarker: 0,
+    liveVersion: "",
+    liveState: "",
+    liveReleaseUrl: "",
     items: [],
   };
 
@@ -355,6 +358,13 @@ async function runMonitor(config, clients) {
       results.alreadyNotified += 1;
       if (releaseTag) {
         results.items.push({ tag: release.tag_name, result: "already_notified", state: "" });
+        if (!results.liveVersion) {
+          results.liveVersion = release.tag_name;
+          results.liveState = monitorState.marker.attrs.state || "";
+          results.liveReleaseUrl =
+            release.html_url ||
+            `${serverUrl.replace(/\/+$/, "")}/${owner}/${repo}/releases/tag/${encodeURIComponent(release.tag_name)}`;
+        }
       }
       continue;
     }
@@ -413,6 +423,13 @@ async function runMonitor(config, clients) {
     });
     const nextBody = String(release.body || "").replace(monitorState.marker.raw, replacement);
     await github.updateReleaseBody(release.id, nextBody);
+    if (!results.liveVersion) {
+      results.liveVersion = release.tag_name;
+      results.liveState = state;
+      results.liveReleaseUrl =
+        release.html_url ||
+        `${serverUrl.replace(/\/+$/, "")}/${owner}/${repo}/releases/tag/${encodeURIComponent(release.tag_name)}`;
+    }
     results.notified += 1;
     results.items.push({ tag: release.tag_name, result: "notified", state });
     logger.log(`Sent App Store live Slack notification for ${release.tag_name}.`);
@@ -461,6 +478,11 @@ function requireInput(name) {
   return value;
 }
 
+function setOutput(name, value) {
+  if (!process.env.GITHUB_OUTPUT) return;
+  fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${String(value || "").replace(/\n/g, " ")}\n`, "utf8");
+}
+
 async function main() {
   const repository = process.env.GITHUB_REPOSITORY || "";
   const [owner, repo] = repository.split("/");
@@ -502,6 +524,9 @@ async function main() {
   if (process.env.GITHUB_STEP_SUMMARY) {
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary, "utf8");
   }
+  setOutput("live_version", results.liveVersion);
+  setOutput("live_state", results.liveState);
+  setOutput("live_release_url", results.liveReleaseUrl);
 }
 
 if (require.main === module) {

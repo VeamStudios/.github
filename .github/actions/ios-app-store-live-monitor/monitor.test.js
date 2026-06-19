@@ -108,6 +108,12 @@ async function testPendingLiveStateNotifiesAndMarksRelease() {
   const result = await runMonitor(baseConfig(), { github, appStoreConnect, slack });
 
   assert.equal(result.notified, 1);
+  assert.equal(result.liveVersion, "v2.1.6");
+  assert.equal(result.liveState, "READY_FOR_DISTRIBUTION");
+  assert.equal(
+    result.liveReleaseUrl,
+    "https://github.com/VeamStudios/ChecklistInspectorPro-iOS/releases/tag/v2.1.6"
+  );
   assert.equal(slack.payloads.length, 1);
   assert.equal(github.updates.length, 1);
   assert.match(github.updates[0].body, /:notified/);
@@ -133,6 +139,8 @@ async function testAlreadyNotifiedSkips() {
   const result = await runMonitor(baseConfig({ releaseTag: "v2.1.6" }), { github, appStoreConnect, slack });
 
   assert.equal(result.alreadyNotified, 1);
+  assert.equal(result.liveVersion, "v2.1.6");
+  assert.equal(result.liveState, "READY_FOR_DISTRIBUTION");
   assert.equal(slack.payloads.length, 0);
   assert.equal(github.updates.length, 0);
 }
