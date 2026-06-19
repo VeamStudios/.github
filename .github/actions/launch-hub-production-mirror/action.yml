@@ -1,0 +1,73 @@
+name: Launch Hub production mirror
+description: Mirrors production Remote Config values and release state into Launch Hub Work Items.
+
+inputs:
+  product_page_id:
+    description: "Notion Product page ID used to filter Launch Hub Work Items."
+    required: true
+  work_items_data_source_id:
+    description: "Notion Work Items data source ID."
+    required: false
+    default: "20aeddfe-a3f7-41e9-b440-c9eb6b26887f"
+  platform:
+    description: "Production state target: ios, web, backend, or all."
+    required: false
+    default: "all"
+  production_state:
+    description: "Optional production state to write for the platform."
+    required: false
+    default: ""
+  production_version:
+    description: "Optional production version or release tag to write."
+    required: false
+    default: ""
+  production_evidence:
+    description: "Optional URL or text evidence for the production sync."
+    required: false
+    default: ""
+  firebase_project_id:
+    description: "Optional Firebase project ID for production Remote Config reads."
+    required: false
+    default: ""
+  firebase_service_account:
+    description: "Optional Firebase service account JSON or base64 JSON."
+    required: false
+    default: ""
+  notion_token:
+    description: "Notion API token with access to Launch Hub."
+    required: false
+    default: ""
+  dry_run:
+    description: "Compute updates and print a summary without writing Notion."
+    required: false
+    default: "false"
+
+outputs:
+  matched_pages:
+    description: "Number of Launch Hub Work Items matched."
+    value: ${{ steps.sync.outputs.matched_pages }}
+  updated_pages:
+    description: "Number of Launch Hub Work Items updated."
+    value: ${{ steps.sync.outputs.updated_pages }}
+  remote_config_checked:
+    description: "Number of Remote Config keys checked."
+    value: ${{ steps.sync.outputs.remote_config_checked }}
+
+runs:
+  using: composite
+  steps:
+    - name: Sync Launch Hub production mirror
+      id: sync
+      shell: bash
+      env:
+        INPUT_PRODUCT_PAGE_ID: ${{ inputs.product_page_id }}
+        INPUT_WORK_ITEMS_DATA_SOURCE_ID: ${{ inputs.work_items_data_source_id }}
+        INPUT_PLATFORM: ${{ inputs.platform }}
+        INPUT_PRODUCTION_STATE: ${{ inputs.production_state }}
+        INPUT_PRODUCTION_VERSION: ${{ inputs.production_version }}
+        INPUT_PRODUCTION_EVIDENCE: ${{ inputs.production_evidence }}
+        INPUT_FIREBASE_PROJECT_ID: ${{ inputs.firebase_project_id }}
+        INPUT_FIREBASE_SERVICE_ACCOUNT: ${{ inputs.firebase_service_account }}
+        INPUT_NOTION_TOKEN: ${{ inputs.notion_token }}
+        INPUT_DRY_RUN: ${{ inputs.dry_run }}
+      run: node "${{ github.action_path }}/sync.js"

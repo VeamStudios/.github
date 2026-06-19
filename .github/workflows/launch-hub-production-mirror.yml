@@ -1,0 +1,68 @@
+name: Launch Hub Production Mirror
+
+on:
+  workflow_call:
+    inputs:
+      product_page_id:
+        description: "Notion Product page ID used to filter Launch Hub Work Items"
+        required: true
+        type: string
+      work_items_data_source_id:
+        description: "Notion Work Items data source ID"
+        required: false
+        default: "20aeddfe-a3f7-41e9-b440-c9eb6b26887f"
+        type: string
+      platform:
+        description: "Production state target: ios, web, backend, or all"
+        required: false
+        default: "all"
+        type: string
+      production_state:
+        description: "Optional production state to write for the platform"
+        required: false
+        default: ""
+        type: string
+      production_version:
+        description: "Optional production version or release tag to write"
+        required: false
+        default: ""
+        type: string
+      production_evidence:
+        description: "Optional URL or text evidence for the production sync"
+        required: false
+        default: ""
+        type: string
+      firebase_project_id:
+        description: "Optional Firebase production project ID for Remote Config reads"
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: "Compute updates and print a summary without writing Notion"
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      NOTION_API_TOKEN:
+        required: false
+      SERVICE_ACCOUNT_BASE64:
+        required: false
+
+jobs:
+  sync:
+    name: Sync Launch Hub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync Launch Hub production state
+        uses: VeamStudios/.github/.github/actions/launch-hub-production-mirror@main
+        with:
+          product_page_id: ${{ inputs.product_page_id }}
+          work_items_data_source_id: ${{ inputs.work_items_data_source_id }}
+          platform: ${{ inputs.platform }}
+          production_state: ${{ inputs.production_state }}
+          production_version: ${{ inputs.production_version }}
+          production_evidence: ${{ inputs.production_evidence }}
+          firebase_project_id: ${{ inputs.firebase_project_id }}
+          firebase_service_account: ${{ secrets.SERVICE_ACCOUNT_BASE64 }}
+          notion_token: ${{ secrets.NOTION_API_TOKEN }}
+          dry_run: ${{ inputs.dry_run }}

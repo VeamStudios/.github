@@ -27,6 +27,21 @@ on:
         required: false
         default: false
         type: boolean
+      launch_hub_product_page_id:
+        description: "Optional Notion Product page ID used to mirror iOS live state into Launch Hub"
+        required: false
+        default: ""
+        type: string
+      launch_hub_work_items_data_source_id:
+        description: "Notion Work Items data source ID"
+        required: false
+        default: "20aeddfe-a3f7-41e9-b440-c9eb6b26887f"
+        type: string
+      launch_hub_dry_run:
+        description: "Compute Launch Hub updates without writing Notion"
+        required: false
+        default: false
+        type: boolean
     secrets:
       APP_STORE_CONNECT_API_KEY_CONTENT:
         required: true
@@ -36,6 +51,8 @@ on:
         required: true
       SLACK_RELEASES_WEBHOOK_URL:
         required: true
+      NOTION_API_TOKEN:
+        required: false
 
 permissions:
   contents: write
@@ -46,6 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check App Store Connect and notify Slack
+        id: monitor
         uses: VeamStudios/.github/.github/actions/ios-app-store-live-monitor@main
         with:
           bundle_id: ${{ inputs.bundle_id }}
@@ -58,3 +76,15 @@ jobs:
           app_store_connect_issuer_id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           app_store_connect_api_key_content: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
           slack_releases_webhook_url: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+      - name: Sync Launch Hub iOS live state
+        if: ${{ inputs.launch_hub_product_page_id != '' && steps.monitor.outputs.live_version != '' && inputs.dry_run == false }}
+        uses: VeamStudios/.github/.github/actions/launch-hub-production-mirror@main
+        with:
+          product_page_id: ${{ inputs.launch_hub_product_page_id }}
+          work_items_data_source_id: ${{ inputs.launch_hub_work_items_data_source_id }}
+          platform: ios
+          production_state: Live
+          production_version: ${{ steps.monitor.outputs.live_version }}
+          production_evidence: ${{ steps.monitor.outputs.live_release_url }}
+          notion_token: ${{ secrets.NOTION_API_TOKEN }}
+          dry_run: ${{ inputs.launch_hub_dry_run }}
