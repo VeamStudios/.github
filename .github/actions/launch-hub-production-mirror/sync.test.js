@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const {
   buildPageProperties,
   remoteConfigValue,
+  resolveProductPageId,
   runSync,
 } = require("./sync");
 
@@ -81,6 +82,16 @@ async function testRemoteConfigValuesMirrorExactly() {
   assert.equal(remoteConfigValue(template, "preview_flag"), "research-preview");
   assert.equal(remoteConfigValue(template, "true_flag"), "true");
   assert.equal(remoteConfigValue(template, "in_app_default_flag"), "useInAppDefault");
+}
+
+async function testProductSlugResolvesPageId() {
+  assert.equal(resolveProductPageId({ product: "cip" }), cipProductId);
+  assert.equal(resolveProductPageId({ product: "Checklist Inspector Pro" }), cipProductId);
+  assert.equal(
+    resolveProductPageId({ product: "sap" }),
+    "30c06908-3a03-80d0-9845-fe97daa54c31"
+  );
+  assert.equal(resolveProductPageId({ product: "cip", productPageId: "override" }), "override");
 }
 
 async function testSyncWritesExactRcValues() {
@@ -166,6 +177,7 @@ async function testDryRunDoesNotUpdate() {
 
 async function run() {
   await testRemoteConfigValuesMirrorExactly();
+  await testProductSlugResolvesPageId();
   await testSyncWritesExactRcValues();
   await testProductionStateTargetsPlatform();
   await testPlatformFilteringUsesRelevantRcKeys();

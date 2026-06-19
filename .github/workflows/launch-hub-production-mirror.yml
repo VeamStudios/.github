@@ -3,9 +3,15 @@ name: Launch Hub Production Mirror
 on:
   workflow_call:
     inputs:
+      product:
+        description: "Product slug used to resolve the Launch Hub Product page ID. Supported values: cip, sap"
+        required: false
+        default: ""
+        type: string
       product_page_id:
-        description: "Notion Product page ID used to filter Launch Hub Work Items"
-        required: true
+        description: "Optional Notion Product page ID override used to filter Launch Hub Work Items"
+        required: false
+        default: ""
         type: string
       work_items_data_source_id:
         description: "Notion Work Items data source ID"
@@ -56,6 +62,7 @@ jobs:
       - name: Sync Launch Hub production state
         uses: VeamStudios/.github/.github/actions/launch-hub-production-mirror@main
         with:
+          product: ${{ inputs.product }}
           product_page_id: ${{ inputs.product_page_id }}
           work_items_data_source_id: ${{ inputs.work_items_data_source_id }}
           platform: ${{ inputs.platform }}

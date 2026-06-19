@@ -2,9 +2,14 @@ name: Launch Hub production mirror
 description: Mirrors production Remote Config values and release state into Launch Hub Work Items.
 
 inputs:
+  product:
+    description: "Product slug used to resolve the Launch Hub Product page ID. Supported values: cip, sap."
+    required: false
+    default: ""
   product_page_id:
-    description: "Notion Product page ID used to filter Launch Hub Work Items."
-    required: true
+    description: "Optional Notion Product page ID override used to filter Launch Hub Work Items."
+    required: false
+    default: ""
   work_items_data_source_id:
     description: "Notion Work Items data source ID."
     required: false
@@ -61,6 +66,7 @@ runs:
       shell: bash
       env:
         INPUT_PRODUCT_PAGE_ID: ${{ inputs.product_page_id }}
+        INPUT_PRODUCT: ${{ inputs.product }}
         INPUT_WORK_ITEMS_DATA_SOURCE_ID: ${{ inputs.work_items_data_source_id }}
         INPUT_PLATFORM: ${{ inputs.platform }}
         INPUT_PRODUCTION_STATE: ${{ inputs.production_state }}

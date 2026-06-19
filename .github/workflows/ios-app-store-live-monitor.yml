@@ -27,8 +27,13 @@ on:
         required: false
         default: false
         type: boolean
+      launch_hub_product:
+        description: "Optional product slug used to mirror iOS live state into Launch Hub. Supported values: cip, sap"
+        required: false
+        default: ""
+        type: string
       launch_hub_product_page_id:
-        description: "Optional Notion Product page ID used to mirror iOS live state into Launch Hub"
+        description: "Optional Notion Product page ID override used to mirror iOS live state into Launch Hub"
         required: false
         default: ""
         type: string
@@ -77,9 +82,10 @@ jobs:
           app_store_connect_api_key_content: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
           slack_releases_webhook_url: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
       - name: Sync Launch Hub iOS live state
-        if: ${{ inputs.launch_hub_product_page_id != '' && steps.monitor.outputs.live_version != '' && inputs.dry_run == false }}
+        if: ${{ (inputs.launch_hub_product != '' || inputs.launch_hub_product_page_id != '') && steps.monitor.outputs.live_version != '' && inputs.dry_run == false }}
         uses: VeamStudios/.github/.github/actions/launch-hub-production-mirror@main
         with:
+          product: ${{ inputs.launch_hub_product }}
           product_page_id: ${{ inputs.launch_hub_product_page_id }}
           work_items_data_source_id: ${{ inputs.launch_hub_work_items_data_source_id }}
           platform: ios

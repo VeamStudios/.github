@@ -6,6 +6,13 @@ const fs = require("node:fs");
 const NOTION_API_URL = "https://api.notion.com/v1";
 const NOTION_VERSION = "2026-03-11";
 const FIREBASE_REMOTE_CONFIG_SCOPE = "https://www.googleapis.com/auth/firebase.remoteconfig";
+const PRODUCT_PAGE_IDS = {
+  cip: "30c06908-3a03-8088-bfc4-f9a47469e4a6",
+  checklistinspectorpro: "30c06908-3a03-8088-bfc4-f9a47469e4a6",
+  checklistinspectorproproduction: "30c06908-3a03-8088-bfc4-f9a47469e4a6",
+  sap: "30c06908-3a03-80d0-9845-fe97daa54c31",
+  siteauditpro: "30c06908-3a03-80d0-9845-fe97daa54c31",
+};
 
 class HttpError extends Error {
   constructor(message, statusCode, body) {
@@ -22,6 +29,19 @@ function parseBoolean(value) {
 
 function normalizePageId(value) {
   return String(value || "").replace(/-/g, "").toLowerCase();
+}
+
+function normalizeProduct(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function resolveProductPageId({ product, productPageId }) {
+  const explicitPageId = String(productPageId || "").trim();
+  if (explicitPageId) return explicitPageId;
+  return PRODUCT_PAGE_IDS[normalizeProduct(product)] || "";
 }
 
 function normalizePlatform(value) {
@@ -299,6 +319,12 @@ async function runSync(config, clients) {
     return summary;
   }
 
+  const productId = normalizePageId(config.productPageId);
+  if (!productId) {
+    summary.errors.push("Product is not configured; set product to cip/sap or pass product_page_id.");
+    return summary;
+  }
+
   let template = null;
   if (clients.firebase) {
     try {
@@ -309,7 +335,6 @@ async function runSync(config, clients) {
   }
 
   const pages = await listLaunchHubItems(clients.notion, config.workItemsDataSourceId);
-  const productId = normalizePageId(config.productPageId);
   const items = pages
     .map(extractWorkItem)
     .filter((item) => item.productIds.includes(productId))
@@ -343,6 +368,7 @@ function buildSummaryMarkdown(config, summary) {
   const lines = [
     "## Launch Hub production mirror",
     "",
+    `- Product: ${config.product || "(not set)"}`,
     `- Product page: ${config.productPageId}`,
     `- Platform: ${config.platform}`,
     `- Production state: ${config.productionState || "(not set)"}`,
@@ -385,7 +411,11 @@ function setOutput(name, value) {
 
 async function main() {
   const config = {
-    productPageId: process.env.INPUT_PRODUCT_PAGE_ID || "",
+    product: process.env.INPUT_PRODUCT || "",
+    productPageId: resolveProductPageId({
+      product: process.env.INPUT_PRODUCT || "",
+      productPageId: process.env.INPUT_PRODUCT_PAGE_ID || "",
+    }),
     workItemsDataSourceId: process.env.INPUT_WORK_ITEMS_DATA_SOURCE_ID || "",
     platform: normalizePlatform(process.env.INPUT_PLATFORM),
     productionState: process.env.INPUT_PRODUCTION_STATE || "",
@@ -457,6 +487,7 @@ module.exports = {
   normalizePageId,
   parseServiceAccount,
   remoteConfigValue,
+  resolveProductPageId,
   runSync,
   toNotionProperties,
 };
