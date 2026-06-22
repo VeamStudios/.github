@@ -122,6 +122,31 @@ async function testSyncWritesExactRcValues() {
   assert.equal(notion.updates[0].properties["Android Prod RC Value"].select.name, "custom-live-value");
 }
 
+async function testSyncWritesNoPlatformKeyForBlankRcKeys() {
+  const notion = new FakeNotion([
+    page({
+      id: "work-item-1",
+      title: "iOS-only feature",
+      productId: cipProductId,
+      iosKey: "ios_only_feature",
+    }),
+  ]);
+  const firebase = new FakeFirebase({
+    parameters: {
+      ios_only_feature: { defaultValue: { value: "true" } },
+    },
+  });
+
+  const summary = await runSync(baseConfig(), { notion, firebase });
+
+  assert.equal(summary.matchedPages, 1);
+  assert.equal(summary.remoteConfigChecked, 1);
+  assert.equal(notion.updates.length, 1);
+  assert.equal(notion.updates[0].properties["iOS Prod RC Value"].select.name, "true");
+  assert.equal(notion.updates[0].properties["Web Prod RC Value"].select.name, "no platform key");
+  assert.equal(notion.updates[0].properties["Android Prod RC Value"].select.name, "no platform key");
+}
+
 async function testProductionStatusTargetsPlatform() {
   const properties = buildPageProperties({
     item: { iosRcKey: "", webRcKey: "" },
@@ -211,6 +236,7 @@ async function run() {
   await testRemoteConfigValuesMirrorExactly();
   await testProductSlugResolvesPageId();
   await testSyncWritesExactRcValues();
+  await testSyncWritesNoPlatformKeyForBlankRcKeys();
   await testProductionStatusTargetsPlatform();
   await testAndroidReleaseStatusTargetsPlatform();
   await testBackendDoesNotWriteStatusOrEvidence();

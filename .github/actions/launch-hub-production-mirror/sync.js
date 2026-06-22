@@ -13,6 +13,7 @@ const PRODUCT_PAGE_IDS = {
   sap: "30c06908-3a03-80d0-9845-fe97daa54c31",
   siteauditpro: "30c06908-3a03-80d0-9845-fe97daa54c31",
 };
+const NO_PLATFORM_KEY_VALUE = "no platform key";
 const REMOTE_CONFIG_VALUE_PROPERTIES = new Set([
   "iOS Prod RC Value",
   "Web Prod RC Value",
@@ -259,6 +260,10 @@ function remoteConfigValue(template, key) {
   return "";
 }
 
+function productionRcValue(template, key) {
+  return key ? remoteConfigValue(template, key) : NO_PLATFORM_KEY_VALUE;
+}
+
 function itemMatchesPlatform(item, platform) {
   switch (normalizePlatform(platform)) {
     case "ios":
@@ -279,14 +284,10 @@ function buildPageProperties({ item, template, config, syncedAt }) {
     "Last Production Sync": syncedAt,
   };
 
-  if (template && item.iosRcKey) {
-    properties["iOS Prod RC Value"] = remoteConfigValue(template, item.iosRcKey);
-  }
-  if (template && item.webRcKey) {
-    properties["Web Prod RC Value"] = remoteConfigValue(template, item.webRcKey);
-  }
-  if (template && item.androidRcKey) {
-    properties["Android Prod RC Value"] = remoteConfigValue(template, item.androidRcKey);
+  if (template) {
+    properties["iOS Prod RC Value"] = productionRcValue(template, item.iosRcKey);
+    properties["Web Prod RC Value"] = productionRcValue(template, item.webRcKey);
+    properties["Android Prod RC Value"] = productionRcValue(template, item.androidRcKey);
   }
 
   const platform = normalizePlatform(config.platform);

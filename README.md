@@ -129,7 +129,7 @@ jobs:
 
 ### `launch-hub-production-mirror.yml`
 
-Mirrors production reality into Launch Hub Work Items. It writes exact production Remote Config values such as `missing`, `false`, `research-preview`, `true`, or any other live Firebase string, plus production deployment/release evidence. It does not block deploys or decide whether a feature should be enabled.
+Mirrors production reality into Launch Hub Work Items. It writes exact production Remote Config values such as `missing`, `false`, `research-preview`, `true`, or any other live Firebase string, plus `no platform key` when a Work Item has no Remote Config key for that platform. It also mirrors production deployment/release evidence. It does not block deploys or decide whether a feature should be enabled.
 
 ```yaml
 jobs:
@@ -148,7 +148,7 @@ jobs:
 - `product` — product slug used to filter Launch Hub Work Items. Supported values are `cip` and `sap`.
 - `product_page_id` — optional Notion Product page ID override.
 - `platform` — one of `ios`, `web`, `android`, `backend`, or `all`; deployment/release status writes only apply to `ios`, `web`, and `android`. `backend` and `all` refresh Remote Config values only.
-- `firebase_project_id` — optional production Firebase project ID. When set with `SERVICE_ACCOUNT_BASE64`, the workflow reads the production Remote Config template and writes exact values to the `iOS Prod RC Value`, `Web Prod RC Value`, and `Android Prod RC Value` select fields.
+- `firebase_project_id` — optional production Firebase project ID. When set with `SERVICE_ACCOUNT_BASE64`, the workflow reads the production Remote Config template and writes exact values to the `iOS Prod RC Value`, `Web Prod RC Value`, and `Android Prod RC Value` select fields. A configured key absent from Firebase is written as `missing`; a blank platform key is written as `no platform key`.
 - `github_environment` — optional GitHub environment name, such as `prod`, used when `SERVICE_ACCOUNT_BASE64` is scoped to a deployment environment.
 - `production_state` and `production_evidence` — optional deployment/release mirror inputs. `production_state` writes to `iOS Release Status`, `Web Deploy Status`, or `Android Release Status` based on `platform`; `production_evidence` is written only when one of those status fields is written.
 - `production_version` — deprecated and ignored. Launch Hub no longer stores a shared production version.
