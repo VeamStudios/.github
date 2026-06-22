@@ -56,7 +56,7 @@ on:
         required: true
       SLACK_RELEASES_WEBHOOK_URL:
         required: true
-      NOTION_API_TOKEN:
+      NOTION_TOKEN:
         required: false
 
 permissions:
@@ -92,5 +92,5 @@ jobs:
           production_state: Live
           production_version: ${{ steps.monitor.outputs.live_version }}
           production_evidence: ${{ steps.monitor.outputs.live_release_url }}
-          notion_token: ${{ secrets.NOTION_API_TOKEN }}
+          notion_token: ${{ secrets.NOTION_TOKEN }}
           dry_run: ${{ inputs.launch_hub_dry_run }}

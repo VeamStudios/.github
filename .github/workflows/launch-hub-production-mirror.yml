@@ -49,7 +49,7 @@ on:
         default: false
         type: boolean
     secrets:
-      NOTION_API_TOKEN:
+      NOTION_TOKEN:
         required: false
       SERVICE_ACCOUNT_BASE64:
         required: false
@@ -71,5 +71,5 @@ jobs:
           production_evidence: ${{ inputs.production_evidence }}
           firebase_project_id: ${{ inputs.firebase_project_id }}
           firebase_service_account: ${{ secrets.SERVICE_ACCOUNT_BASE64 }}
-          notion_token: ${{ secrets.NOTION_API_TOKEN }}
+          notion_token: ${{ secrets.NOTION_TOKEN }}
           dry_run: ${{ inputs.dry_run }}
