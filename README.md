@@ -147,8 +147,8 @@ jobs:
 
 - `product` — product slug used to filter Launch Hub Work Items. Supported values are `cip` and `sap`.
 - `product_page_id` — optional Notion Product page ID override.
-- `platform` — one of `ios`, `web`, `backend`, or `all`; production-state writes only touch rows with a relevant RC key for that platform.
-- `firebase_project_id` — optional production Firebase project ID. When set with `SERVICE_ACCOUNT_BASE64`, the workflow reads the production Remote Config template and writes exact values to `iOS Prod RC Value` and `Web Prod RC Value`.
+- `platform` — one of `ios`, `web`, `android`, `backend`, or `all`; production-state writes only touch rows with a relevant RC key for that platform.
+- `firebase_project_id` — optional production Firebase project ID. When set with `SERVICE_ACCOUNT_BASE64`, the workflow reads the production Remote Config template and writes exact values to `iOS Prod RC Value`, `Web Prod RC Value`, and `Android Prod RC Value`.
 - `production_state`, `production_version`, and `production_evidence` — optional deployment/release mirror fields.
 - `dry_run` — prints the planned updates without changing Notion.
 
