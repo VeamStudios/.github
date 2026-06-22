@@ -18,6 +18,12 @@ const REMOTE_CONFIG_VALUE_PROPERTIES = new Set([
   "Web Prod RC Value",
   "Android Prod RC Value",
 ]);
+const PRODUCTION_STATUS_PROPERTIES = new Set([
+  "iOS Release Status",
+  "Web Deploy Status",
+  "Android Release Status",
+  "Backend Deploy Status",
+]);
 
 class HttpError extends Error {
   constructor(message, statusCode, body) {
@@ -286,10 +292,10 @@ function buildPageProperties({ item, template, config, syncedAt }) {
 
   const platform = normalizePlatform(config.platform);
   if (config.productionState) {
-    if (platform === "ios") properties["iOS Production State"] = config.productionState;
-    if (platform === "web") properties["Web Production State"] = config.productionState;
-    if (platform === "android") properties["Android Production State"] = config.productionState;
-    if (platform === "backend") properties["Backend Production State"] = config.productionState;
+    if (platform === "ios") properties["iOS Release Status"] = config.productionState;
+    if (platform === "web") properties["Web Deploy Status"] = config.productionState;
+    if (platform === "android") properties["Android Release Status"] = config.productionState;
+    if (platform === "backend") properties["Backend Deploy Status"] = config.productionState;
   }
   if (config.productionVersion) {
     properties["Production Version"] = config.productionVersion;
@@ -306,7 +312,7 @@ function toNotionProperties(rawProperties) {
   for (const [key, value] of Object.entries(rawProperties)) {
     if (key === "Last Production Sync") {
       properties[key] = notionDate(value);
-    } else if (key.endsWith("Production State") || REMOTE_CONFIG_VALUE_PROPERTIES.has(key)) {
+    } else if (PRODUCTION_STATUS_PROPERTIES.has(key) || REMOTE_CONFIG_VALUE_PROPERTIES.has(key)) {
       properties[key] = notionSelect(value);
     } else {
       properties[key] = notionRichText(value);
