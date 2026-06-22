@@ -123,7 +123,7 @@ async function testSyncWritesExactRcValues() {
   assert.equal(notion.updates[0].properties["Android Prod RC Value"].select.name, "custom-live-value");
 }
 
-async function testProductionStateTargetsPlatform() {
+async function testProductionStatusTargetsPlatform() {
   const properties = buildPageProperties({
     item: { iosRcKey: "", webRcKey: "" },
     template: null,
@@ -136,13 +136,13 @@ async function testProductionStateTargetsPlatform() {
     }),
   });
 
-  assert.equal(properties["iOS Production State"], "Uploaded to App Store Connect");
-  assert.equal(properties["Web Production State"], undefined);
+  assert.equal(properties["iOS Release Status"], "Uploaded to App Store Connect");
+  assert.equal(properties["Web Deploy Status"], undefined);
   assert.equal(properties["Production Version"], "v2.1.6");
   assert.equal(properties["Production Evidence"], "https://github.com/run");
 }
 
-async function testAndroidProductionStateTargetsPlatform() {
+async function testAndroidReleaseStatusTargetsPlatform() {
   const properties = buildPageProperties({
     item: { iosRcKey: "", webRcKey: "", androidRcKey: "android_feature" },
     template: null,
@@ -155,9 +155,9 @@ async function testAndroidProductionStateTargetsPlatform() {
     }),
   });
 
-  assert.equal(properties["Android Production State"], "In rollout");
-  assert.equal(properties["iOS Production State"], undefined);
-  assert.equal(properties["Web Production State"], undefined);
+  assert.equal(properties["Android Release Status"], "In rollout");
+  assert.equal(properties["iOS Release Status"], undefined);
+  assert.equal(properties["Web Deploy Status"], undefined);
 }
 
 async function testPlatformFilteringUsesRelevantRcKeys() {
@@ -175,7 +175,7 @@ async function testPlatformFilteringUsesRelevantRcKeys() {
   assert.equal(summary.matchedPages, 1);
   assert.equal(notion.updates.length, 1);
   assert.equal(notion.updates[0].id, "ios-item");
-  assert.equal(notion.updates[0].properties["iOS Production State"].select.name, "Uploaded to App Store Connect");
+  assert.equal(notion.updates[0].properties["iOS Release Status"].select.name, "Uploaded to App Store Connect");
 }
 
 async function testDryRunDoesNotUpdate() {
@@ -199,8 +199,8 @@ async function run() {
   await testRemoteConfigValuesMirrorExactly();
   await testProductSlugResolvesPageId();
   await testSyncWritesExactRcValues();
-  await testProductionStateTargetsPlatform();
-  await testAndroidProductionStateTargetsPlatform();
+  await testProductionStatusTargetsPlatform();
+  await testAndroidReleaseStatusTargetsPlatform();
   await testPlatformFilteringUsesRelevantRcKeys();
   await testDryRunDoesNotUpdate();
   console.log("launch-hub-production-mirror tests passed");

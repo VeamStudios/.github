@@ -124,7 +124,7 @@ jobs:
 - `release_limit` — number of recent releases to scan when `release_tag` is empty. Defaults to `20`.
 - `live_states` — App Store Connect states treated as live. Defaults to `READY_FOR_DISTRIBUTION,READY_FOR_SALE`.
 - `dry_run` — checks state without sending Slack or replacing the release marker.
-- `launch_hub_product` — optional product slug, `cip` or `sap`. When set, a newly notified live App Store release also writes `iOS Production State`, `Production Version`, `Last Production Sync`, and `Production Evidence` to Launch Hub.
+- `launch_hub_product` — optional product slug, `cip` or `sap`. When set, a newly notified live App Store release also writes `iOS Release Status`, `Production Version`, `Last Production Sync`, and `Production Evidence` to Launch Hub.
 - `launch_hub_product_page_id` — optional Notion Product page ID override for unusual cases.
 
 ### `launch-hub-production-mirror.yml`
@@ -148,10 +148,10 @@ jobs:
 
 - `product` — product slug used to filter Launch Hub Work Items. Supported values are `cip` and `sap`.
 - `product_page_id` — optional Notion Product page ID override.
-- `platform` — one of `ios`, `web`, `android`, `backend`, or `all`; production-state writes only touch rows with a relevant RC key for that platform.
+- `platform` — one of `ios`, `web`, `android`, `backend`, or `all`; deployment/release status writes only touch rows with a relevant RC key for that platform.
 - `firebase_project_id` — optional production Firebase project ID. When set with `SERVICE_ACCOUNT_BASE64`, the workflow reads the production Remote Config template and writes exact values to the `iOS Prod RC Value`, `Web Prod RC Value`, and `Android Prod RC Value` select fields.
 - `github_environment` — optional GitHub environment name, such as `prod`, used when `SERVICE_ACCOUNT_BASE64` is scoped to a deployment environment.
-- `production_state`, `production_version`, and `production_evidence` — optional deployment/release mirror fields.
+- `production_state`, `production_version`, and `production_evidence` — optional deployment/release mirror inputs. `production_state` writes to `iOS Release Status`, `Web Deploy Status`, `Android Release Status`, or `Backend Deploy Status` based on `platform`.
 - `dry_run` — prints the planned updates without changing Notion.
 
 ### `update-changelog-website.yml`
