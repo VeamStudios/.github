@@ -16,7 +16,7 @@ function relation(id) {
   return { relation: [{ id }] };
 }
 
-function page({ id, title, productId, iosKey = "", webKey = "" }) {
+function page({ id, title, productId, iosKey = "", webKey = "", androidKey = "" }) {
   return {
     id,
     properties: {
@@ -24,6 +24,7 @@ function page({ id, title, productId, iosKey = "", webKey = "" }) {
       Product: relation(productId),
       "iOS RC Key": richText(iosKey),
       "Web RC Key": richText(webKey),
+      "Android RC Key": richText(androidKey),
     },
   };
 }
@@ -102,24 +103,27 @@ async function testSyncWritesExactRcValues() {
       productId: cipProductId,
       iosKey: "floor_plans_ios",
       webKey: "floor_plans_web",
+      androidKey: "floor_plans_android",
     }),
   ]);
   const firebase = new FakeFirebase({
     parameters: {
       floor_plans_ios: { defaultValue: { value: "research-preview" } },
+      floor_plans_android: { defaultValue: { value: "true" } },
     },
   });
 
   const summary = await runSync(baseConfig(), { notion, firebase });
 
   assert.equal(summary.matchedPages, 1);
-  assert.equal(summary.remoteConfigChecked, 2);
+  assert.equal(summary.remoteConfigChecked, 3);
   assert.equal(notion.updates.length, 1);
   assert.equal(
     notion.updates[0].properties["iOS Prod RC Value"].rich_text[0].text.content,
     "research-preview"
   );
   assert.equal(notion.updates[0].properties["Web Prod RC Value"].rich_text[0].text.content, "missing");
+  assert.equal(notion.updates[0].properties["Android Prod RC Value"].rich_text[0].text.content, "true");
 }
 
 async function testProductionStateTargetsPlatform() {
@@ -141,10 +145,29 @@ async function testProductionStateTargetsPlatform() {
   assert.equal(properties["Production Evidence"], "https://github.com/run");
 }
 
+async function testAndroidProductionStateTargetsPlatform() {
+  const properties = buildPageProperties({
+    item: { iosRcKey: "", webRcKey: "", androidRcKey: "android_feature" },
+    template: null,
+    syncedAt: "2026-06-19T12:00:00.000Z",
+    config: baseConfig({
+      platform: "android",
+      productionState: "In rollout",
+      productionVersion: "v2.1.6",
+      productionEvidence: "https://github.com/run",
+    }),
+  });
+
+  assert.equal(properties["Android Production State"], "In rollout");
+  assert.equal(properties["iOS Production State"], undefined);
+  assert.equal(properties["Web Production State"], undefined);
+}
+
 async function testPlatformFilteringUsesRelevantRcKeys() {
   const notion = new FakeNotion([
     page({ id: "ios-item", title: "iOS feature", productId: cipProductId, iosKey: "ios_feature" }),
     page({ id: "web-item", title: "Web feature", productId: cipProductId, webKey: "web_feature" }),
+    page({ id: "android-item", title: "Android feature", productId: cipProductId, androidKey: "android_feature" }),
   ]);
 
   const summary = await runSync(
@@ -180,6 +203,7 @@ async function run() {
   await testProductSlugResolvesPageId();
   await testSyncWritesExactRcValues();
   await testProductionStateTargetsPlatform();
+  await testAndroidProductionStateTargetsPlatform();
   await testPlatformFilteringUsesRelevantRcKeys();
   await testDryRunDoesNotUpdate();
   console.log("launch-hub-production-mirror tests passed");

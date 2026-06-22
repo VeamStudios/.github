@@ -46,7 +46,7 @@ function resolveProductPageId({ product, productPageId }) {
 
 function normalizePlatform(value) {
   const platform = String(value || "all").trim().toLowerCase();
-  if (["ios", "web", "backend", "all"].includes(platform)) return platform;
+  if (["ios", "web", "android", "backend", "all"].includes(platform)) return platform;
   return "all";
 }
 
@@ -230,6 +230,7 @@ function extractWorkItem(page) {
     productIds: relationIds(props.Product),
     iosRcKey: textFromRichText(props["iOS RC Key"]).trim(),
     webRcKey: textFromRichText(props["Web RC Key"]).trim(),
+    androidRcKey: textFromRichText(props["Android RC Key"]).trim(),
   };
 }
 
@@ -254,10 +255,12 @@ function itemMatchesPlatform(item, platform) {
       return Boolean(item.iosRcKey);
     case "web":
       return Boolean(item.webRcKey);
+    case "android":
+      return Boolean(item.androidRcKey);
     case "backend":
     case "all":
     default:
-      return Boolean(item.iosRcKey || item.webRcKey);
+      return Boolean(item.iosRcKey || item.webRcKey || item.androidRcKey);
   }
 }
 
@@ -272,11 +275,15 @@ function buildPageProperties({ item, template, config, syncedAt }) {
   if (template && item.webRcKey) {
     properties["Web Prod RC Value"] = remoteConfigValue(template, item.webRcKey);
   }
+  if (template && item.androidRcKey) {
+    properties["Android Prod RC Value"] = remoteConfigValue(template, item.androidRcKey);
+  }
 
   const platform = normalizePlatform(config.platform);
   if (config.productionState) {
     if (platform === "ios") properties["iOS Production State"] = config.productionState;
     if (platform === "web") properties["Web Production State"] = config.productionState;
+    if (platform === "android") properties["Android Production State"] = config.productionState;
     if (platform === "backend") properties["Backend Production State"] = config.productionState;
   }
   if (config.productionVersion) {
@@ -345,13 +352,16 @@ async function runSync(config, clients) {
     const properties = buildPageProperties({ item, template, config, syncedAt });
     if (template && item.iosRcKey) summary.remoteConfigChecked += 1;
     if (template && item.webRcKey) summary.remoteConfigChecked += 1;
+    if (template && item.androidRcKey) summary.remoteConfigChecked += 1;
 
     summary.items.push({
       title: item.title,
       iosRcKey: item.iosRcKey,
       webRcKey: item.webRcKey,
+      androidRcKey: item.androidRcKey,
       iosValue: properties["iOS Prod RC Value"] || "",
       webValue: properties["Web Prod RC Value"] || "",
+      androidValue: properties["Android Prod RC Value"] || "",
       updated: Object.keys(properties).length > 0,
     });
 
@@ -387,11 +397,11 @@ function buildSummaryMarkdown(config, summary) {
   }
 
   if (summary.items.length > 0) {
-    lines.push("| Work Item | iOS key | iOS value | Web key | Web value |");
-    lines.push("|---|---|---|---|---|");
+    lines.push("| Work Item | iOS key | iOS value | Web key | Web value | Android key | Android value |");
+    lines.push("|---|---|---|---|---|---|---|");
     for (const item of summary.items) {
       lines.push(
-        `| ${escapeTableCell(item.title)} | ${escapeTableCell(item.iosRcKey)} | ${escapeTableCell(item.iosValue)} | ${escapeTableCell(item.webRcKey)} | ${escapeTableCell(item.webValue)} |`
+        `| ${escapeTableCell(item.title)} | ${escapeTableCell(item.iosRcKey)} | ${escapeTableCell(item.iosValue)} | ${escapeTableCell(item.webRcKey)} | ${escapeTableCell(item.webValue)} | ${escapeTableCell(item.androidRcKey)} | ${escapeTableCell(item.androidValue)} |`
       );
     }
     lines.push("");

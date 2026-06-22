@@ -15,7 +15,7 @@ inputs:
     required: false
     default: "20aeddfe-a3f7-41e9-b440-c9eb6b26887f"
   platform:
-    description: "Production state target: ios, web, backend, or all."
+    description: "Production state target: ios, web, android, backend, or all."
     required: false
     default: "all"
   production_state:
