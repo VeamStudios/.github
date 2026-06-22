@@ -90,7 +90,6 @@ jobs:
           work_items_data_source_id: ${{ inputs.launch_hub_work_items_data_source_id }}
           platform: ios
           production_state: Live
-          production_version: ${{ steps.monitor.outputs.live_version }}
           production_evidence: ${{ steps.monitor.outputs.live_release_url }}
           notion_token: ${{ secrets.NOTION_TOKEN }}
           dry_run: ${{ inputs.launch_hub_dry_run }}
