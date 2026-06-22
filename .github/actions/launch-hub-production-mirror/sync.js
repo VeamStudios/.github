@@ -392,7 +392,7 @@ function buildSummaryMarkdown(config, summary) {
     `- Product: ${config.product || "(not set)"}`,
     `- Product page: ${config.productPageId}`,
     `- Platform: ${config.platform}`,
-    `- Production state: ${config.productionState || "(not set)"}`,
+    `- Release/deploy status: ${config.productionState || "(not set)"}`,
     `- Production version: ${config.productionVersion || "(not set)"}`,
     `- Dry run: ${summary.dryRun ? "true" : "false"}`,
     `- Matched Work Items: ${summary.matchedPages}`,

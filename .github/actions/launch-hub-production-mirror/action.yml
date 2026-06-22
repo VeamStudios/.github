@@ -1,5 +1,5 @@
 name: Launch Hub production mirror
-description: Mirrors production Remote Config values and release state into Launch Hub Work Items.
+description: Mirrors production Remote Config values and release/deploy status into Launch Hub Work Items.
 
 inputs:
   product:
@@ -15,11 +15,11 @@ inputs:
     required: false
     default: "20aeddfe-a3f7-41e9-b440-c9eb6b26887f"
   platform:
-    description: "Production state target: ios, web, android, backend, or all."
+    description: "Release/deploy status target: ios, web, android, backend, or all."
     required: false
     default: "all"
   production_state:
-    description: "Optional production state to write for the platform."
+    description: "Optional release/deploy status value to write for the platform."
     required: false
     default: ""
   production_version:
