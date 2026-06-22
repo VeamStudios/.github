@@ -19,7 +19,7 @@ on:
         default: "20aeddfe-a3f7-41e9-b440-c9eb6b26887f"
         type: string
       platform:
-        description: "Release/deploy status target: ios, web, android, backend, or all"
+        description: "Release/deploy status target: ios, web, android, backend, or all. Backend/all only refresh Remote Config values."
         required: false
         default: "all"
         type: string
@@ -29,7 +29,7 @@ on:
         default: ""
         type: string
       production_version:
-        description: "Optional production version or release tag to write"
+        description: "Deprecated; ignored. Launch Hub no longer stores a shared production version."
         required: false
         default: ""
         type: string
@@ -73,7 +73,6 @@ jobs:
           work_items_data_source_id: ${{ inputs.work_items_data_source_id }}
           platform: ${{ inputs.platform }}
           production_state: ${{ inputs.production_state }}
-          production_version: ${{ inputs.production_version }}
           production_evidence: ${{ inputs.production_evidence }}
           firebase_project_id: ${{ inputs.firebase_project_id }}
           firebase_service_account: ${{ secrets.SERVICE_ACCOUNT_BASE64 }}
@@ -94,7 +93,6 @@ jobs:
           work_items_data_source_id: ${{ inputs.work_items_data_source_id }}
           platform: ${{ inputs.platform }}
           production_state: ${{ inputs.production_state }}
-          production_version: ${{ inputs.production_version }}
           production_evidence: ${{ inputs.production_evidence }}
           firebase_project_id: ${{ inputs.firebase_project_id }}
           firebase_service_account: ${{ secrets.SERVICE_ACCOUNT_BASE64 }}

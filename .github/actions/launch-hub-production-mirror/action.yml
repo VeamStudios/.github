@@ -23,7 +23,7 @@ inputs:
     required: false
     default: ""
   production_version:
-    description: "Optional production version or release tag to write."
+    description: "Deprecated; ignored. Launch Hub no longer stores a shared production version."
     required: false
     default: ""
   production_evidence:
@@ -70,7 +70,6 @@ runs:
         INPUT_WORK_ITEMS_DATA_SOURCE_ID: ${{ inputs.work_items_data_source_id }}
         INPUT_PLATFORM: ${{ inputs.platform }}
         INPUT_PRODUCTION_STATE: ${{ inputs.production_state }}
-        INPUT_PRODUCTION_VERSION: ${{ inputs.production_version }}
         INPUT_PRODUCTION_EVIDENCE: ${{ inputs.production_evidence }}
         INPUT_FIREBASE_PROJECT_ID: ${{ inputs.firebase_project_id }}
         INPUT_FIREBASE_SERVICE_ACCOUNT: ${{ inputs.firebase_service_account }}

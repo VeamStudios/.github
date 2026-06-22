@@ -22,7 +22,6 @@ const PRODUCTION_STATUS_PROPERTIES = new Set([
   "iOS Release Status",
   "Web Deploy Status",
   "Android Release Status",
-  "Backend Deploy Status",
 ]);
 
 class HttpError extends Error {
@@ -291,16 +290,22 @@ function buildPageProperties({ item, template, config, syncedAt }) {
   }
 
   const platform = normalizePlatform(config.platform);
+  let wroteProductionStatus = false;
   if (config.productionState) {
-    if (platform === "ios") properties["iOS Release Status"] = config.productionState;
-    if (platform === "web") properties["Web Deploy Status"] = config.productionState;
-    if (platform === "android") properties["Android Release Status"] = config.productionState;
-    if (platform === "backend") properties["Backend Deploy Status"] = config.productionState;
+    if (platform === "ios") {
+      properties["iOS Release Status"] = config.productionState;
+      wroteProductionStatus = true;
+    }
+    if (platform === "web") {
+      properties["Web Deploy Status"] = config.productionState;
+      wroteProductionStatus = true;
+    }
+    if (platform === "android") {
+      properties["Android Release Status"] = config.productionState;
+      wroteProductionStatus = true;
+    }
   }
-  if (config.productionVersion) {
-    properties["Production Version"] = config.productionVersion;
-  }
-  if (config.productionEvidence) {
+  if (wroteProductionStatus && config.productionEvidence) {
     properties["Production Evidence"] = config.productionEvidence;
   }
 
@@ -393,7 +398,6 @@ function buildSummaryMarkdown(config, summary) {
     `- Product page: ${config.productPageId}`,
     `- Platform: ${config.platform}`,
     `- Release/deploy status: ${config.productionState || "(not set)"}`,
-    `- Production version: ${config.productionVersion || "(not set)"}`,
     `- Dry run: ${summary.dryRun ? "true" : "false"}`,
     `- Matched Work Items: ${summary.matchedPages}`,
     `- Updated Work Items: ${summary.updatedPages}`,
@@ -440,7 +444,6 @@ async function main() {
     workItemsDataSourceId: process.env.INPUT_WORK_ITEMS_DATA_SOURCE_ID || "",
     platform: normalizePlatform(process.env.INPUT_PLATFORM),
     productionState: process.env.INPUT_PRODUCTION_STATE || "",
-    productionVersion: process.env.INPUT_PRODUCTION_VERSION || "",
     productionEvidence: process.env.INPUT_PRODUCTION_EVIDENCE || "",
     firebaseProjectId: process.env.INPUT_FIREBASE_PROJECT_ID || "",
     dryRun: parseBoolean(process.env.INPUT_DRY_RUN),

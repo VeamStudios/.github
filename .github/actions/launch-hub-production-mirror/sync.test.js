@@ -60,7 +60,6 @@ function baseConfig(overrides = {}) {
     workItemsDataSourceId: "work-items",
     platform: "all",
     productionState: "",
-    productionVersion: "",
     productionEvidence: "",
     dryRun: false,
     now: () => new Date("2026-06-19T12:00:00.000Z"),
@@ -131,14 +130,12 @@ async function testProductionStatusTargetsPlatform() {
     config: baseConfig({
       platform: "ios",
       productionState: "Uploaded to App Store Connect",
-      productionVersion: "v2.1.6",
       productionEvidence: "https://github.com/run",
     }),
   });
 
   assert.equal(properties["iOS Release Status"], "Uploaded to App Store Connect");
   assert.equal(properties["Web Deploy Status"], undefined);
-  assert.equal(properties["Production Version"], "v2.1.6");
   assert.equal(properties["Production Evidence"], "https://github.com/run");
 }
 
@@ -150,7 +147,6 @@ async function testAndroidReleaseStatusTargetsPlatform() {
     config: baseConfig({
       platform: "android",
       productionState: "In rollout",
-      productionVersion: "v2.1.6",
       productionEvidence: "https://github.com/run",
     }),
   });
@@ -158,6 +154,22 @@ async function testAndroidReleaseStatusTargetsPlatform() {
   assert.equal(properties["Android Release Status"], "In rollout");
   assert.equal(properties["iOS Release Status"], undefined);
   assert.equal(properties["Web Deploy Status"], undefined);
+}
+
+async function testBackendDoesNotWriteStatusOrEvidence() {
+  const properties = buildPageProperties({
+    item: { iosRcKey: "ios_feature", webRcKey: "web_feature", androidRcKey: "" },
+    template: null,
+    syncedAt: "2026-06-19T12:00:00.000Z",
+    config: baseConfig({
+      platform: "backend",
+      productionState: "Deployed",
+      productionEvidence: "https://github.com/run",
+    }),
+  });
+
+  assert.equal(properties["Backend Deploy Status"], undefined);
+  assert.equal(properties["Production Evidence"], undefined);
 }
 
 async function testPlatformFilteringUsesRelevantRcKeys() {
@@ -201,6 +213,7 @@ async function run() {
   await testSyncWritesExactRcValues();
   await testProductionStatusTargetsPlatform();
   await testAndroidReleaseStatusTargetsPlatform();
+  await testBackendDoesNotWriteStatusOrEvidence();
   await testPlatformFilteringUsesRelevantRcKeys();
   await testDryRunDoesNotUpdate();
   console.log("launch-hub-production-mirror tests passed");
