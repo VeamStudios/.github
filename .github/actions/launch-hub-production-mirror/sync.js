@@ -13,6 +13,11 @@ const PRODUCT_PAGE_IDS = {
   sap: "30c06908-3a03-80d0-9845-fe97daa54c31",
   siteauditpro: "30c06908-3a03-80d0-9845-fe97daa54c31",
 };
+const REMOTE_CONFIG_VALUE_PROPERTIES = new Set([
+  "iOS Prod RC Value",
+  "Web Prod RC Value",
+  "Android Prod RC Value",
+]);
 
 class HttpError extends Error {
   constructor(message, statusCode, body) {
@@ -301,7 +306,7 @@ function toNotionProperties(rawProperties) {
   for (const [key, value] of Object.entries(rawProperties)) {
     if (key === "Last Production Sync") {
       properties[key] = notionDate(value);
-    } else if (key.endsWith("Production State")) {
+    } else if (key.endsWith("Production State") || REMOTE_CONFIG_VALUE_PROPERTIES.has(key)) {
       properties[key] = notionSelect(value);
     } else {
       properties[key] = notionRichText(value);
