@@ -109,7 +109,7 @@ async function testSyncWritesExactRcValues() {
   const firebase = new FakeFirebase({
     parameters: {
       floor_plans_ios: { defaultValue: { value: "research-preview" } },
-      floor_plans_android: { defaultValue: { value: "true" } },
+      floor_plans_android: { defaultValue: { value: "custom-live-value" } },
     },
   });
 
@@ -118,12 +118,9 @@ async function testSyncWritesExactRcValues() {
   assert.equal(summary.matchedPages, 1);
   assert.equal(summary.remoteConfigChecked, 3);
   assert.equal(notion.updates.length, 1);
-  assert.equal(
-    notion.updates[0].properties["iOS Prod RC Value"].rich_text[0].text.content,
-    "research-preview"
-  );
-  assert.equal(notion.updates[0].properties["Web Prod RC Value"].rich_text[0].text.content, "missing");
-  assert.equal(notion.updates[0].properties["Android Prod RC Value"].rich_text[0].text.content, "true");
+  assert.equal(notion.updates[0].properties["iOS Prod RC Value"].select.name, "research-preview");
+  assert.equal(notion.updates[0].properties["Web Prod RC Value"].select.name, "missing");
+  assert.equal(notion.updates[0].properties["Android Prod RC Value"].select.name, "custom-live-value");
 }
 
 async function testProductionStateTargetsPlatform() {
