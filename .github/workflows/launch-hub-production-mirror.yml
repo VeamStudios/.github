@@ -19,12 +19,12 @@ on:
         default: "20aeddfe-a3f7-41e9-b440-c9eb6b26887f"
         type: string
       platform:
-        description: "Production state target: ios, web, android, backend, or all"
+        description: "Release/deploy status target: ios, web, android, backend, or all"
         required: false
         default: "all"
         type: string
       production_state:
-        description: "Optional production state to write for the platform"
+        description: "Optional release/deploy status value to write for the platform"
         required: false
         default: ""
         type: string
@@ -65,7 +65,7 @@ jobs:
     if: ${{ inputs.github_environment == '' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Sync Launch Hub production state
+      - name: Sync Launch Hub production mirror
         uses: VeamStudios/.github/.github/actions/launch-hub-production-mirror@main
         with:
           product: ${{ inputs.product }}
@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.github_environment }}
     steps:
-      - name: Sync Launch Hub production state
+      - name: Sync Launch Hub production mirror
         uses: VeamStudios/.github/.github/actions/launch-hub-production-mirror@main
         with:
           product: ${{ inputs.product }}
