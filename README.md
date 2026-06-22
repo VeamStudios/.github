@@ -142,6 +142,7 @@ jobs:
       production_version: v1.2.3
       production_evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       firebase_project_id: checklistinspectorpro
+      github_environment: prod
     secrets: inherit
 ```
 
@@ -149,6 +150,7 @@ jobs:
 - `product_page_id` — optional Notion Product page ID override.
 - `platform` — one of `ios`, `web`, `android`, `backend`, or `all`; production-state writes only touch rows with a relevant RC key for that platform.
 - `firebase_project_id` — optional production Firebase project ID. When set with `SERVICE_ACCOUNT_BASE64`, the workflow reads the production Remote Config template and writes exact values to `iOS Prod RC Value`, `Web Prod RC Value`, and `Android Prod RC Value`.
+- `github_environment` — optional GitHub environment name, such as `prod`, used when `SERVICE_ACCOUNT_BASE64` is scoped to a deployment environment.
 - `production_state`, `production_version`, and `production_evidence` — optional deployment/release mirror fields.
 - `dry_run` — prints the planned updates without changing Notion.
 
@@ -271,7 +273,7 @@ The new templates rely on secrets already configured at the org or repo level:
 | `qa.yml` | `BOT_QA_PRIVATE_KEY`, `vars.BOT_QA_APP_ID` | Caller for `qa-pipeline.yml` |
 | `web-tests.yml` | none beyond `GITHUB_TOKEN` | `packages: read` is granted by the caller |
 | `ios-tests.yml` | `BOT_RELEASE_PRIVATE_KEY`, `vars.BOT_RELEASE_APP_ID` | Same Release Bot App used by `pr-ios-build.yml` |
-| `launch-hub-production-mirror.yml` | `NOTION_TOKEN`, `SERVICE_ACCOUNT_BASE64` | `SERVICE_ACCOUNT_BASE64` is only required when reading Firebase Remote Config |
+| `launch-hub-production-mirror.yml` | `NOTION_TOKEN`, `SERVICE_ACCOUNT_BASE64` | `SERVICE_ACCOUNT_BASE64` is only required when reading Firebase Remote Config; use `github_environment` when it is environment-scoped |
 | `dependency-review.yml` | `GITHUB_TOKEN` | None required; uses `actions/dependency-review-action` |
 | `stale.yml` | `GITHUB_TOKEN` | `issues: write`, `pull-requests: write` granted by reusable |
 | `auto-assign-reviewers.yml` | `GITHUB_TOKEN` | `pull-requests: write` granted by reusable |

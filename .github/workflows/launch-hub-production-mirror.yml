@@ -43,6 +43,11 @@ on:
         required: false
         default: ""
         type: string
+      github_environment:
+        description: "Optional GitHub environment name for environment-scoped secrets"
+        required: false
+        default: ""
+        type: string
       dry_run:
         description: "Compute updates and print a summary without writing Notion"
         required: false
@@ -57,7 +62,29 @@ on:
 jobs:
   sync:
     name: Sync Launch Hub
+    if: ${{ inputs.github_environment == '' }}
     runs-on: ubuntu-latest
+    steps:
+      - name: Sync Launch Hub production state
+        uses: VeamStudios/.github/.github/actions/launch-hub-production-mirror@main
+        with:
+          product: ${{ inputs.product }}
+          product_page_id: ${{ inputs.product_page_id }}
+          work_items_data_source_id: ${{ inputs.work_items_data_source_id }}
+          platform: ${{ inputs.platform }}
+          production_state: ${{ inputs.production_state }}
+          production_version: ${{ inputs.production_version }}
+          production_evidence: ${{ inputs.production_evidence }}
+          firebase_project_id: ${{ inputs.firebase_project_id }}
+          firebase_service_account: ${{ secrets.SERVICE_ACCOUNT_BASE64 }}
+          notion_token: ${{ secrets.NOTION_TOKEN }}
+          dry_run: ${{ inputs.dry_run }}
+
+  sync-with-environment:
+    name: Sync Launch Hub (${{ inputs.github_environment }})
+    if: ${{ inputs.github_environment != '' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.github_environment }}
     steps:
       - name: Sync Launch Hub production state
         uses: VeamStudios/.github/.github/actions/launch-hub-production-mirror@main
