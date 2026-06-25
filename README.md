@@ -270,9 +270,9 @@ The new templates rely on secrets already configured at the org or repo level:
 
 | Template | Secrets | Notes |
 |---|---|---|
-| `qa.yml` | `BOT_QA_PRIVATE_KEY`, `vars.BOT_QA_APP_ID` | Caller for `qa-pipeline.yml` |
+| `qa.yml` | `BOT_QA_PRIVATE_KEY`, org `vars.BOT_QA_CLIENT_ID` | Caller for `qa-pipeline.yml` |
 | `web-tests.yml` | none beyond `GITHUB_TOKEN` | `packages: read` is granted by the caller |
-| `ios-tests.yml` | `BOT_RELEASE_PRIVATE_KEY`, `vars.BOT_RELEASE_APP_ID` | Same Release Bot App used by `pr-ios-build.yml` |
+| `ios-tests.yml` | `BOT_RELEASE_PRIVATE_KEY`, org `vars.BOT_RELEASE_CLIENT_ID` | Same Release Bot App used by `pr-ios-build.yml` |
 | `launch-hub-production-mirror.yml` | `NOTION_TOKEN`, `SERVICE_ACCOUNT_BASE64` | `SERVICE_ACCOUNT_BASE64` is only required when reading Firebase Remote Config; use `github_environment` when it is environment-scoped |
 | `dependency-review.yml` | `GITHUB_TOKEN` | None required; uses `actions/dependency-review-action` |
 | `stale.yml` | `GITHUB_TOKEN` | `issues: write`, `pull-requests: write` granted by reusable |
