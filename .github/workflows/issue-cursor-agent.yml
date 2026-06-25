@@ -3,9 +3,15 @@ name: Issue Cursor Agent
 on:
   workflow_call:
     inputs:
+      github-client-id:
+        description: "GitHub App client ID used to mint the bot token"
+        required: false
+        default: ""
+        type: string
       github-app-id:
-        description: "GitHub App ID used to mint the bot token"
-        required: true
+        description: "Deprecated compatibility input. Use github-client-id instead."
+        required: false
+        default: ""
         type: string
       fix-label:
         description: "Issue label that should trigger a code-fix run"
@@ -105,11 +111,6 @@ jobs:
     steps:
       - name: Validate Cursor configuration
         run: |
-          if [ -z "${{ inputs.github-app-id }}" ]; then
-            echo "::error::Required workflow input github-app-id is missing"
-            exit 1
-          fi
-
           if [ -z "${{ secrets.GITHUB_APP_PRIVATE_KEY }}" ]; then
             echo "::error::Required workflow secret GITHUB_APP_PRIVATE_KEY is missing"
             exit 1
@@ -124,7 +125,7 @@ jobs:
         id: app_token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ inputs.github-app-id }}
+          client-id: ${{ inputs.github-client-id || vars.BOT_CURSOR_CLIENT_ID }}
           private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
@@ -344,11 +345,6 @@ jobs:
     steps:
       - name: Validate Cursor configuration
         run: |
-          if [ -z "${{ inputs.github-app-id }}" ]; then
-            echo "::error::Required workflow input github-app-id is missing"
-            exit 1
-          fi
-
           if [ -z "${{ secrets.GITHUB_APP_PRIVATE_KEY }}" ]; then
             echo "::error::Required workflow secret GITHUB_APP_PRIVATE_KEY is missing"
             exit 1
@@ -363,7 +359,7 @@ jobs:
         id: app_token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ inputs.github-app-id }}
+          client-id: ${{ inputs.github-client-id || vars.BOT_CURSOR_CLIENT_ID }}
           private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
@@ -476,7 +472,7 @@ jobs:
         id: app_token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ inputs.github-app-id }}
+          client-id: ${{ inputs.github-client-id || vars.BOT_CURSOR_CLIENT_ID }}
           private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
@@ -501,7 +497,7 @@ jobs:
         id: app_token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ inputs.github-app-id }}
+          client-id: ${{ inputs.github-client-id || vars.BOT_CURSOR_CLIENT_ID }}
           private-key: ${{ secrets.GITHUB_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 

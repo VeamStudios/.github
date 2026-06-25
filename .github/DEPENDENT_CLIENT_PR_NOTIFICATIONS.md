@@ -22,4 +22,4 @@ Avoid bare `#123` in client repos (ambiguous). Multiple timeline comments may ap
 
 ## Bot permissions
 
-The Release Bot GitHub App must be able to comment on the Web and iOS repositories (`pull_requests: write`). Repository variable `BOT_RELEASE_APP_ID` must be set on each backend repo.
+The Release Bot GitHub App must be able to comment on the Web and iOS repositories (`pull_requests: write`). Organization variable `BOT_RELEASE_CLIENT_ID` must be available to each backend repo.

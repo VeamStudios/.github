@@ -3,7 +3,8 @@
 # Copy to .github/workflows/qa.yml in app repos.
 # Calls VeamStudios/.github qa-pipeline.yml.
 #
-# Requires: vars.BOT_QA_APP_ID, secrets.BOT_QA_PRIVATE_KEY
+# Requires: secrets.BOT_QA_PRIVATE_KEY
+# Requires org variable: BOT_QA_CLIENT_ID
 #
 # Behaviour:
 # - PR opened / updated → "Has Linked Notion Work Item" check (WI URL required when PR title starts with feat:)
@@ -26,7 +27,5 @@ jobs:
       contents: write
       pull-requests: write
       models: read
-    with:
-      bot-qa-app-id: ${{ vars.BOT_QA_APP_ID }}
     secrets:
       BOT_QA_PRIVATE_KEY: ${{ secrets.BOT_QA_PRIVATE_KEY }}
