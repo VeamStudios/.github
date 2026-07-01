@@ -47,7 +47,6 @@ jobs:
         # Must use repo/path — `./` resolves from the *caller* repo, not VeamStudios/.github.
         uses: VeamStudios/.github/.github/actions/slack-release-notify-payload@main
         with:
-          variant: web
           version: ${{ inputs.version }}
           environment: ${{ inputs.environment }}
           slack_footer_fallback: ${{ inputs.slack_footer_mrkdwn }}

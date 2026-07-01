@@ -78,7 +78,7 @@ def append_changelog_as_context_blocks(blocks: list[dict], title: str, excerpt: 
         blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": chunk}]})
 
 
-def build_web_payload() -> dict:
+def build_payload() -> dict:
     server = os.environ.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
     repo = os.environ["GITHUB_REPOSITORY"]
     version = os.environ["VERSION"]
@@ -111,68 +111,9 @@ def build_web_payload() -> dict:
     return {"text": plain, "blocks": blocks}
 
 
-def build_ios_payload() -> dict:
-    server = os.environ.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
-    repo = os.environ["GITHUB_REPOSITORY"]
-    version = os.environ["VERSION"]
-    environment = os.environ["ENVIRONMENT"]
-    fallback = os.environ.get(
-        "SLACK_FOOTER_FALLBACK",
-        "Please inform any customers waiting on fixes in this release.",
-    )
-
-    repo_url = f"{server}/{repo}"
-    tag_url = f"{repo_url}/releases/tag/{version}"
-    header = f"📦 *<{repo_url}|{repo}>* — <{tag_url}|{version}> uploaded to App Store Connect for {environment}"
-
-    blocks: list[dict] = [{"type": "section", "text": {"type": "mrkdwn", "text": header}}]
-
-    changelog_path = pathlib.Path(os.environ.get("CHANGELOG_PATH", "CHANGELOG.md"))
-    excerpt: Optional[str] = None
-    if changelog_path.is_file():
-        raw = extract_changelog_section(changelog_path.read_text(encoding="utf-8"), version)
-        if raw:
-            excerpt = markdown_to_slack_mrkdwn(raw)
-
-    if excerpt:
-        title = os.environ.get("CHANGELOG_BLOCK_TITLE", "*Latest CHANGELOG*")
-        append_changelog_as_context_blocks(blocks, title, excerpt)
-
-    ctx_lines = [
-        (
-            f"*Approved Beta:* {os.environ['BETA_VERSION']}  |  "
-            f"*Beta Build Number:* {os.environ['BETA_BUILD_NUMBER']}"
-        ),
-        f"*Beta Commit:* `{os.environ['BETA_COMMIT_SHA']}`",
-        (
-            f"*Beta Source:* <{os.environ['BETA_RUN_URL']}|"
-            f"run #{os.environ['BETA_RUN_ID']}>"
-        ),
-        (
-            f"*Uploaded Cloud:* {os.environ['CLOUD_VERSION']}  |  "
-            f"*Cloud Build Number:* {os.environ['CLOUD_BUILD_NUMBER']}"
-        ),
-        f"*Cloud Commit:* `{os.environ['CLOUD_COMMIT_SHA']}`",
-    ]
-    if not excerpt:
-        ctx_lines.append(fallback)
-
-    elements = [{"type": "mrkdwn", "text": line} for line in ctx_lines]
-    blocks.append({"type": "context", "elements": elements})
-
-    plain = f"{repo} — {version} uploaded to App Store Connect for {environment}"
-    return {"text": plain, "blocks": blocks}
-
-
 def main() -> None:
-    variant = os.environ.get("VARIANT", "web").lower()
     out_path = pathlib.Path(os.environ.get("OUTPUT_PAYLOAD_PATH", "slack-payload.json"))
-
-    if variant == "ios":
-        payload = build_ios_payload()
-    else:
-        payload = build_web_payload()
-
+    payload = build_payload()
     out_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 

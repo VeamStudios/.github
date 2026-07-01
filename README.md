@@ -247,7 +247,6 @@ jobs:
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
 | `qa-pipeline.yml` | `Has Linked Notion Work Item` on PR open/update (WI URL required when PR title starts with `feat:`); QA brief on `bot: qa needed` independent of the WI gate |
 | `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
-| `release-notifications.yml` | Legacy iOS App Store Connect upload Slack notification (beta/cloud provenance + optional CHANGELOG excerpt) |
 
 ## Caller Templates
 
