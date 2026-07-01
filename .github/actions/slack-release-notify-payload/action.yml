@@ -4,9 +4,6 @@ description: >-
   and repository / release metadata.
 
 inputs:
-  variant:
-    description: '"web" (notify-release style) or "ios" (App Store Connect upload notification style)'
-    required: true
   version:
     description: Release tag (e.g. v1.2.3)
     required: true
@@ -14,9 +11,7 @@ inputs:
     description: Deployment environment label (e.g. production)
     required: true
   slack_footer_fallback:
-    description: >-
-      Used when CHANGELOG.md is missing or has no matching version section (web: footer context;
-      ios: last context line).
+    description: Used when CHANGELOG.md is missing or has no matching version section.
     required: false
     default: "Please inform any customers waiting on fixes in this release."
   changelog_path:
@@ -27,38 +22,6 @@ inputs:
     description: Where to write JSON payload
     required: false
     default: slack-payload.json
-  beta_run_id:
-    description: iOS only — beta workflow run ID
-    required: false
-    default: ""
-  beta_run_url:
-    description: iOS only — beta workflow run URL
-    required: false
-    default: ""
-  beta_commit_sha:
-    description: iOS only
-    required: false
-    default: ""
-  beta_version:
-    description: iOS only
-    required: false
-    default: ""
-  beta_build_number:
-    description: iOS only
-    required: false
-    default: ""
-  cloud_commit_sha:
-    description: iOS only
-    required: false
-    default: ""
-  cloud_version:
-    description: iOS only
-    required: false
-    default: ""
-  cloud_build_number:
-    description: iOS only
-    required: false
-    default: ""
 
 runs:
   using: composite
@@ -66,18 +29,9 @@ runs:
     - name: Build Slack payload JSON
       shell: bash
       env:
-        VARIANT: ${{ inputs.variant }}
         VERSION: ${{ inputs.version }}
         ENVIRONMENT: ${{ inputs.environment }}
         SLACK_FOOTER_FALLBACK: ${{ inputs.slack_footer_fallback }}
         CHANGELOG_PATH: ${{ inputs.changelog_path }}
         OUTPUT_PAYLOAD_PATH: ${{ inputs.output_payload_path }}
-        BETA_RUN_ID: ${{ inputs.beta_run_id }}
-        BETA_RUN_URL: ${{ inputs.beta_run_url }}
-        BETA_COMMIT_SHA: ${{ inputs.beta_commit_sha }}
-        BETA_VERSION: ${{ inputs.beta_version }}
-        BETA_BUILD_NUMBER: ${{ inputs.beta_build_number }}
-        CLOUD_COMMIT_SHA: ${{ inputs.cloud_commit_sha }}
-        CLOUD_VERSION: ${{ inputs.cloud_version }}
-        CLOUD_BUILD_NUMBER: ${{ inputs.cloud_build_number }}
       run: python3 "${{ github.action_path }}/build_payload.py"
