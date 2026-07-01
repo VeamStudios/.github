@@ -90,7 +90,7 @@ def build_web_payload() -> dict:
 
     repo_url = f"{server}/{repo}"
     tag_url = f"{repo_url}/releases/tag/{version}"
-    header = f"*<{repo_url}|{repo}>* — <{tag_url}|{version}> deployed to {environment}"
+    header = f"🚀 *<{repo_url}|{repo}>* — <{tag_url}|{version}> deployed to {environment}"
 
     blocks: list[dict] = [{"type": "section", "text": {"type": "mrkdwn", "text": header}}]
 
