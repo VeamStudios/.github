@@ -6,12 +6,13 @@ Shared GitHub Actions workflows, composite actions, and organisation defaults fo
 
 ### `select-xcode`
 
-Selects a specific Xcode installation on macOS runners.
+Selects either an exact Xcode release or `latest-stable`, verifies the resolved Xcode and Swift versions, and publishes them in the job summary.
 
 ```yaml
 - uses: VeamStudios/.github/.github/actions/select-xcode@main
-  # with:
-  #   xcode-version: "26.3"   # default
+  with:
+    xcode-version: latest-stable
+    minimum-swift-version: "6.3"
 ```
 
 ### `setup-node-github-packages`

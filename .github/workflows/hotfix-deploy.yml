@@ -25,6 +25,16 @@ on:
         required: false
         default: "cloud"
         type: string
+      xcode_version:
+        description: "Xcode version used to build the hotfix"
+        required: false
+        default: "26.2"
+        type: string
+      minimum_swift_version:
+        description: "Minimum accepted Swift compiler version"
+        required: false
+        default: ""
+        type: string
       build_environment_name:
         description: "GitHub Environment name for the build job"
         required: false
@@ -245,6 +255,8 @@ jobs:
       configuration: ${{ inputs.build_configuration }}
       environment_name: ${{ inputs.build_environment_name }}
       ipa_path: ${{ inputs.ipa_path }}
+      xcode_version: ${{ inputs.xcode_version }}
+      minimum_swift_version: ${{ inputs.minimum_swift_version }}
       checkout_ref: ${{ needs.resolve-hotfix.outputs.hotfix_sha }}
       capture_commit_sha: true
       upload_cloud_archive: true
