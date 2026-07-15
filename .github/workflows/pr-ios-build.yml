@@ -8,6 +8,11 @@ on:
         required: false
         default: "26.2"
         type: string
+      minimum_swift_version:
+        description: "Minimum accepted Swift compiler version"
+        required: false
+        default: ""
+        type: string
       xcodebuild_args:
         description: "Arguments after xcodebuild (project/workspace, scheme, signing flags)"
         required: true
@@ -34,9 +39,7 @@ jobs:
         uses: VeamStudios/.github/.github/actions/select-xcode@main
         with:
           xcode-version: "${{ inputs.xcode_version }}"
-
-      - name: Swift version
-        run: swift --version
+          minimum-swift-version: "${{ inputs.minimum_swift_version }}"
 
       - name: Checkout
         uses: actions/checkout@v6

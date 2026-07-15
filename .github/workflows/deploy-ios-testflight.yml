@@ -20,6 +20,11 @@ on:
         required: false
         default: "26.2"
         type: string
+      minimum_swift_version:
+        description: "Minimum accepted Swift compiler version"
+        required: false
+        default: ""
+        type: string
       checkout_ref:
         description: "Optional git ref to checkout"
         required: false
@@ -170,9 +175,11 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Select Xcode
+        id: select_xcode
         uses: VeamStudios/.github/.github/actions/select-xcode@main
         with:
           xcode-version: "${{ inputs.xcode_version }}"
+          minimum-swift-version: "${{ inputs.minimum_swift_version }}"
 
       - name: Checkout repository (default ref)
         if: inputs.checkout_ref == ''
@@ -194,9 +201,9 @@ jobs:
             ~/.swiftpm
             ~/Library/Caches/org.swift.swiftpm
             ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
-          key: ${{ runner.os }}-xcode-${{ inputs.xcode_version }}-swiftpm-${{ hashFiles('**/swiftpm/Package.resolved') }}
+          key: ${{ runner.os }}-xcode-${{ steps.select_xcode.outputs.xcode-version }}-swiftpm-${{ hashFiles('**/swiftpm/Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-xcode-${{ inputs.xcode_version }}-swiftpm-
+            ${{ runner.os }}-xcode-${{ steps.select_xcode.outputs.xcode-version }}-swiftpm-
 
       - name: Save commit information
         id: commit_info

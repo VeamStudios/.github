@@ -1,6 +1,7 @@
 # Reusable Xcode selection step from the shared github repo.
 - name: Select Xcode
   uses: VeamStudios/.github/.github/actions/select-xcode@main
-  # with:
-  #   xcode-version: "26.3"
-  #   print-version: "true"
+  with:
+    xcode-version: latest-stable
+    minimum-swift-version: "6.3"
+    # print-version: "true"

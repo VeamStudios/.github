@@ -1,11 +1,15 @@
 name: Select Xcode
-description: Select a specific Xcode installation on a macOS runner.
+description: Select and verify an Xcode installation on a macOS runner.
 
 inputs:
   xcode-version:
-    description: "Xcode version suffix used in /Applications/Xcode_<version>.app (for example: 26.0)"
+    description: "Exact Xcode version or latest-stable"
     required: false
     default: "26.3"
+  minimum-swift-version:
+    description: "Minimum accepted Swift compiler version (for example: 6.3)"
+    required: false
+    default: ""
   print-version:
     description: "Whether to print xcodebuild -version after selection"
     required: false
@@ -15,16 +19,30 @@ outputs:
   selected-path:
     description: "The selected Developer directory path"
     value: ${{ steps.select.outputs.selected-path }}
+  xcode-version:
+    description: "Selected Xcode version"
+    value: ${{ steps.select.outputs.xcode-version }}
+  swift-version:
+    description: "Selected Swift compiler version"
+    value: ${{ steps.select.outputs.swift-version }}
 
 runs:
   using: composite
   steps:
-    - id: select
+    - name: Select latest stable Xcode
+      if: inputs.xcode-version == 'latest-stable'
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+
+    - name: Select exact Xcode version
+      if: inputs.xcode-version != 'latest-stable'
       shell: bash
       run: |
         set -euo pipefail
 
-        selected_path="/Applications/Xcode_${{ inputs.xcode-version }}.app/Contents/Developer"
+        requested_xcode_version="${{ inputs.xcode-version }}"
+        selected_path="/Applications/Xcode_${requested_xcode_version}.app/Contents/Developer"
 
         if [[ ! -d "${selected_path}" ]]; then
           echo "Xcode Developer directory not found: ${selected_path}" >&2
@@ -34,8 +52,83 @@ runs:
         fi
 
         sudo xcode-select -s "${selected_path}"
+
+    - id: select
+      name: Verify selected Apple toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        requested_xcode_version="${{ inputs.xcode-version }}"
+        minimum_swift_version="${{ inputs.minimum-swift-version }}"
+        selected_path="$(xcode-select -p)"
+
+        xcode_version_output="$(xcodebuild -version)"
+        actual_xcode_version="$(printf '%s\n' "${xcode_version_output}" | awk 'NR == 1 { print $2 }')"
+        actual_xcode_build="$(printf '%s\n' "${xcode_version_output}" | awk 'NR == 2 { print $3 }')"
+        swift_version_output="$(swift --version)"
+        actual_swift_version="$(printf '%s\n' "${swift_version_output}" | sed -nE 's/.*Swift version ([0-9]+(\.[0-9]+)+).*/\1/p' | head -n 1)"
+
+        if [[ "${requested_xcode_version}" != "latest-stable" && \
+              "${actual_xcode_version}" != "${requested_xcode_version}" ]]; then
+          echo "::error::Selected Xcode ${actual_xcode_version}, expected ${requested_xcode_version}."
+          exit 1
+        fi
+
+        if [[ -z "${actual_swift_version}" ]]; then
+          echo "::error::Unable to determine the selected Swift compiler version."
+          exit 1
+        fi
+
+        version_at_least() {
+          local actual_major actual_minor actual_patch
+          local minimum_major minimum_minor minimum_patch
+
+          IFS=. read -r actual_major actual_minor actual_patch <<< "$1"
+          IFS=. read -r minimum_major minimum_minor minimum_patch <<< "$2"
+          actual_minor="${actual_minor:-0}"
+          actual_patch="${actual_patch:-0}"
+          minimum_minor="${minimum_minor:-0}"
+          minimum_patch="${minimum_patch:-0}"
+
+          if (( actual_major != minimum_major )); then
+            (( actual_major > minimum_major ))
+            return
+          fi
+
+          if (( actual_minor != minimum_minor )); then
+            (( actual_minor > minimum_minor ))
+            return
+          fi
+
+          (( actual_patch >= minimum_patch ))
+        }
+
+        if [[ -n "${minimum_swift_version}" ]] && \
+           ! version_at_least "${actual_swift_version}" "${minimum_swift_version}"; then
+          echo "::error::Selected Swift ${actual_swift_version}, but ${minimum_swift_version} or newer is required."
+          exit 1
+        fi
+
+        swift_requirement="not asserted"
+        if [[ -n "${minimum_swift_version}" ]]; then
+          swift_requirement=">= ${minimum_swift_version}"
+        fi
+
         echo "selected-path=${selected_path}" >> "${GITHUB_OUTPUT}"
+        echo "xcode-version=${actual_xcode_version}" >> "${GITHUB_OUTPUT}"
+        echo "swift-version=${actual_swift_version}" >> "${GITHUB_OUTPUT}"
 
         if [[ "${{ inputs.print-version }}" == "true" ]]; then
-          xcodebuild -version
+          printf '%s\n' "${xcode_version_output}"
+          printf '%s\n' "${swift_version_output}"
         fi
+
+        {
+          echo "### Apple toolchain"
+          echo ""
+          echo "| Tool | Selected | Required |"
+          echo "| --- | --- | --- |"
+          echo "| Xcode | ${actual_xcode_version} (${actual_xcode_build}) | ${requested_xcode_version} |"
+          echo "| Swift | ${actual_swift_version} | ${swift_requirement} |"
+        } >> "${GITHUB_STEP_SUMMARY}"
