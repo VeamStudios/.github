@@ -46,6 +46,9 @@ jobs:
   has-linked-notion-work-item:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    concurrency:
+      group: has-linked-notion-work-item-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     permissions:
       checks: write
       pull-requests: read
