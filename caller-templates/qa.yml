@@ -7,7 +7,7 @@
 # Requires org variable: BOT_QA_CLIENT_ID
 #
 # Behaviour:
-# - PR opened / updated → "Has Linked Notion Work Item" check (WI URL required when PR title starts with feat:)
+# - PR opened / updated → "Has Linked Notion Work Item" check (`Work Item:` field required when PR title starts with feat:)
 # - bot: qa needed → AI QA brief (independent of the WI gate)
 # - bot: qa approved + bot: qa automerge (+ bot: qa needed) → optional automerge
 #
