@@ -83,14 +83,17 @@ jobs:
               return;
             }
 
-            const text = `${pr.title ?? ''}\n${pr.body ?? ''}`;
-            const notionUrl =
-              /notion\.(so|site|com)\/[^\s]*([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
-            const linked = notionUrl.test(text);
+            const body = pr.body ?? '';
+            const workItemLine =
+              /^\s*(?:[-*]\s*)?(?:\*\*)?(?:Notion\s+)?Work\s*Item(?:\*\*)?\s*:\s*(?:\[[^\]\r\n]+\]\()?(https:\/\/[^\s)]+)\)?\s*$/im;
+            const workItemUrl = body.match(workItemLine)?.[1] ?? '';
+            const notionWorkItemUrl =
+              /^https:\/\/(?:[a-z0-9-]+\.)?notion\.(?:so|site|com)\/[^\s]*([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[^\s]*)$/i;
+            const linked = notionWorkItemUrl.test(workItemUrl);
             const conclusion = linked ? 'success' : 'failure';
             const summary = linked
-              ? 'Notion Work Item URL found in PR title or description.'
-              : 'Add a Notion Work Item URL to the PR title or description (e.g. https://www.notion.so/…). Required for merge when branch protection enables this check.';
+              ? `Valid Notion Work Item URL found in the PR description's \`Work Item:\` field.`
+              : 'Add `Work Item: https://www.notion.so/…` to the PR description. The field is required for `feat:` PRs; unrelated Notion links do not satisfy it.';
 
             await github.rest.checks.create({
               owner: context.repo.owner,

@@ -246,7 +246,7 @@ jobs:
 | `launch-hub-production-mirror.yml` | Mirror production Remote Config values and deployment/release state into Launch Hub |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
-| `qa-pipeline.yml` | `Has Linked Notion Work Item` on PR open/update (WI URL required when PR title starts with `feat:`); QA brief on `bot: qa needed` independent of the WI gate |
+| `qa-pipeline.yml` | `Has Linked Notion Work Item` on PR open/update (`Work Item:` field with a Notion WI URL required when PR title starts with `feat:`); QA brief on `bot: qa needed` independent of the WI gate |
 | `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
 
 ## Caller Templates
