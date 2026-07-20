@@ -63,11 +63,11 @@ jobs:
             }
 
             const prTitle = (pr.title ?? '').trim();
-            const featPr = /^feat:/i.test(prTitle);
+            const featPr = /^feat(?:\([^)]+\))?!?:/i.test(prTitle);
 
             if (!featPr) {
               const summary =
-                `Work Item link is only required when the PR title starts with \`feat:\` (this title: \`${prTitle}\`).`;
+                `Work Item link is only required when the PR title uses the \`feat\` prefix (this title: \`${prTitle}\`).`;
               await github.rest.checks.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -93,7 +93,7 @@ jobs:
             const conclusion = linked ? 'success' : 'failure';
             const summary = linked
               ? `Valid Notion Work Item URL found in the PR description's \`Work Item:\` field.`
-              : 'Add `Work Item: https://www.notion.so/…` to the PR description. The field is required for `feat:` PRs; unrelated Notion links do not satisfy it.';
+              : 'Add `Work Item: https://www.notion.so/…` to the PR description. The field is required for `feat` PRs, including scoped or breaking forms; unrelated Notion links do not satisfy it.';
 
             await github.rest.checks.create({
               owner: context.repo.owner,
