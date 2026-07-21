@@ -98,9 +98,9 @@ jobs:
 
           SHORT_SHA="${DEPLOY_SHA:0:7}"
           GATE_CONTEXT="Backend Config Ready / ${GATE_ENV}"
-          STATUS_RESPONSE="$(gh api "repos/${BACKEND_REPO}/commits/${DEPLOY_SHA}/statuses?per_page=100")"
+          STATUS_RESPONSE="$(gh api --paginate --slurp "repos/${BACKEND_REPO}/commits/${DEPLOY_SHA}/statuses?per_page=100")"
           GATE_STATE="$(jq -r --arg context "${GATE_CONTEXT}" '
-            [.[] | select(.context == $context)] as $matches
+            [add[] | select(.context == $context)] as $matches
             | if any($matches[]; .state == "success") then "success" else ($matches[0].state // "missing") end
           ' <<<"${STATUS_RESPONSE}")"
           case "${GATE_STATE}" in

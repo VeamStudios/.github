@@ -5,6 +5,7 @@ const {
   assessCompositeIndexes,
   assessFieldOverride,
   canonicalCompositeIndex,
+  collectPages,
   collectConfigPaths,
   configHash,
   findSuccessfulReadinessStatus,
@@ -30,6 +31,20 @@ test("collectConfigPaths includes each Firebase deployment contract", () => {
     "firestore.rules",
     "rdb.rules.json",
     "storage.rules",
+  ]);
+});
+
+test("collectPages includes evidence beyond the first API page", async () => {
+  const pages = [Array.from({ length: 2 }, (_, index) => `first-${index}`), ["second-0"]];
+  const requests = [];
+  const result = await collectPages(async (page, pageSize) => {
+    requests.push({ page, pageSize });
+    return pages[page - 1];
+  }, 2);
+  assert.deepEqual(result, ["first-0", "first-1", "second-0"]);
+  assert.deepEqual(requests, [
+    { page: 1, pageSize: 2 },
+    { page: 2, pageSize: 2 },
   ]);
 });
 

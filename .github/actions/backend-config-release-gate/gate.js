@@ -611,8 +611,23 @@ async function postCommitStatus({ token, repo, commit, environment, state, proje
   });
 }
 
+async function collectPages(fetchPage, pageSize = 100) {
+  const items = [];
+  for (let page = 1; ; page += 1) {
+    const pageItems = await fetchPage(page, pageSize);
+    if (!Array.isArray(pageItems)) throw new Error("Paginated API response was not an array.");
+    items.push(...pageItems);
+    if (pageItems.length < pageSize) return items;
+  }
+}
+
 async function commitStatuses(token, repo, commit) {
-  return githubRequest(token, `/repos/${repo}/commits/${commit}/statuses?per_page=100`);
+  return collectPages((page, pageSize) =>
+    githubRequest(
+      token,
+      `/repos/${repo}/commits/${commit}/statuses?per_page=${pageSize}&page=${page}`
+    )
+  );
 }
 
 async function publishReadinessBranch({ token, repo, commit, environment }) {
@@ -856,6 +871,7 @@ module.exports = {
   assessCompositeIndexes,
   assessFieldOverride,
   canonicalCompositeIndex,
+  collectPages,
   collectConfigPaths,
   configHash,
   findSuccessfulReadinessStatus,
