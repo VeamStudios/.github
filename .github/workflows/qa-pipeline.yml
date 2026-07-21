@@ -86,17 +86,65 @@ jobs:
               return;
             }
 
-            const body = pr.body ?? '';
-            const workItemLine =
-              /^\s*(?:[-*]\s*)?(?:\*\*)?(?:Notion\s+)?Work\s*Item(?:\*\*)?\s*:\s*(?:\[[^\]\r\n]+\]\()?(https:\/\/[^\s)]+)\)?\s*$/im;
-            const workItemUrl = body.match(workItemLine)?.[1] ?? '';
+            const body = (pr.body ?? '').replace(/\r\n?/g, '\n');
             const notionWorkItemUrl =
               /^https:\/\/(?:[a-z0-9-]+\.)?notion\.(?:so|site|com)\/[^\s]*([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[^\s]*)$/i;
-            const linked = notionWorkItemUrl.test(workItemUrl);
+
+            const listedUrls = [];
+            const invalidEntries = [];
+            const addEntry = (entry) => {
+              const value = entry.trim();
+              const markdownLink = value.match(/^\[[^\]\n]+\]\((https:\/\/[^\s)]+)\)$/);
+              const url = markdownLink?.[1] ?? value;
+              if (notionWorkItemUrl.test(url)) {
+                if (!listedUrls.includes(url)) listedUrls.push(url);
+              } else {
+                invalidEntries.push(value || '(empty entry)');
+              }
+            };
+
+            const lines = body.split('\n');
+            let inWorkItemsList = false;
+            for (const line of lines) {
+              const singular = line.match(
+                /^\s*(?:[-*]\s*)?(?:\*\*)?(?:Notion\s+)?Work\s*Item(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.+?)\s*$/i,
+              );
+              if (singular) {
+                inWorkItemsList = false;
+                addEntry(singular[1]);
+                continue;
+              }
+
+              const pluralHeader =
+                /^\s*(?:#{1,6}\s*)?(?:\*\*)?(?:Notion\s+)?Work\s*Items(?:\*\*)?\s*:\s*(?:\*\*)?\s*$/i.test(
+                  line,
+                );
+              if (pluralHeader) {
+                inWorkItemsList = true;
+                continue;
+              }
+
+              if (!inWorkItemsList) continue;
+              if (!line.trim()) {
+                inWorkItemsList = false;
+                continue;
+              }
+
+              const bullet = line.match(/^\s*[-*]\s+(.+?)\s*$/);
+              if (!bullet) {
+                inWorkItemsList = false;
+                continue;
+              }
+              addEntry(bullet[1]);
+            }
+
+            const linked = listedUrls.length > 0 && invalidEntries.length === 0;
             const conclusion = linked ? 'success' : 'failure';
             const summary = linked
-              ? `Valid Notion Work Item URL found in the PR description's \`Work Item:\` field.`
-              : 'Add `Work Item: https://www.notion.so/…` to the PR description. The field is required for `feat` PRs, including scoped or breaking forms; unrelated Notion links do not satisfy it.';
+              ? `${listedUrls.length} valid Notion Work Item URL${listedUrls.length === 1 ? '' : 's'} found in the PR description.`
+              : invalidEntries.length > 0
+                ? 'Every entry under `Work Items:` (or on a `Work Item:` line) must be a valid Notion Work Item URL.'
+                : 'Add a `Work Items:` list containing at least one Notion Work Item URL. The field is required for `feat` PRs, including scoped or breaking forms; singular `Work Item:` remains supported.';
 
             await github.rest.checks.create({
               owner: context.repo.owner,
@@ -106,7 +154,9 @@ jobs:
               status: 'completed',
               conclusion,
               output: {
-                title: linked ? 'Work Item linked' : 'Work Item not linked',
+                title: linked
+                  ? `${listedUrls.length} Work Item${listedUrls.length === 1 ? '' : 's'} linked`
+                  : 'Work Item not linked',
                 summary,
               },
             });
