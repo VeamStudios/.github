@@ -130,9 +130,14 @@ jobs:
                 continue;
               }
 
+              if (/^\s*#{1,6}\s+/.test(line)) {
+                inWorkItemsList = false;
+                continue;
+              }
+
               const bullet = line.match(/^\s*[-*]\s+(.+?)\s*$/);
               if (!bullet) {
-                inWorkItemsList = false;
+                invalidEntries.push(line.trim());
                 continue;
               }
               addEntry(bullet[1]);
