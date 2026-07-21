@@ -87,9 +87,9 @@ jobs:
           set -euo pipefail
 
           case "${DEPLOY_ENV}" in
-            dev) ENV_TITLE="Dev" ;;
-            beta) ENV_TITLE="Beta" ;;
-            production) ENV_TITLE="Production" ;;
+            dev) ENV_TITLE="Dev"; GATE_ENV="dev" ;;
+            beta) ENV_TITLE="Beta"; GATE_ENV="beta" ;;
+            production) ENV_TITLE="Production"; GATE_ENV="prod" ;;
             *)
               echo "Invalid deploy_environment: ${DEPLOY_ENV} (expected dev, beta, or production)"
               exit 1
@@ -173,6 +173,7 @@ jobs:
               echo "**Product:** ${PRODUCT_NAME}"
               echo "**Backend:** \`${BACKEND_REPO}\`"
               echo "**Backend PRs included in this deploy:** ${LINK_LIST}"
+              echo "**Backend config:** Ready (\`Backend Config Ready / ${GATE_ENV}\`)"
               if [ -n "${RELEASE_TAG}" ] && [ -n "${RELEASE_URL}" ]; then
                 echo "**Release:** [${RELEASE_TAG}](${RELEASE_URL})"
               fi
@@ -186,6 +187,7 @@ jobs:
               echo "**Product:** ${PRODUCT_NAME}"
               echo "**Backend:** \`${BACKEND_REPO}\`"
               echo "**Backend PRs included in this deploy:** ${LINK_LIST}"
+              echo "**Backend config:** Ready (\`Backend Config Ready / ${GATE_ENV}\`)"
               echo ""
               echo "You can deploy **Web** and **iOS** to **${ENV_TITLE}** when your changes are ready.${FOOTER}"
             } >"${BODY_FILE}"

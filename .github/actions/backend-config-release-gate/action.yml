@@ -1,0 +1,51 @@
+name: Backend Config Release Gate
+description: Verifies deployed Firebase indexes and rules before Web or iOS releases.
+
+inputs:
+  mode:
+    description: "record verifies live Firebase config and records readiness; require checks recorded readiness."
+    required: true
+  environment:
+    description: "Deployment environment: dev, beta, or prod."
+    required: true
+  firebase-project-id:
+    description: "Exact Firebase project ID for the deployment environment."
+    required: true
+  backend-repo:
+    description: "Backend repository in owner/name form."
+    required: true
+  backend-ref:
+    description: "Backend ref whose Firebase config must be ready."
+    required: false
+    default: "main"
+  github-token:
+    description: "Token with backend contents read access; record mode also needs contents and statuses write access."
+    required: true
+  service-account-file:
+    description: "Service-account JSON path used by record mode to inspect live Firebase state."
+    required: false
+    default: ""
+  config-root:
+    description: "Local backend config root used by record mode."
+    required: false
+    default: "."
+  timeout-seconds:
+    description: "Maximum time to wait for Firestore indexes to become ready."
+    required: false
+    default: "900"
+  poll-interval-seconds:
+    description: "Delay between Firestore readiness checks."
+    required: false
+    default: "15"
+
+outputs:
+  config_hash:
+    description: "SHA-256 hash of the Firebase config contract."
+  backend_commit:
+    description: "Backend commit proven ready for the environment."
+  manifest_path:
+    description: "Path to the generated or downloaded readiness manifest."
+
+runs:
+  using: node20
+  main: gate.js
