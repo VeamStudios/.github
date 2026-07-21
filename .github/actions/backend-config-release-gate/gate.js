@@ -297,12 +297,12 @@ function assessFieldOverride(expected, live) {
   return { status: "ready" };
 }
 
-async function listCompositeIndexes(projectId, accessToken) {
+async function listCompositeIndexes(projectId, databaseId, accessToken) {
   const indexes = [];
   let pageToken = "";
   do {
     const url = new URL(
-      `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/collectionGroups/-/indexes`
+      `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}/collectionGroups/-/indexes`
     );
     url.searchParams.set("pageSize", "200");
     if (pageToken) url.searchParams.set("pageToken", pageToken);
@@ -316,11 +316,11 @@ async function listCompositeIndexes(projectId, accessToken) {
   return indexes;
 }
 
-async function getFieldOverride(projectId, expected, accessToken) {
+async function getFieldOverride(projectId, databaseId, expected, accessToken) {
   const collectionGroup = encodeURIComponent(expected.collectionGroup);
   const fieldPath = encodeURIComponent(expected.fieldPath);
   return requestJson(
-    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/collectionGroups/${collectionGroup}/fields/${fieldPath}`,
+    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}/collectionGroups/${collectionGroup}/fields/${fieldPath}`,
     {
       headers: googleHeaders(accessToken),
       allow404: true,
@@ -338,7 +338,14 @@ function describeIndex(index) {
   return `${index.collectionGroup} (${index.queryScope}) [${fields}]`;
 }
 
-async function verifyFirestoreIndexes({ projectId, accessToken, indexConfig, timeoutSeconds, pollIntervalSeconds }) {
+async function verifyFirestoreIndexes({
+  projectId,
+  databaseId,
+  accessToken,
+  indexConfig,
+  timeoutSeconds,
+  pollIntervalSeconds,
+}) {
   const expectedIndexes = indexConfig.indexes || [];
   const expectedOverrides = indexConfig.fieldOverrides || [];
   const deadline = Date.now() + timeoutSeconds * 1000;
@@ -346,11 +353,11 @@ async function verifyFirestoreIndexes({ projectId, accessToken, indexConfig, tim
   let lastOverrides = [];
 
   while (true) {
-    const liveIndexes = await listCompositeIndexes(projectId, accessToken);
+    const liveIndexes = await listCompositeIndexes(projectId, databaseId, accessToken);
     lastComposite = assessCompositeIndexes(expectedIndexes, liveIndexes);
     lastOverrides = [];
     for (const expected of expectedOverrides) {
-      const live = await getFieldOverride(projectId, expected, accessToken);
+      const live = await getFieldOverride(projectId, databaseId, expected, accessToken);
       lastOverrides.push({ expected, ...assessFieldOverride(expected, live) });
     }
 
@@ -469,57 +476,109 @@ async function verifyRealtimeDatabaseRules(databaseUrl, localContent, accessToke
   }
 }
 
-function firstConfigPath(firebaseConfig, sectionName, key) {
-  return firebaseSections(firebaseConfig, sectionName).map((section) => section[key]).find(Boolean) || "";
+function firestoreDatabaseId(section) {
+  if (section.target) {
+    throw new Error(
+      `Firestore target '${section.target}' cannot be resolved without Firebase target metadata. Use an explicit database in firebase.json.`
+    );
+  }
+  return String(section.database || "(default)");
+}
+
+function storageBucket(section, adminConfig) {
+  if (section.target) {
+    throw new Error(
+      `Storage target '${section.target}' cannot be resolved without Firebase target metadata. Use an explicit bucket in firebase.json.`
+    );
+  }
+  const bucket = String(section.bucket || adminConfig?.storageBucket || "");
+  if (!bucket) throw new Error("Firebase Storage rules are configured, but no bucket could be resolved.");
+  return bucket;
+}
+
+function realtimeDatabaseUrl(section, adminConfig) {
+  if (section.target) {
+    throw new Error(
+      `Realtime Database target '${section.target}' cannot be resolved without Firebase target metadata. Use an explicit instance in firebase.json.`
+    );
+  }
+  const defaultUrl = String(adminConfig?.databaseURL || "");
+  const instance = String(section.instance || "");
+  if (!instance) {
+    if (!defaultUrl) throw new Error("Firebase project has no default Realtime Database URL.");
+    return defaultUrl;
+  }
+  if (/^https:\/\//.test(instance)) return instance;
+  if (defaultUrl) {
+    const hostname = new URL(defaultUrl).hostname;
+    if (hostname === instance || hostname.startsWith(`${instance}.`)) return defaultUrl;
+  }
+  throw new Error(
+    `Realtime Database instance '${instance}' is not the project's default instance and cannot be resolved safely. Use its full HTTPS URL in firebase.json.`
+  );
 }
 
 async function verifyLiveFirebase({ projectId, serviceAccountFile, config, timeoutSeconds, pollIntervalSeconds }) {
   const accessToken = await googleAccessToken(serviceAccountFile);
-  const checks = {};
-  const indexesPath = firstConfigPath(config.firebaseConfig, "firestore", "indexes");
-  const firestoreRulesPath = firstConfigPath(config.firebaseConfig, "firestore", "rules");
-  const storageRulesPath = firstConfigPath(config.firebaseConfig, "storage", "rules");
-  const databaseRulesPath = firstConfigPath(config.firebaseConfig, "database", "rules");
+  const checks = { firestore: [], storage: [], realtimeDatabase: [] };
+  const firestore = firebaseSections(config.firebaseConfig, "firestore");
+  const storage = firebaseSections(config.firebaseConfig, "storage");
+  const databases = firebaseSections(config.firebaseConfig, "database");
+  const hasRules = [...firestore, ...storage].some((section) => section.rules);
+  const releases = hasRules ? await listRulesReleases(projectId, accessToken) : [];
+  const needsAdminConfig = storage.some((section) => section.rules) || databases.some((section) => section.rules);
+  const adminConfig = needsAdminConfig ? await firebaseAdminSdkConfig(projectId, accessToken) : null;
 
-  if (indexesPath) {
-    const indexConfig = JSON.parse(config.files.get(indexesPath));
-    Object.assign(
-      checks,
-      await verifyFirestoreIndexes({
+  for (const section of firestore) {
+    const databaseId = firestoreDatabaseId(section);
+    const result = { database: databaseId };
+    if (section.indexes) {
+      const indexConfig = JSON.parse(config.files.get(section.indexes));
+      result.indexes = await verifyFirestoreIndexes({
         projectId,
+        databaseId,
         accessToken,
         indexConfig,
         timeoutSeconds,
         pollIntervalSeconds,
-      })
-    );
+      });
+    }
+    if (section.rules) {
+      if (databaseId !== "(default)") {
+        throw new Error(
+          `Firestore rules for database '${databaseId}' cannot be matched to a Firebase Rules release safely.`
+        );
+      }
+      result.rulesRelease = await verifyRulesRelease({
+        releases,
+        service: "firestore",
+        localContent: config.files.get(section.rules),
+        accessToken,
+      });
+    }
+    checks.firestore.push(result);
   }
 
-  const releases = firestoreRulesPath || storageRulesPath ? await listRulesReleases(projectId, accessToken) : [];
-  let adminConfig = null;
-  if (storageRulesPath || databaseRulesPath) {
-    adminConfig = await firebaseAdminSdkConfig(projectId, accessToken);
-  }
-  if (firestoreRulesPath) {
-    checks.firestoreRulesRelease = await verifyRulesRelease({
-      releases,
-      service: "firestore",
-      localContent: config.files.get(firestoreRulesPath),
-      accessToken,
+  for (const section of storage) {
+    if (!section.rules) continue;
+    const bucket = storageBucket(section, adminConfig);
+    checks.storage.push({
+      bucket,
+      rulesRelease: await verifyRulesRelease({
+        releases,
+        service: "storage",
+        localContent: config.files.get(section.rules),
+        accessToken,
+        storageBucket: bucket,
+      }),
     });
   }
-  if (storageRulesPath) {
-    checks.storageRulesRelease = await verifyRulesRelease({
-      releases,
-      service: "storage",
-      localContent: config.files.get(storageRulesPath),
-      accessToken,
-      storageBucket: adminConfig?.storageBucket || "",
-    });
-  }
-  if (databaseRulesPath) {
-    await verifyRealtimeDatabaseRules(adminConfig?.databaseURL || "", config.files.get(databaseRulesPath), accessToken);
-    checks.realtimeDatabaseRules = true;
+
+  for (const section of databases) {
+    if (!section.rules) continue;
+    const databaseUrl = realtimeDatabaseUrl(section, adminConfig);
+    await verifyRealtimeDatabaseRules(databaseUrl, config.files.get(section.rules), accessToken);
+    checks.realtimeDatabase.push({ databaseUrl, rulesReady: true });
   }
   return checks;
 }
@@ -552,12 +611,17 @@ async function postCommitStatus({ token, repo, commit, environment, state, proje
   });
 }
 
+async function commitStatuses(token, repo, commit) {
+  return githubRequest(token, `/repos/${repo}/commits/${commit}/statuses?per_page=100`);
+}
+
 async function publishReadinessBranch({ token, repo, commit, environment }) {
   const branch = readinessBranch(environment);
-  const refPath = `/repos/${repo}/git/refs/heads/${branch}`;
-  const existing = await githubRequest(token, refPath, { allow404: true });
+  const readPath = `/repos/${repo}/git/ref/heads/${branch}`;
+  const writePath = `/repos/${repo}/git/refs/heads/${branch}`;
+  const existing = await githubRequest(token, readPath, { allow404: true });
   if (existing) {
-    await githubRequest(token, refPath, {
+    await githubRequest(token, writePath, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sha: commit, force: true }),
@@ -623,16 +687,26 @@ async function recordReadiness(inputs) {
     return { manifest, manifestPath };
   } catch (error) {
     try {
-      await postCommitStatus({
-        token: inputs.githubToken,
-        repo: inputs.backendRepo,
-        commit,
-        environment: inputs.environment,
-        state: "failure",
+      const statuses = await commitStatuses(inputs.githubToken, inputs.backendRepo, commit);
+      const previousSuccess = findSuccessfulReadinessStatus(statuses || [], inputs.environment, {
         projectId: inputs.projectId,
-        hash,
-        description: "Live Firebase indexes or rules are not ready",
+        readyConfigHash: hash,
+        currentConfigHash: hash,
       });
+      if (previousSuccess) {
+        console.warn("::warning::Live verification failed, but existing successful readiness evidence was preserved.");
+      } else {
+        await postCommitStatus({
+          token: inputs.githubToken,
+          repo: inputs.backendRepo,
+          commit,
+          environment: inputs.environment,
+          state: "failure",
+          projectId: inputs.projectId,
+          hash,
+          description: "Live Firebase indexes or rules are not ready",
+        });
+      }
     } catch (statusError) {
       console.error(`::warning::Unable to publish failure status: ${statusError.message}`);
     }
@@ -667,6 +741,13 @@ function validateStatusEvidence(status, expected) {
   return errors;
 }
 
+function findSuccessfulReadinessStatus(statuses, environment, expected) {
+  const candidates = statuses.filter(
+    (status) => status.context === readinessContext(environment) && status.state === "success"
+  );
+  return candidates.find((status) => validateStatusEvidence(status, expected).length === 0) || null;
+}
+
 async function requireReadiness(inputs) {
   const config = await loadGithubConfig(inputs.backendRepo, inputs.backendRef, inputs.githubToken);
   const currentHash = configHash(config.files);
@@ -677,26 +758,22 @@ async function requireReadiness(inputs) {
   );
   const readyConfig = await loadGithubConfig(inputs.backendRepo, commit, inputs.githubToken);
   const readyHash = configHash(readyConfig.files);
-  const status = await githubRequest(
-    inputs.githubToken,
-    `/repos/${inputs.backendRepo}/commits/${commit}/status`
-  );
-  const readinessStatus = (status.statuses || []).find(
-    (item) => item.context === readinessContext(inputs.environment)
-  );
-  if (!readinessStatus || readinessStatus.state !== "success") {
-    throw new Error(
-      `${readinessContext(inputs.environment)} is not successful on backend commit ${commit}. Deploy the backend first.`
-    );
-  }
-  const errors = validateStatusEvidence(readinessStatus, {
+  const statuses = await commitStatuses(inputs.githubToken, inputs.backendRepo, commit);
+  const expectedEvidence = {
     projectId: inputs.projectId,
     readyConfigHash: readyHash,
     currentConfigHash: currentHash,
-  });
-  if (errors.length) {
+  };
+  const readinessStatus = findSuccessfulReadinessStatus(statuses || [], inputs.environment, expectedEvidence);
+  if (!readinessStatus) {
+    const latestSuccess = (statuses || []).find(
+      (status) => status.context === readinessContext(inputs.environment) && status.state === "success"
+    );
+    const errors = latestSuccess ? validateStatusEvidence(latestSuccess, expectedEvidence) : [];
     throw new Error(
-      `Backend config is not ready for ${inputs.environment}: ${errors.join(", ")}. Deploy ${inputs.backendRepo}@${inputs.backendRef} to ${inputs.environment} first.`
+      errors.length
+        ? `Backend config is not ready for ${inputs.environment}: ${errors.join(", ")}. Deploy ${inputs.backendRepo}@${inputs.backendRef} to ${inputs.environment} first.`
+        : `${readinessContext(inputs.environment)} has no matching successful evidence on backend commit ${commit}. Deploy the backend first.`
     );
   }
   const manifest = {
@@ -781,10 +858,14 @@ module.exports = {
   canonicalCompositeIndex,
   collectConfigPaths,
   configHash,
+  findSuccessfulReadinessStatus,
   findRulesRelease,
+  firestoreDatabaseId,
+  realtimeDatabaseUrl,
   readinessBranch,
   readinessContext,
   rulesContentMatches,
+  storageBucket,
   stableStringify,
   validateStatusEvidence,
 };

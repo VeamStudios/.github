@@ -7,10 +7,14 @@ const {
   canonicalCompositeIndex,
   collectConfigPaths,
   configHash,
+  findSuccessfulReadinessStatus,
   findRulesRelease,
+  firestoreDatabaseId,
+  realtimeDatabaseUrl,
   readinessBranch,
   readinessContext,
   rulesContentMatches,
+  storageBucket,
   validateStatusEvidence,
 } = require("./gate");
 
@@ -136,6 +140,42 @@ test("validateStatusEvidence reports project and config mismatches", () => {
     }
   );
   assert.deepEqual(errors, ["Firebase project wrong-project", "backend config hash is stale"]);
+});
+
+test("findSuccessfulReadinessStatus keeps valid evidence across a failed rerun", () => {
+  const hash = "a".repeat(64);
+  const statuses = [
+    { context: "Backend Config Ready / prod", state: "failure", description: "Live verification failed" },
+    {
+      context: "Backend Config Ready / prod",
+      state: "success",
+      description: `intended-project sha256:${hash}`,
+    },
+  ];
+  assert.equal(
+    findSuccessfulReadinessStatus(statuses, "prod", {
+      projectId: "intended-project",
+      readyConfigHash: hash,
+      currentConfigHash: hash,
+    }),
+    statuses[1]
+  );
+});
+
+test("Firebase target resolution uses explicit config and fails closed", () => {
+  const adminConfig = {
+    storageBucket: "default.appspot.com",
+    databaseURL: "https://default.europe-west1.firebasedatabase.app",
+  };
+  assert.equal(firestoreDatabaseId({ database: "tenant" }), "tenant");
+  assert.equal(storageBucket({ bucket: "uploads.appspot.com" }, adminConfig), "uploads.appspot.com");
+  assert.equal(realtimeDatabaseUrl({}, adminConfig), adminConfig.databaseURL);
+  assert.equal(
+    realtimeDatabaseUrl({ instance: "https://other.europe-west1.firebasedatabase.app" }, adminConfig),
+    "https://other.europe-west1.firebasedatabase.app"
+  );
+  assert.throws(() => storageBucket({ target: "uploads" }, adminConfig), /cannot be resolved/);
+  assert.throws(() => realtimeDatabaseUrl({ instance: "other" }, adminConfig), /cannot be resolved safely/);
 });
 
 test("readiness names are stable", () => {
