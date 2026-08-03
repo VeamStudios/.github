@@ -297,22 +297,26 @@ function assessFieldOverride(expected, live) {
   return { status: "ready" };
 }
 
-async function listCompositeIndexes(projectId, databaseId, accessToken) {
+async function listCompositeIndexes(projectId, databaseId, collectionGroups, accessToken) {
   const indexes = [];
-  let pageToken = "";
-  do {
-    const url = new URL(
-      `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}/collectionGroups/-/indexes`
-    );
-    url.searchParams.set("pageSize", "200");
-    if (pageToken) url.searchParams.set("pageToken", pageToken);
-    const body = await requestJson(url, {
-      headers: googleHeaders(accessToken),
-      label: "List Firestore composite indexes",
-    });
-    indexes.push(...(body?.indexes || []));
-    pageToken = body?.nextPageToken || "";
-  } while (pageToken);
+  const uniqueCollectionGroups = [...new Set(collectionGroups.map(String))].sort();
+  for (const collectionGroup of uniqueCollectionGroups) {
+    if (!collectionGroup) throw new Error("Firestore composite index has no collection group.");
+    let pageToken = "";
+    do {
+      const url = new URL(
+        `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}/collectionGroups/${encodeURIComponent(collectionGroup)}/indexes`
+      );
+      url.searchParams.set("pageSize", "200");
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
+      const body = await requestJson(url, {
+        headers: googleHeaders(accessToken),
+        label: `List Firestore composite indexes for ${collectionGroup}`,
+      });
+      indexes.push(...(body?.indexes || []));
+      pageToken = body?.nextPageToken || "";
+    } while (pageToken);
+  }
   return indexes;
 }
 
@@ -353,7 +357,12 @@ async function verifyFirestoreIndexes({
   let lastOverrides = [];
 
   while (true) {
-    const liveIndexes = await listCompositeIndexes(projectId, databaseId, accessToken);
+    const liveIndexes = await listCompositeIndexes(
+      projectId,
+      databaseId,
+      expectedIndexes.map((index) => index.collectionGroup),
+      accessToken
+    );
     lastComposite = assessCompositeIndexes(expectedIndexes, liveIndexes);
     lastOverrides = [];
     for (const expected of expectedOverrides) {
@@ -877,6 +886,7 @@ module.exports = {
   findSuccessfulReadinessStatus,
   findRulesRelease,
   firestoreDatabaseId,
+  listCompositeIndexes,
   realtimeDatabaseUrl,
   readinessBranch,
   readinessContext,
