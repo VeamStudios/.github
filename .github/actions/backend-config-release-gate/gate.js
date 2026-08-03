@@ -307,7 +307,6 @@ async function listCompositeIndexes(projectId, databaseId, collectionGroups, acc
       const url = new URL(
         `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}/collectionGroups/${encodeURIComponent(collectionGroup)}/indexes`
       );
-      url.searchParams.set("pageSize", "200");
       if (pageToken) url.searchParams.set("pageToken", pageToken);
       const body = await requestJson(url, {
         headers: googleHeaders(accessToken),

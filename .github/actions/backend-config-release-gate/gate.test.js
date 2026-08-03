@@ -49,7 +49,7 @@ test("collectPages includes evidence beyond the first API page", async () => {
   ]);
 });
 
-test("listCompositeIndexes queries each configured collection group", async () => {
+test("listCompositeIndexes queries each configured collection group without a page size override", async () => {
   const originalFetch = global.fetch;
   const requests = [];
   global.fetch = async (url) => {
@@ -76,7 +76,7 @@ test("listCompositeIndexes queries each configured collection group", async () =
       }),
       ["floor_plans", "sites"]
     );
-    assert.equal(requests.every((request) => request.searchParams.get("pageSize") === "200"), true);
+    assert.equal(requests.every((request) => !request.searchParams.has("pageSize")), true);
     assert.equal(requests.some((request) => request.pathname.includes("/collectionGroups/-/")), false);
   } finally {
     global.fetch = originalFetch;
