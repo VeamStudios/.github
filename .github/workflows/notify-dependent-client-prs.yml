@@ -27,6 +27,11 @@ on:
         description: "Commit SHA that was deployed"
         required: true
         type: string
+      backend_config_gate_enabled:
+        description: "Whether client deployment messaging should require backend config readiness evidence"
+        required: false
+        default: true
+        type: boolean
       backend_pr_numbers:
         description: "Optional comma-separated backend PR numbers; if empty, resolved via commits API"
         required: false
@@ -78,6 +83,7 @@ jobs:
           PRODUCT_NAME: ${{ inputs.product_name }}
           DEPLOY_ENV: ${{ inputs.deploy_environment }}
           DEPLOY_SHA: ${{ inputs.deploy_sha }}
+          BACKEND_CONFIG_GATE_ENABLED: ${{ inputs.backend_config_gate_enabled }}
           BACKEND_PR_NUMBERS: ${{ inputs.backend_pr_numbers }}
           DEPENDENT_PR_URLS: ${{ inputs.dependent_pr_urls }}
           RELEASE_TAG: ${{ inputs.release_tag }}
@@ -98,29 +104,34 @@ jobs:
 
           SHORT_SHA="${DEPLOY_SHA:0:7}"
           GATE_CONTEXT="Backend Config Ready / ${GATE_ENV}"
-          STATUS_RESPONSE="$(gh api --paginate --slurp "repos/${BACKEND_REPO}/commits/${DEPLOY_SHA}/statuses?per_page=100")"
-          GATE_STATE="$(jq -r --arg context "${GATE_CONTEXT}" '
-            [add[] | select(.context == $context)] as $matches
-            | if any($matches[]; .state == "success") then "success" else ($matches[0].state // "missing") end
-          ' <<<"${STATUS_RESPONSE}")"
-          case "${GATE_STATE}" in
-            success)
-              BACKEND_CONFIG_STATUS="Ready (\`${GATE_CONTEXT}\`)"
-              CLIENT_DEPLOY_MESSAGE="You can deploy **Web** and **iOS** to **${ENV_TITLE}** when your changes are ready."
-              ;;
-            failure|error)
-              BACKEND_CONFIG_STATUS="Not ready (\`${GATE_CONTEXT}\` failed)"
-              CLIENT_DEPLOY_MESSAGE="Web and iOS deployments remain blocked until the backend config check succeeds."
-              ;;
-            pending)
-              BACKEND_CONFIG_STATUS="Pending (\`${GATE_CONTEXT}\`)"
-              CLIENT_DEPLOY_MESSAGE="Web and iOS deployments remain blocked while the backend config check is pending."
-              ;;
-            *)
-              BACKEND_CONFIG_STATUS="Not recorded (\`${GATE_CONTEXT}\`)"
-              CLIENT_DEPLOY_MESSAGE="Web and iOS deployments remain blocked until backend config readiness is recorded."
-              ;;
-          esac
+          if [ "${BACKEND_CONFIG_GATE_ENABLED}" = "true" ]; then
+            STATUS_RESPONSE="$(gh api --paginate --slurp "repos/${BACKEND_REPO}/commits/${DEPLOY_SHA}/statuses?per_page=100")"
+            GATE_STATE="$(jq -r --arg context "${GATE_CONTEXT}" '
+              [add[] | select(.context == $context)] as $matches
+              | if any($matches[]; .state == "success") then "success" else ($matches[0].state // "missing") end
+            ' <<<"${STATUS_RESPONSE}")"
+            case "${GATE_STATE}" in
+              success)
+                BACKEND_CONFIG_STATUS="Ready (\`${GATE_CONTEXT}\`)"
+                CLIENT_DEPLOY_MESSAGE="You can deploy **Web** and **iOS** to **${ENV_TITLE}** when your changes are ready."
+                ;;
+              failure|error)
+                BACKEND_CONFIG_STATUS="Not ready (\`${GATE_CONTEXT}\` failed)"
+                CLIENT_DEPLOY_MESSAGE="Web and iOS deployments remain blocked until the backend config check succeeds."
+                ;;
+              pending)
+                BACKEND_CONFIG_STATUS="Pending (\`${GATE_CONTEXT}\`)"
+                CLIENT_DEPLOY_MESSAGE="Web and iOS deployments remain blocked while the backend config check is pending."
+                ;;
+              *)
+                BACKEND_CONFIG_STATUS="Not recorded (\`${GATE_CONTEXT}\`)"
+                CLIENT_DEPLOY_MESSAGE="Web and iOS deployments remain blocked until backend config readiness is recorded."
+                ;;
+            esac
+          else
+            BACKEND_CONFIG_STATUS="Not checked (gate disabled for this product)"
+            CLIENT_DEPLOY_MESSAGE="The backend deployment is complete; client readiness is not controlled by the backend config gate."
+          fi
 
           RESOLVED_NUMBERS=""
           RAW="${BACKEND_PR_NUMBERS:-}"

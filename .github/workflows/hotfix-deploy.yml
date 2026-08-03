@@ -76,7 +76,8 @@ on:
         default: false
       backend_repo:
         description: "Backend repository whose production Firebase config must be ready"
-        required: true
+        required: false
+        default: ""
         type: string
       backend_ref:
         description: "Backend ref whose Firebase config must be ready"
@@ -85,7 +86,8 @@ on:
         type: string
       firebase_project_id:
         description: "Production Firebase project ID checked before building"
-        required: true
+        required: false
+        default: ""
         type: string
 
 permissions:

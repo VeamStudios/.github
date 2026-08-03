@@ -36,9 +36,7 @@ jobs:
       release_notes: ${{ inputs.release_notes }}
       ipa_path: "./fastlane/builds/site-audit-pro-cloud.ipa"
       archive_name_prefix: "SiteAuditPro"
-      backend_repo: VeamStudios/SiteAuditPro-Backend
-      backend_ref: main
-      firebase_project_id: site-audit-pro
+      # Backend readiness inputs stay unset while SAP Firebase rules are managed manually.
       changelog_destination_repo: ${{ inputs.sync_changelog_website && 'VeamStudios/siteauditpro.com' || '' }}
       changelog_destination_folder: ${{ inputs.sync_changelog_website && 'src/app/content/changelogs/ios' || '' }}
       confirm_deploy_from_pr_head: true
