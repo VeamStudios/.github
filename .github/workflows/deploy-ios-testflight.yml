@@ -11,6 +11,21 @@ on:
         description: "GitHub Environment name for secrets/approvals"
         required: true
         type: string
+      backend_repo:
+        description: "Backend repository whose Firebase config must be ready before deployment"
+        required: false
+        default: ""
+        type: string
+      backend_ref:
+        description: "Backend ref whose Firebase config must be ready"
+        required: false
+        default: "main"
+        type: string
+      firebase_project_id:
+        description: "Exact Firebase project ID expected for this deployment"
+        required: false
+        default: ""
+        type: string
       ipa_path:
         description: "Path to IPA for version extraction"
         required: true
@@ -106,6 +121,17 @@ jobs:
           client-id: ${{ vars.BOT_RELEASE_CLIENT_ID }}
           private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
+
+      - name: Backend Config Ready / ${{ inputs.environment_name }}
+        if: inputs.backend_repo != ''
+        uses: VeamStudios/.github/.github/actions/backend-config-release-gate@main
+        with:
+          mode: require
+          environment: ${{ inputs.environment_name }}
+          firebase-project-id: ${{ inputs.firebase_project_id }}
+          backend-repo: ${{ inputs.backend_repo }}
+          backend-ref: ${{ inputs.backend_ref }}
+          github-token: ${{ steps.app_token.outputs.token }}
 
       - name: Checkout repository (default ref)
         if: inputs.checkout_ref == ''

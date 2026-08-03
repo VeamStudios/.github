@@ -74,6 +74,19 @@ on:
         required: false
         type: boolean
         default: false
+      backend_repo:
+        description: "Backend repository whose production Firebase config must be ready"
+        required: true
+        type: string
+      backend_ref:
+        description: "Backend ref whose Firebase config must be ready"
+        required: false
+        default: "main"
+        type: string
+      firebase_project_id:
+        description: "Production Firebase project ID checked before building"
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -259,6 +272,9 @@ jobs:
       minimum_swift_version: ${{ inputs.minimum_swift_version }}
       checkout_ref: ${{ needs.resolve-hotfix.outputs.hotfix_sha }}
       capture_commit_sha: true
+      backend_repo: ${{ inputs.backend_repo }}
+      backend_ref: ${{ inputs.backend_ref }}
+      firebase_project_id: ${{ inputs.firebase_project_id }}
       upload_cloud_archive: true
       upload_release_manifest: false
       expected_marketing_version: ${{ inputs.expected_version }}
