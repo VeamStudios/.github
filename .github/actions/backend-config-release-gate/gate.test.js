@@ -11,6 +11,7 @@ const {
   findSuccessfulReadinessStatus,
   findRulesRelease,
   firestoreDatabaseId,
+  listCompositeIndexes,
   realtimeDatabaseUrl,
   readinessBranch,
   readinessContext,
@@ -46,6 +47,40 @@ test("collectPages includes evidence beyond the first API page", async () => {
     { page: 1, pageSize: 2 },
     { page: 2, pageSize: 2 },
   ]);
+});
+
+test("listCompositeIndexes queries each configured collection group", async () => {
+  const originalFetch = global.fetch;
+  const requests = [];
+  global.fetch = async (url) => {
+    requests.push(new URL(url));
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ indexes: [] }),
+    };
+  };
+
+  try {
+    const indexes = await listCompositeIndexes(
+      "project-id",
+      "(default)",
+      ["sites", "floor_plans", "sites"],
+      "access-token"
+    );
+    assert.deepEqual(indexes, []);
+    assert.deepEqual(
+      requests.map((request) => {
+        const match = request.pathname.match(/\/collectionGroups\/([^/]+)\/indexes$/);
+        return decodeURIComponent(match[1]);
+      }),
+      ["floor_plans", "sites"]
+    );
+    assert.equal(requests.every((request) => request.searchParams.get("pageSize") === "200"), true);
+    assert.equal(requests.some((request) => request.pathname.includes("/collectionGroups/-/")), false);
+  } finally {
+    global.fetch = originalFetch;
+  }
 });
 
 test("configHash ignores JSON key order and CRLF differences", () => {
