@@ -428,9 +428,6 @@ jobs:
 
           {
             echo "response-file=qa_brief.md"
-            echo "response<<CURSOR_RESPONSE_EOF"
-            cat qa_brief.md
-            echo "CURSOR_RESPONSE_EOF"
           } >> "$GITHUB_OUTPUT"
 
       - name: Post QA Brief to PR
