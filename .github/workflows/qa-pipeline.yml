@@ -419,6 +419,7 @@ jobs:
           cat > "$SCRATCH_DIR/.cursor/cli.json" <<'EOF'
           {
             "permissions": {
+              "allow": [],
               "deny": [
                 "Shell(*)",
                 "Write(*)"
