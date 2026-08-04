@@ -402,7 +402,12 @@ jobs:
         run: |
           set -o pipefail
           curl --fail --silent --show-error https://cursor.com/install | bash
-          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
+          CURSOR_BIN_DIR="$HOME/.local/bin"
+          if [ ! -x "$CURSOR_BIN_DIR/cursor-agent" ]; then
+            echo "::error::Cursor CLI installation did not produce $CURSOR_BIN_DIR/cursor-agent"
+            exit 1
+          fi
+          echo "$CURSOR_BIN_DIR" >> "$GITHUB_PATH"
 
       - name: Generate QA Brief
         id: ai
@@ -411,6 +416,16 @@ jobs:
         run: |
           SCRATCH_DIR=$(mktemp -d "$RUNNER_TEMP/qa-brief.XXXXXX")
           mkdir -p "$SCRATCH_DIR/.cursor/rules"
+          cat > "$SCRATCH_DIR/.cursor/cli.json" <<'EOF'
+          {
+            "permissions": {
+              "deny": [
+                "Shell(*)",
+                "Write(*)"
+              ]
+            }
+          }
+          EOF
           cat > "$SCRATCH_DIR/.cursor/rules/qa-brief.mdc" <<'EOF'
           ---
           description: Generate a QA Brief from supplied pull request context.
