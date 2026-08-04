@@ -459,7 +459,7 @@ jobs:
 
           (
             cd "$SCRATCH_DIR"
-            cursor-agent -p --output-format json "$PROMPT" > cursor-response.json
+            cursor-agent --trust -p --output-format json "$PROMPT" > cursor-response.json
             jq -er '.result' cursor-response.json > "$GITHUB_WORKSPACE/qa_brief.md"
           )
 
