@@ -3,7 +3,7 @@
 # Copy to .github/workflows/qa.yml in app repos.
 # Calls VeamStudios/.github qa-pipeline.yml.
 #
-# Requires: secrets.BOT_QA_PRIVATE_KEY
+# Requires: secrets.BOT_QA_PRIVATE_KEY and secrets.CURSOR_API_KEY
 # Requires org variable: BOT_QA_CLIENT_ID
 #
 # Behaviour:
@@ -26,6 +26,6 @@ jobs:
       checks: write
       contents: write
       pull-requests: write
-      models: read
     secrets:
       BOT_QA_PRIVATE_KEY: ${{ secrets.BOT_QA_PRIVATE_KEY }}
+      CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
