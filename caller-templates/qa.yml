@@ -1,26 +1,26 @@
-# QA Pipeline - Caller Workflow
+# PR Governance - Caller Workflow
 #
 # Copy to .github/workflows/qa.yml in app repos.
 # Calls VeamStudios/.github qa-pipeline.yml.
 #
-# Requires: secrets.BOT_QA_PRIVATE_KEY and secrets.CURSOR_API_KEY
+# Requires: secrets.BOT_QA_PRIVATE_KEY
 # Requires org variable: BOT_QA_CLIENT_ID
 #
 # Behaviour:
 # - PR opened / updated → "Has Linked Notion Work Item" check (`Work Item:` field required when PR title starts with feat:)
-# - bot: qa needed → AI QA brief (independent of the WI gate)
 # - bot: qa approved + bot: qa automerge (+ bot: qa needed) → optional automerge
+# - `bot: qa needed` → QA Brief is provided by the Cursor Automation, not GitHub Actions
 #
 # Branch protection: require status check "Has Linked Notion Work Item" on main when ready.
 
-name: QA Pipeline
+name: PR Governance
 
 on:
   pull_request:
     types: [opened, synchronize, edited, labeled]
 
 jobs:
-  qa-pipeline:
+  pr-governance:
     uses: VeamStudios/.github/.github/workflows/qa-pipeline.yml@main
     permissions:
       checks: write
@@ -28,4 +28,3 @@ jobs:
       pull-requests: write
     secrets:
       BOT_QA_PRIVATE_KEY: ${{ secrets.BOT_QA_PRIVATE_KEY }}
-      CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
