@@ -5,9 +5,11 @@
 #
 # Requires: secrets.BOT_QA_PRIVATE_KEY
 # Requires org variable: BOT_QA_CLIENT_ID
+# QA GitHub App permission: Organization Projects (write)
 #
 # Behaviour:
 # - PR opened / updated → "Has Linked Notion Work Item" check (`Work Item:` field required when PR title starts with feat:)
+# - `bot: qa needed` → add the PR to QA Project 26 and set its status to Not Started
 # - bot: qa approved + bot: qa automerge (+ bot: qa needed) → optional automerge
 # - `bot: qa needed` → QA Brief is provided by the Cursor Automation, not GitHub Actions
 #

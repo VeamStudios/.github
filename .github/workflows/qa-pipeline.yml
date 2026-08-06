@@ -150,6 +150,161 @@ jobs:
               core.setFailed(summary);
             }
 
+  qa-project-status:
+    if: "github.event.action == 'labeled' && github.event.label.name == 'bot: qa needed'"
+    runs-on: ubuntu-latest
+    concurrency:
+      group: qa-project-status-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+
+    steps:
+      - name: Validate QA bot configuration
+        run: |
+          if [ -z "${{ secrets.BOT_QA_PRIVATE_KEY }}" ]; then
+            echo "::error::Required workflow secret BOT_QA_PRIVATE_KEY is missing"
+            exit 1
+          fi
+
+      - name: Mint GitHub App token
+        id: app_token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ inputs.bot-qa-client-id || vars.BOT_QA_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_QA_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Set QA project status to Not Started
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app_token.outputs.token }}
+          script: |
+            const PROJECT_NUMBER = 26;
+
+            const pr = context.payload.pull_request;
+            if (!pr?.node_id) {
+              core.setFailed('Expected pull_request event payload with a node ID');
+              return;
+            }
+
+            const config = await github.graphql(
+              `query($org: String!, $number: Int!) {
+                organization(login: $org) {
+                  projectV2(number: $number) {
+                    id
+                    fields(first: 100) {
+                      nodes {
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          name
+                          options { id name }
+                        }
+                      }
+                    }
+                  }
+                }
+              }`,
+              {
+                org: context.repo.owner,
+                number: PROJECT_NUMBER,
+              },
+            );
+
+            const project = config.organization?.projectV2;
+            const statusField = project?.fields.nodes.find(
+              (field) => field.name === 'Status',
+            );
+            const notStartedOption = statusField?.options.find(
+              (option) => option.name === 'Not Started',
+            );
+            if (!project || !statusField || !notStartedOption) {
+              core.setFailed(
+                `Project ${PROJECT_NUMBER} must contain a Status field with a Not Started option`,
+              );
+              return;
+            }
+
+            const findProjectItem = async () => {
+              const result = await github.graphql(
+                `query($contentId: ID!) {
+                  node(id: $contentId) {
+                    ... on PullRequest {
+                      projectItems(first: 100) {
+                        nodes {
+                          id
+                          project { id }
+                        }
+                      }
+                    }
+                  }
+                }`,
+                { contentId: pr.node_id },
+              );
+
+              return result.node?.projectItems.nodes.find(
+                (item) => item.project.id === project.id,
+              )?.id;
+            };
+
+            let itemId = await findProjectItem();
+            if (!itemId) {
+              try {
+                const result = await github.graphql(
+                  `mutation($projectId: ID!, $contentId: ID!) {
+                    addProjectV2ItemById(input: {
+                      projectId: $projectId
+                      contentId: $contentId
+                    }) {
+                      item { id }
+                    }
+                  }`,
+                  {
+                    projectId: project.id,
+                    contentId: pr.node_id,
+                  },
+                );
+                itemId = result.addProjectV2ItemById.item.id;
+              } catch (error) {
+                // Project 26 also has a built-in auto-add workflow. If both
+                // automations add the PR concurrently, resolve the existing
+                // item instead of failing or creating a duplicate.
+                for (let attempt = 0; attempt < 3 && !itemId; attempt += 1) {
+                  await new Promise((resolve) => setTimeout(resolve, 1000));
+                  itemId = await findProjectItem();
+                }
+                if (!itemId) throw error;
+              }
+            }
+
+            await github.graphql(
+              `mutation(
+                $projectId: ID!
+                $itemId: ID!
+                $fieldId: ID!
+                $optionId: String!
+              ) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $projectId
+                  itemId: $itemId
+                  fieldId: $fieldId
+                  value: { singleSelectOptionId: $optionId }
+                }) {
+                  projectV2Item { id }
+                }
+              }`,
+              {
+                projectId: project.id,
+                itemId,
+                fieldId: statusField.id,
+                optionId: notStartedOption.id,
+              },
+            );
+
+            core.info(
+              `Set Project ${PROJECT_NUMBER} item ${itemId} to Not Started for ${context.repo.owner}/${context.repo.repo}#${pr.number}`,
+            );
+
   merge:
     if: "github.event.label.name == 'bot: qa approved' && contains(github.event.pull_request.labels.*.name, 'bot: qa needed') && contains(github.event.pull_request.labels.*.name, 'bot: qa automerge')"
     runs-on: ubuntu-latest

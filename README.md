@@ -246,7 +246,7 @@ jobs:
 | `launch-hub-production-mirror.yml` | Mirror production Remote Config values and deployment/release state into Launch Hub |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
-| `qa-pipeline.yml` | PR governance: `Has Linked Notion Work Item` on PR open/update (`Work Items:` list with one or more Notion WI URLs required for `feat` titles, including scoped or breaking forms; singular `Work Item:` remains supported) and label-gated QA auto-merge |
+| `qa-pipeline.yml` | PR governance: `Has Linked Notion Work Item` on PR open/update (`Work Items:` list with one or more Notion WI URLs required for `feat` titles, including scoped or breaking forms; singular `Work Item:` remains supported), `bot: qa needed` routing to QA Project 26 as `Not Started`, and label-gated QA auto-merge |
 | `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
 
 ## Caller Templates
@@ -270,7 +270,7 @@ The new templates rely on secrets already configured at the org or repo level:
 
 | Template | Secrets | Notes |
 |---|---|---|
-| `qa.yml` | `BOT_QA_PRIVATE_KEY`, org `vars.BOT_QA_CLIENT_ID` | Caller for `qa-pipeline.yml` |
+| `qa.yml` | `BOT_QA_PRIVATE_KEY`, org `vars.BOT_QA_CLIENT_ID` | Caller for `qa-pipeline.yml`; the QA GitHub App needs Organization Projects write access |
 | `web-tests.yml` | none beyond `GITHUB_TOKEN` | `packages: read` is granted by the caller |
 | `ios-tests.yml` | `BOT_RELEASE_PRIVATE_KEY`, org `vars.BOT_RELEASE_CLIENT_ID` | Same Release Bot App used by `pr-ios-build.yml` |
 | `launch-hub-production-mirror.yml` | `NOTION_TOKEN`, `SERVICE_ACCOUNT_BASE64` | `SERVICE_ACCOUNT_BASE64` is only required when reading Firebase Remote Config; use `github_environment` when it is environment-scoped |
