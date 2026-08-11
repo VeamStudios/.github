@@ -25,6 +25,10 @@ inputs:
     description: "Service-account JSON path used by record mode to inspect live Firebase state."
     required: false
     default: ""
+  include-realtime-database-scopes:
+    description: "Adds the OAuth scopes required to verify Realtime Database rules."
+    required: false
+    default: "false"
   config-root:
     description: "Local backend config root used by record mode."
     required: false

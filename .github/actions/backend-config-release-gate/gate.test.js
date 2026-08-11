@@ -11,7 +11,9 @@ const {
   findSuccessfulReadinessStatus,
   findRulesRelease,
   firestoreDatabaseId,
+  googleOAuthScope,
   listCompositeIndexes,
+  parseBoolean,
   realtimeDatabaseUrl,
   readinessBranch,
   readinessContext,
@@ -19,6 +21,28 @@ const {
   storageBucket,
   validateStatusEvidence,
 } = require("./gate");
+
+test("Realtime Database OAuth scopes are opt-in", () => {
+  assert.equal(
+    googleOAuthScope(),
+    "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/firebase"
+  );
+  assert.equal(
+    googleOAuthScope(true),
+    [
+      "https://www.googleapis.com/auth/cloud-platform",
+      "https://www.googleapis.com/auth/firebase",
+      "https://www.googleapis.com/auth/firebase.database",
+      "https://www.googleapis.com/auth/userinfo.email",
+    ].join(" ")
+  );
+});
+
+test("parseBoolean accepts explicit booleans and rejects other input", () => {
+  assert.equal(parseBoolean("true", "flag"), true);
+  assert.equal(parseBoolean("FALSE", "flag"), false);
+  assert.throws(() => parseBoolean("yes", "flag"), /flag must be true or false/);
+});
 
 test("collectConfigPaths includes each Firebase deployment contract", () => {
   const paths = collectConfigPaths({
