@@ -5,7 +5,14 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const FIREBASE_SCOPE = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/firebase";
+const FIREBASE_SCOPES = [
+  "https://www.googleapis.com/auth/cloud-platform",
+  "https://www.googleapis.com/auth/firebase",
+];
+const REALTIME_DATABASE_SCOPES = [
+  "https://www.googleapis.com/auth/firebase.database",
+  "https://www.googleapis.com/auth/userinfo.email",
+];
 const GITHUB_API_VERSION = "2022-11-28";
 const SCHEMA_VERSION = 1;
 
@@ -182,7 +189,14 @@ function normalizePrivateKey(value) {
   return trimmed.includes("\\n") ? trimmed.replace(/\\n/g, "\n") : trimmed;
 }
 
-async function googleAccessToken(serviceAccountPath) {
+function googleOAuthScope(includeRealtimeDatabaseScopes = false) {
+  return [
+    ...FIREBASE_SCOPES,
+    ...(includeRealtimeDatabaseScopes ? REALTIME_DATABASE_SCOPES : []),
+  ].join(" ");
+}
+
+async function googleAccessToken(serviceAccountPath, includeRealtimeDatabaseScopes = false) {
   const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
   const now = Math.floor(Date.now() / 1000);
   const tokenUri = serviceAccount.token_uri || "https://oauth2.googleapis.com/token";
@@ -190,7 +204,7 @@ async function googleAccessToken(serviceAccountPath) {
   const claims = base64Url(
     JSON.stringify({
       iss: serviceAccount.client_email,
-      scope: FIREBASE_SCOPE,
+      scope: googleOAuthScope(includeRealtimeDatabaseScopes),
       aud: tokenUri,
       iat: now,
       exp: now + 3600,
@@ -526,8 +540,15 @@ function realtimeDatabaseUrl(section, adminConfig) {
   );
 }
 
-async function verifyLiveFirebase({ projectId, serviceAccountFile, config, timeoutSeconds, pollIntervalSeconds }) {
-  const accessToken = await googleAccessToken(serviceAccountFile);
+async function verifyLiveFirebase({
+  projectId,
+  serviceAccountFile,
+  includeRealtimeDatabaseScopes,
+  config,
+  timeoutSeconds,
+  pollIntervalSeconds,
+}) {
+  const accessToken = await googleAccessToken(serviceAccountFile, includeRealtimeDatabaseScopes);
   const checks = { firestore: [], storage: [], realtimeDatabase: [] };
   const firestore = firebaseSections(config.firebaseConfig, "firestore");
   const storage = firebaseSections(config.firebaseConfig, "storage");
@@ -675,6 +696,7 @@ async function recordReadiness(inputs) {
     const checks = await verifyLiveFirebase({
       projectId: inputs.projectId,
       serviceAccountFile: inputs.serviceAccountFile,
+      includeRealtimeDatabaseScopes: inputs.includeRealtimeDatabaseScopes,
       config,
       timeoutSeconds: inputs.timeoutSeconds,
       pollIntervalSeconds: inputs.pollIntervalSeconds,
@@ -821,6 +843,12 @@ function parsePositiveInteger(value, name) {
   return parsed;
 }
 
+function parseBoolean(value, name) {
+  const normalized = String(value).trim().toLowerCase();
+  if (!["true", "false"].includes(normalized)) throw new Error(`${name} must be true or false.`);
+  return normalized === "true";
+}
+
 function loadInputs() {
   const mode = actionInput("mode", { required: true }).toLowerCase();
   if (!['record', 'require'].includes(mode)) throw new Error("mode must be record or require.");
@@ -836,6 +864,10 @@ function loadInputs() {
     backendRef: actionInput("backend-ref", { defaultValue: "main" }),
     githubToken: actionInput("github-token", { required: true }),
     serviceAccountFile: actionInput("service-account-file"),
+    includeRealtimeDatabaseScopes: parseBoolean(
+      actionInput("include-realtime-database-scopes", { defaultValue: "false" }),
+      "include-realtime-database-scopes"
+    ),
     configRoot: actionInput("config-root", { defaultValue: "." }),
     timeoutSeconds: parsePositiveInteger(actionInput("timeout-seconds", { defaultValue: "900" }), "timeout-seconds"),
     pollIntervalSeconds: parsePositiveInteger(
@@ -885,7 +917,9 @@ module.exports = {
   findSuccessfulReadinessStatus,
   findRulesRelease,
   firestoreDatabaseId,
+  googleOAuthScope,
   listCompositeIndexes,
+  parseBoolean,
   realtimeDatabaseUrl,
   readinessBranch,
   readinessContext,
