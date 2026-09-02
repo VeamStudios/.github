@@ -247,7 +247,6 @@ jobs:
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
 | `qa-pipeline.yml` | PR governance: `Has Linked Notion Work Item` on PR open/update (`Work Items:` list with one or more Notion WI URLs required for `feat` titles, including scoped or breaking forms; singular `Work Item:` remains supported), `bot: qa needed` routing to QA Project 26 as `Not Started`, and label-gated QA auto-merge |
-| `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
 
 ## Caller Templates
 
