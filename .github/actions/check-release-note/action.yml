@@ -1,0 +1,17 @@
+name: Check release note contract
+description: Validate release metadata as data; never executes repository code.
+inputs:
+  body:
+    description: PR body containing the note path and Work Items links
+    required: true
+  head:
+    description: Exact reviewed PR head
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        PR_BODY: ${{ inputs.body }}
+        PR_HEAD_SHA: ${{ inputs.head }}
+      run: node "${{ github.action_path }}/../release-ledger/check-note.js"

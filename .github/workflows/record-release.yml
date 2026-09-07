@@ -1,0 +1,102 @@
+name: Record Release Evidence
+on:
+  workflow_call:
+    inputs:
+      product:
+        required: true
+        type: string
+      target:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      commit:
+        required: true
+        type: string
+      build:
+        default: ''
+        type: string
+      baseline:
+        default: ''
+        type: string
+      mapping_path:
+        default: ''
+        type: string
+      phase:
+        default: deployed
+        type: string
+      event:
+        default: release
+        type: string
+      source:
+        default: ''
+        type: string
+      verification_url:
+        default: ''
+        type: string
+      github_environment:
+        default: prod
+        type: string
+      historical:
+        default: false
+        type: boolean
+    secrets:
+      BOT_RELEASE_PRIVATE_KEY:
+        required: true
+      NOTION_TOKEN:
+        required: false
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.github_environment }}
+    steps:
+      - name: Report release ledger mode
+        run: echo "Release ledger mode is $LEDGER_MODE"
+        env:
+          LEDGER_MODE: ${{ vars.RELEASE_LEDGER_MODE || 'off' }}
+      - if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
+        uses: actions/create-github-app-token@v3
+        id: token
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+      - if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
+        uses: VeamStudios/.github/.github/actions/release-ledger@main
+        with:
+          product: ${{ inputs.product }}
+          target: ${{ inputs.target }}
+          version: ${{ inputs.version }}
+          commit: ${{ inputs.commit }}
+          build: ${{ inputs.build }}
+          baseline: ${{ inputs.baseline }}
+          mapping_path: ${{ inputs.mapping_path }}
+          phase: ${{ inputs.phase }}
+          event: ${{ inputs.event }}
+          source: ${{ inputs.source }}
+          verification_url: ${{ inputs.verification_url }}
+          historical: ${{ inputs.historical }}
+          dry_run: ${{ vars.RELEASE_LEDGER_MODE != 'shadow' && vars.RELEASE_LEDGER_MODE != 'live' }}
+          github_token: ${{ steps.token.outputs.token }}
+          notion_token: ${{ secrets.NOTION_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && (vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live') }}
+        with:
+          name: release-ledger-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release-manifest.json
+          if-no-files-found: warn
+          retention-days: 90

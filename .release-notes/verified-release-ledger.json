@@ -1,0 +1,15 @@
+{
+  "kind": "internal",
+  "summary": "Record verified release evidence and coordinate availability announcements.",
+  "workItems": [
+    "3d4069083a038174982cc98d9c3b20cd"
+  ],
+  "scope": "verified-release-ledger-v1",
+  "targets": [
+    "ops"
+  ],
+  "audience": "VeamStudios engineering",
+  "limitations": "Publication remains disabled until coordinated cutover.",
+  "audienceGate": false,
+  "requiredReleaseKeys": []
+}

@@ -1,0 +1,21 @@
+name: Test Release Ledger
+on:
+  pull_request:
+    paths:
+      - '.github/actions/release-ledger/**'
+      - '.github/workflows/*release*.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/actions/release-ledger/**'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - run: node --test .github/actions/release-ledger/record.test.js

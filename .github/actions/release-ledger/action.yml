@@ -1,0 +1,78 @@
+name: Record verified release evidence
+description: Freeze shipped PRs and reviewed notes in the Notion release ledger. Never sends Slack.
+inputs:
+  product:
+    required: true
+    description: Product label.
+  target:
+    required: true
+    description: Explicit platform/edition target.
+  version:
+    required: true
+    description: Exact release version or activation identity.
+  commit:
+    required: true
+    description: Exact shipped commit SHA.
+  build:
+    description: Store build number or versionCode.
+    default: ''
+  baseline:
+    description: Previous successful production commit; normally resolved from Notion.
+    default: ''
+  mapping_path:
+    description: "Reviewed committed provenance map for hotfixes/cherry-picks"
+    default: ""
+  phase:
+    description: prepare, deployed, uploaded, live, rollout or withdrawn.
+    default: deployed
+  event:
+    description: release, activation, withdrawal or baseline.
+    default: release
+  source:
+    description: Durable workflow or store evidence URL.
+    default: ''
+  verification_url:
+    description: HTTPS production endpoint checked after deployment.
+    default: ''
+  released_at:
+    description: Actual store release time, when available.
+    default: ''
+  historical:
+    description: Historical records never announce.
+    default: 'false'
+  dry_run:
+    description: Produce an inspectable manifest without writing Notion.
+    default: 'true'
+  releases_id:
+    description: Notion Releases data source ID.
+    default: '8beb58ea-dd4f-4777-8799-b6694ade6317'
+  github_token:
+    description: GitHub App token with read access to caller and contents write access to the shared lock repository.
+    required: true
+  notion_token:
+    description: Integration with access to the release ledger and Work Items.
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Build and record release manifest
+      shell: bash
+      env:
+        INPUT_PRODUCT: ${{ inputs.product }}
+        INPUT_TARGET: ${{ inputs.target }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_COMMIT: ${{ inputs.commit }}
+        INPUT_BUILD: ${{ inputs.build }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_MAPPING_PATH: ${{ inputs.mapping_path }}
+        INPUT_PHASE: ${{ inputs.phase }}
+        INPUT_EVENT: ${{ inputs.event }}
+        INPUT_SOURCE: ${{ inputs.source }}
+        INPUT_VERIFICATION_URL: ${{ inputs.verification_url }}
+        INPUT_RELEASED_AT: ${{ inputs.released_at }}
+        INPUT_HISTORICAL: ${{ inputs.historical }}
+        INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        INPUT_RELEASES_ID: ${{ inputs.releases_id }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
+        INPUT_NOTION_TOKEN: ${{ inputs.notion_token }}
+      run: node "${{ github.action_path }}/record.js"

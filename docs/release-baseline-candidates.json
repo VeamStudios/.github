@@ -1,0 +1,173 @@
+[
+  {
+    "schemaVersion": 1,
+    "key": "VeamStudios/SiteAuditPro-Web/web/baseline/v5.10.0",
+    "repository": "VeamStudios/SiteAuditPro-Web",
+    "product": "Site Audit Pro",
+    "target": "web",
+    "version": "v5.10.0",
+    "build": "",
+    "commit": "bab394a048b4b78a54328936553cbd2cacb91a91",
+    "baseline": "",
+    "event": "baseline",
+    "prs": [],
+    "changes": [],
+    "issues": [
+      "Candidate baseline from GitHub release metadata. Current production distribution, intended-audience availability, build (where relevant) and baseline approval still require verification."
+    ],
+    "provenanceComplete": false,
+    "source": "https://github.com/VeamStudios/SiteAuditPro-Web/releases/tag/v5.10.0"
+  },
+  {
+    "schemaVersion": 1,
+    "key": "VeamStudios/ChecklistInspectorPro-Web/web/baseline/v1.3.0",
+    "repository": "VeamStudios/ChecklistInspectorPro-Web",
+    "product": "Checklist Inspector Pro",
+    "target": "web",
+    "version": "v1.3.0",
+    "build": "",
+    "commit": "bdd520ce86a247af77856c47438ef0c9539da05b",
+    "baseline": "",
+    "event": "baseline",
+    "prs": [],
+    "changes": [],
+    "issues": [
+      "Candidate baseline from GitHub release metadata. Current production distribution, intended-audience availability, build (where relevant) and baseline approval still require verification."
+    ],
+    "provenanceComplete": false,
+    "source": "https://github.com/VeamStudios/ChecklistInspectorPro-Web/releases/tag/v1.3.0"
+  },
+  {
+    "schemaVersion": 1,
+    "key": "VeamStudios/SiteAuditPro-Backend/backend/baseline/v3.52.1",
+    "repository": "VeamStudios/SiteAuditPro-Backend",
+    "product": "Site Audit Pro",
+    "target": "backend",
+    "version": "v3.52.1",
+    "build": "",
+    "commit": "47b74e9a019dc03f259130ab8dc0892b0fd3331f",
+    "baseline": "",
+    "event": "baseline",
+    "prs": [],
+    "changes": [],
+    "issues": [
+      "Candidate baseline from GitHub release metadata. Current production distribution, intended-audience availability, build (where relevant) and baseline approval still require verification."
+    ],
+    "provenanceComplete": false,
+    "source": "https://github.com/VeamStudios/SiteAuditPro-Backend/releases/tag/v3.52.1"
+  },
+  {
+    "schemaVersion": 1,
+    "key": "VeamStudios/ChecklistInspectorPro-Backend/backend/baseline/v0.37.0",
+    "repository": "VeamStudios/ChecklistInspectorPro-Backend",
+    "product": "Checklist Inspector Pro",
+    "target": "backend",
+    "version": "v0.37.0",
+    "build": "",
+    "commit": "2876592b31b0f6cb185517bd2b214d6b12fdae4b",
+    "baseline": "",
+    "event": "baseline",
+    "prs": [],
+    "changes": [],
+    "issues": [
+      "Candidate baseline from GitHub release metadata. Current production distribution, intended-audience availability, build (where relevant) and baseline approval still require verification."
+    ],
+    "provenanceComplete": false,
+    "source": "https://github.com/VeamStudios/ChecklistInspectorPro-Backend/releases/tag/v0.37.0"
+  },
+  {
+    "schemaVersion": 1,
+    "key": "VeamStudios/ChecklistInspectorPro-iOS/ios-consumer/baseline/v2.2.0",
+    "repository": "VeamStudios/ChecklistInspectorPro-iOS",
+    "product": "Checklist Inspector Pro",
+    "target": "ios-consumer",
+    "version": "v2.2.0",
+    "build": "",
+    "commit": "8a58654790a59a838ef6b1ec4462bc52d8757170",
+    "baseline": "",
+    "event": "baseline",
+    "prs": [],
+    "changes": [],
+    "issues": [
+      "Candidate baseline from GitHub release metadata. Current production distribution, intended-audience availability, build (where relevant) and baseline approval still require verification."
+    ],
+    "provenanceComplete": false,
+    "source": "https://github.com/VeamStudios/ChecklistInspectorPro-iOS/releases/tag/v2.2.0"
+  },
+  {
+    "schemaVersion": 1,
+    "key": "VeamStudios/siteauditpro.com/website/baseline/v0.0.27",
+    "repository": "VeamStudios/siteauditpro.com",
+    "product": "Site Audit Pro",
+    "target": "website",
+    "version": "v0.0.27",
+    "build": "",
+    "commit": "19f95504ba9ee9e351d7c4f882f4c1e9a9f96645",
+    "baseline": "",
+    "event": "baseline",
+    "prs": [],
+    "changes": [],
+    "issues": [
+      "Candidate baseline from GitHub release metadata. Current production distribution, intended-audience availability, build (where relevant) and baseline approval still require verification."
+    ],
+    "provenanceComplete": false,
+    "source": "https://github.com/VeamStudios/siteauditpro.com/releases/tag/v0.0.27"
+  },
+  {
+    "schemaVersion": 1,
+    "key": "VeamStudios/checklistinspectorpro.com/website/baseline/v0.0.3",
+    "repository": "VeamStudios/checklistinspectorpro.com",
+    "product": "Checklist Inspector Pro",
+    "target": "website",
+    "version": "v0.0.3",
+    "build": "",
+    "commit": "2b1de236ad1e18f145a70f0bf6f8c4ca1cf902c4",
+    "baseline": "",
+    "event": "baseline",
+    "prs": [],
+    "changes": [],
+    "issues": [
+      "Candidate baseline from GitHub release metadata. Current production distribution, intended-audience availability, build (where relevant) and baseline approval still require verification."
+    ],
+    "provenanceComplete": false,
+    "source": "https://github.com/VeamStudios/checklistinspectorpro.com/releases/tag/v0.0.3"
+  },
+  {
+    "schemaVersion": 1,
+    "key": "VeamStudios/CloudServices/cloudservices/baseline/v1.14.0",
+    "repository": "VeamStudios/CloudServices",
+    "product": "Shared CloudServices",
+    "target": "cloudservices",
+    "version": "v1.14.0",
+    "build": "",
+    "commit": "3f82c3776ace46d2bfe52ccf806df7394adbecb1",
+    "baseline": "",
+    "event": "baseline",
+    "prs": [],
+    "changes": [],
+    "issues": [
+      "Candidate baseline from GitHub release metadata. Current production distribution, intended-audience availability, build (where relevant) and baseline approval still require verification."
+    ],
+    "provenanceComplete": false,
+    "source": "https://github.com/VeamStudios/CloudServices/releases/tag/v1.14.0"
+  },
+  {
+    "schemaVersion": 1,
+    "key": "VeamStudios/SiteAuditPro-iOS/ios-consumer/baseline/10.7.0.1",
+    "repository": "VeamStudios/SiteAuditPro-iOS",
+    "product": "Site Audit Pro",
+    "target": "ios-consumer",
+    "version": "10.7.0.1",
+    "build": "",
+    "commit": "5a940d890e4d3dc7ca753efcb6e76ec911f294ad",
+    "baseline": "",
+    "event": "baseline",
+    "prs": [],
+    "changes": [],
+    "issues": [
+      "Candidate baseline from GitHub release metadata. Current production distribution, intended-audience availability, build (where relevant) and baseline approval still require verification."
+    ],
+    "provenanceComplete": false,
+    "source": "https://github.com/VeamStudios/SiteAuditPro-iOS/releases/tag/10.7.0.1"
+  }
+]
