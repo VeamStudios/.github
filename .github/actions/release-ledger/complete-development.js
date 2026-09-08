@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const { clients, withLock, workItems, validateNote, rich, text, select } = require('./record');
+const { parseWorkItemLinks } = require('./work-item-links');
 
 const normalize = id => String(id || '').replace(/-/g, '').toLowerCase();
 const SAP = '30c069083a0380d09845fe97daa54c31';
@@ -44,9 +45,12 @@ async function completeDevelopment(config, api) {
     open.push(...rows);
     if (rows.length < 100) break;
   }
+  // Sibling PRs are discovery, not the subject of this completion check. Keep
+  // valid links even when an unrelated entry is still a template placeholder.
+  const openWorkItems = new Set(open.flatMap(other => parseWorkItemLinks(other.body).ids));
   const changes = [], skipped = [];
   for (const id of ids) {
-    if (open.some(other => workItems(other.body).includes(id))) { skipped.push({ id, reason: 'Another linked platform PR is open' }); continue; }
+    if (openWorkItems.has(id)) { skipped.push({ id, reason: 'Another linked platform PR is open' }); continue; }
     const row = await api.notion(`/pages/${id}`);
     if (normalize(row.parent?.data_source_id) !== normalize(config.workItemsId)) throw new Error('Linked page is outside Work Items');
     if (row.archived || row.in_trash) { skipped.push({ id, reason: 'Work Item is archived' }); continue; }
