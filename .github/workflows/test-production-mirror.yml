@@ -1,0 +1,40 @@
+name: Test Production Mirror
+on:
+  pull_request:
+    paths:
+      - '.github/actions/launch-hub-production-mirror/**'
+      - '.github/workflows/launch-hub-production-mirror.yml'
+      - '.github/workflows/ios-app-store-live-monitor.yml'
+      - '.github/workflows/test-production-mirror.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/actions/launch-hub-production-mirror/**'
+      - '.github/workflows/launch-hub-production-mirror.yml'
+      - '.github/workflows/ios-app-store-live-monitor.yml'
+      - '.github/workflows/test-production-mirror.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - run: node .github/actions/launch-hub-production-mirror/sync.test.js
+      # Load the actual composite manifest in GitHub's runner. No credentials are
+      # provided, so the smoke test cannot read or write production data.
+      - name: Load composite action without production credentials
+        id: smoke
+        uses: ./.github/actions/launch-hub-production-mirror
+        with:
+          product: cip
+          dry_run: 'true'
+      - name: Check smoke-test outputs
+        env:
+          MATCHED: ${{ steps.smoke.outputs.matched_pages }}
+          UPDATED: ${{ steps.smoke.outputs.updated_pages }}
+          CHECKED: ${{ steps.smoke.outputs.remote_config_checked }}
+        run: test "$MATCHED" = 0 && test "$UPDATED" = 0 && test "$CHECKED" = 0

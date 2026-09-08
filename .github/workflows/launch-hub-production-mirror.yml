@@ -72,7 +72,7 @@ jobs:
           product_page_id: ${{ inputs.product_page_id }}
           work_items_data_source_id: ${{ inputs.work_items_data_source_id }}
           platform: ${{ inputs.platform }}
-          production_state: ${{ inputs.production_state }}
+          production_state: ${{ vars.RELEASE_LEDGER_MODE != 'live' && inputs.production_state || '' }}
           production_evidence: ${{ inputs.production_evidence }}
           firebase_project_id: ${{ inputs.firebase_project_id }}
           firebase_service_account: ${{ secrets.SERVICE_ACCOUNT_BASE64 }}
@@ -92,7 +92,7 @@ jobs:
           product_page_id: ${{ inputs.product_page_id }}
           work_items_data_source_id: ${{ inputs.work_items_data_source_id }}
           platform: ${{ inputs.platform }}
-          production_state: ${{ inputs.production_state }}
+          production_state: ${{ vars.RELEASE_LEDGER_MODE != 'live' && inputs.production_state || '' }}
           production_evidence: ${{ inputs.production_evidence }}
           firebase_project_id: ${{ inputs.firebase_project_id }}
           firebase_service_account: ${{ secrets.SERVICE_ACCOUNT_BASE64 }}

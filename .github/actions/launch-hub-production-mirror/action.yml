@@ -69,7 +69,8 @@ runs:
         INPUT_PRODUCT: ${{ inputs.product }}
         INPUT_WORK_ITEMS_DATA_SOURCE_ID: ${{ inputs.work_items_data_source_id }}
         INPUT_PLATFORM: ${{ inputs.platform }}
-        INPUT_PRODUCTION_STATE: ${{ vars.RELEASE_LEDGER_MODE != 'live' && inputs.production_state || '' }}
+        # Workflow callers apply the release-ledger gate; composite actions cannot read vars.
+        INPUT_PRODUCTION_STATE: ${{ inputs.production_state }}
         INPUT_PRODUCTION_EVIDENCE: ${{ inputs.production_evidence }}
         INPUT_FIREBASE_PROJECT_ID: ${{ inputs.firebase_project_id }}
         INPUT_FIREBASE_SERVICE_ACCOUNT: ${{ inputs.firebase_service_account }}
