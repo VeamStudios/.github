@@ -1,14 +1,79 @@
-# Rollout status — 7 September 2026
+# Release setup and troubleshooting
 
-Implementation is prepared for review; no worker deployment, production cutover or Slack publication has occurred.
+[Notion runbook](https://www.notion.so/3d5069083a0381b191e6fe4daa0899f5) · [Technical reference](release-ledger-reference.md) · [Implementation Work Item](https://www.notion.so/3d4069083a038174982cc98d9c3b20cd)
 
-## 8 September addition: platform Done and Released
+> **Not live.** Code is in draft PRs. No worker deployment or notification cutover has occurred. Access observations below were recorded on 7 September 2026; recheck them during setup.
 
-Matt requested automatic updates to the existing platform Dev Status fields after merge and production deployment. The shared main-merge workflow and five client callers now record Done for linked Work Items; the worker projects verified platform availability to Released. The completing PR is persisted in the new Work Items `Platform Development` rich-text property. Other linked open PRs, an explicit incomplete declaration, product mismatches and replayed completion events are guarded. Releases must include the completing PR and satisfy every approved required scope for that platform.
+## Turn it on: one coordinated rollout
 
-Both organisation and worker lifecycle switches remain disabled pending hosted Work Item Drift ownership inspection. The new workflow uses trusted shared code without checking out PR code. Test the main-merge trigger, manual retry, shadow proposal, multi-PR completion, per-edition availability and exact completing-PR mapping during the coordinated shadow rollout. No Work Item statuses were changed as part of implementation.
+Complete these in order across all products.
 
-## Access verified
+### 1. Land the code with automation off
+
+- [ ] Merge [shared PR #57](https://github.com/VeamStudios/.github/pull/57) first, then the worker and product callers.
+- [ ] Rerun dependent checks once the shared workflows exist on `main`.
+- [ ] Keep publication and lifecycle writes disabled.
+
+### 2. Finish access and ownership
+
+- [ ] Give the hosted worker access to Releases, Feature Availability and Work Items; verify Console access.
+- [ ] Inspect hosted Work Item Drift and Manager Product. Agree who owns each status transition.
+- [ ] Verify the Work Items `Platform Development` field and the merge workflow's access.
+- [ ] Configure bot permissions, release/operations channels and production verification endpoints. [Settings reference](release-ledger-reference.md).
+- [ ] Configure independent hosted-run failure monitoring for a total Notion outage.
+
+### 3. Establish the starting baseline
+
+- [ ] Verify the current production build and intended audience for every target, prioritising Enterprise.
+- [ ] Record baselines as historical so they cannot announce. Keep unsupported claims **Unverified**.
+
+### 4. Test in shadow mode
+
+- [ ] Enable shadow for every producer and the worker. Existing release notices continue; the new publisher sends nothing.
+- [ ] Compare proposed records, statuses and messages with actual releases.
+- [ ] Exercise every scenario in the expandable checklist below. Record evidence before accepting the rollout.
+
+### 5. Cut over together
+
+- [ ] Finish in-flight legacy notices and pause new production releases during the switch.
+- [ ] Set the GitHub organisation mode to `live`, disabling legacy release notices.
+- [ ] Enable the worker's live mode with the agreed cutover timestamp.
+- [ ] Enable GitHub and worker lifecycle writes only after field ownership is verified.
+
+**To stop publication:** set the **worker** to `shadow`. Keep the organisation mode `live` so evidence recording continues and old notifications do not restart.
+
+## When something goes wrong
+
+| Symptom | Next step |
+|---|---|
+| Workflow cannot fetch a shared file at `@main` | Confirm the shared PR has merged, then rerun the dependent check. |
+| Platform did not become Done | Check the PR merged into `main`, Work Item links/product, other open PRs and the incomplete declaration. After fixing access/configuration, retry **Work Item Development Completion** with the merged PR number. |
+| Platform is Done but not Released | Check its approved delivery scope, completing-PR evidence, store build, dependencies and audience access. |
+| Release evidence recording failed | Fix the error and retry **only the recording job**. Do not redeploy to retry a notification. |
+| Release wording changed | Have the exact frozen content reviewed again. Changed wording invalidates publication readiness. |
+| Slack delivery is uncertain | Inspect the original attempt and message receipt. Reconcile before retrying; reset Pending only after confirming no send occurred. |
+| Shared lock is stuck | Follow the [lock recovery reference](release-ledger-reference.md). Verify no holder is active before deleting the exact lock ref. |
+| Notion is unavailable | Restore integration access and retry failed work. Use independent hosted-run monitoring for alerts. |
+
+<details>
+<summary>Shadow acceptance checklist</summary>
+
+- [ ] One feature spans repos, versions and platforms; consumer and Enterprise availability differ.
+- [ ] A bug-fix-only release needs no Work Item; internal maintenance stays out of Slack; a backend customer feature can announce.
+- [ ] Store upload, phased rollout and full availability remain distinct. Verify exact app identifiers and builds.
+- [ ] Disabled flags, conditional access and delayed dependencies hold availability.
+- [ ] Hotfixes, cherry-picks, failed/partial deployments and rollback preserve correct evidence.
+- [ ] Missing links, delayed mirrors and more links than relation caps do not silently omit contents.
+- [ ] Duplicate/concurrent events, Notion outages, uncertain Slack sends and edited wording cannot publish incorrectly.
+- [ ] Main-merge completion, a manual retry, a shadow proposal and a multi-PR feature behave correctly.
+- [ ] Each declared edition includes the exact completing PR before its platform becomes Released.
+- [ ] Verify post-upload manifest snapshots for Enterprise, manual Android and the legacy iOS hotfix path before accepting those paths.
+- [ ] Check for duplicate release identities, missing receipts and stuck locks.
+
+</details>
+
+<details>
+<summary>Recorded access checks — 7 September 2026</summary>
 
 - Hosted NotionWorkers capabilities are reachable; the release processor is not deployed.
 - The hosted Notion credential returns 404 for both new datasets. Share Releases and Feature Availability with the existing worker integration before shadow execution.
@@ -17,7 +82,10 @@ Both organisation and worker lifecycle switches remain disabled pending hosted W
 - Hosted Work Item Drift configuration has not been supplied. Lifecycle writes remain disabled.
 - New Slack release/operations bot settings are not configured in the hosted worker. Existing Slack credentials have not been changed.
 
-## Baseline candidates
+</details>
+
+<details>
+<summary>Unverified baseline candidates — 7 September 2026</summary>
 
 These are exact latest GitHub release metadata candidates read on 7 September. They do not establish current production or customer availability. No historical announcements are allowed.
 
@@ -37,10 +105,16 @@ Enterprise iOS, Enterprise Android, consumer Android and Console still need exac
 
 Baseline manifests are provided in `release-baseline-candidates.json`. They deliberately have incomplete provenance, no approved hash, no availability claim and no customer changelog. Import only after resolving integration access; verify each current build and intended audience before approving a baseline.
 
-## Validation
+</details>
 
-- Worker TypeScript typecheck and production compilation passed.
-- Worker test suite, recorder tests and existing App Store/production mirror tests passed locally.
-- Changed workflow YAML passed actionlint. Its stale `create-github-app-token@v3` client-id metadata warning was excluded after verifying the official current action schema.
-- Real hosted shadow runs, App Store API credentials, Play/manual distribution evidence, Slack bot scopes/channel membership and production verification endpoints remain cutover checks.
-- Total Notion outage alerts require independent hosted-run monitoring in the operations channel.
+<details>
+<summary>Implementation and validation record</summary>
+
+- 7 September: release evidence, availability processing, Launch Hub views and draft callers prepared.
+- 8 September: added platform Done on main merge and Released after verified platform availability. Both lifecycle switches remain gated; no Work Item status was changed during implementation.
+- 114 worker tests and 15 shared release/completion tests passed; TypeScript typecheck and production compilation passed.
+- Changed workflows passed actionlint. The initial implementation excluded its stale `create-github-app-token@v3` client-id diagnostic after checking the official action schema.
+- Existing App Store and production mirror tests passed during the initial implementation.
+- Real hosted shadow runs, App Store credentials, manual Android evidence, Slack scopes/channel membership and production verification remain rollout checks.
+
+</details>
