@@ -53,6 +53,28 @@ test('wrong product, unknown repo and non-Work-Item page fail without mutation',
     const f = fixture(); change(f); await assert.rejects(completeDevelopment(f.config, f.api)); assert.equal(f.patches.length, 0);
   }
 });
+test('unrelated open PR placeholders do not abort completion', async () => {
+  const f = fixture();
+  f.open.push({ body: 'Work Items:\n- <url>' });
+  await completeDevelopment(f.config, f.api);
+  assert.equal(f.patches.length, 1);
+});
+test('valid sibling links still block their Work Item despite malformed entries', async () => {
+  const f = fixture();
+  const other = 'd'.repeat(32);
+  f.pr.body += `\n- https://www.notion.so/${other}`;
+  f.open.push({ body: `Work Items:\n- <url>\n- https://www.notion.so/${wi}` });
+  const result = await completeDevelopment(f.config, f.api);
+  assert.deepEqual(result.skipped.map(x => x.id), [wi]);
+  assert.deepEqual(result.changes.map(x => x.id), [other]);
+  assert.equal(f.patches.length, 1);
+});
+test('malformed links on the completing PR still fail before any mutation', async () => {
+  const f = fixture(); f.pr.body += '\n- <url>';
+  await assert.rejects(completeDevelopment(f.config, f.api), /Invalid Work Items/);
+  assert.equal(f.patches.length, 0);
+  assert.ok(!f.reads.some(path => path.includes('?state=open')));
+});
 test('off performs no reads; shadow and disabled lifecycle writes produce a proposal only', async () => {
   const off = fixture(); off.config.mode = 'off'; await completeDevelopment(off.config, off.api); assert.equal(off.reads.length, 0);
   for (const config of [{ mode: 'shadow' }, { lifecycleWrites: false }]) {

@@ -103,10 +103,13 @@ async function buildManifest(config, gh, baseline) {
   for (const number of [...numbers].sort((a, b) => a - b)) {
     const pr = await gh(`/repos/${config.repo}/pulls/${number}`);
     if (pr.base?.repo?.full_name !== config.repo || (!pr.merged_at && (!pr.head?.sha || !ancestor(pr.head.sha, sha)))) throw new Error(`PR #${number} is not proven in the shipped repository commit.`);
-    const ids = workItems(pr.body);
+    // Preserve discovered links and the PR in the manifest even when validation
+    // fails. Its error must block approval without aborting sibling PR scans.
+    const { ids } = parseWorkItemLinks(pr.body);
     const path = String(pr.body).match(/^Release note:\s*(\.release-notes\/[A-Za-z0-9_-]+\.json)\s*$/m)?.[1];
     let approved = false; let noteHash = ''; let note;
     try {
+      workItems(pr.body);
       if (!path) throw new Error('Add Release note: .release-notes/<change>.json to the PR body.');
       const files = [];
       for (let page = 1;; page++) { const rows = await gh(`/repos/${config.repo}/pulls/${number}/files?per_page=100&page=${page}`); files.push(...rows); if (rows.length < 100) break; }
