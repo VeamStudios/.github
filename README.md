@@ -125,12 +125,12 @@ jobs:
 - `release_limit` — number of recent releases to scan when `release_tag` is empty. Defaults to `20`.
 - `live_states` — App Store Connect states treated as live. Defaults to `READY_FOR_DISTRIBUTION,READY_FOR_SALE`.
 - `dry_run` — checks state without sending Slack or replacing the release marker.
-- `launch_hub_product` — optional product slug, `cip` or `sap`. When set, a newly notified live App Store release also writes `iOS Release Status`, `Last Production Sync`, and `Production Evidence` to Launch Hub.
+- `launch_hub_product` — optional product slug, `cip` or `sap`. When set, a newly notified live App Store release also writes `iOS Release Status`, `Last Production Sync`, and `Production Evidence` to Work Items.
 - `launch_hub_product_page_id` — optional Notion Product page ID override for unusual cases.
 
 ### `launch-hub-production-mirror.yml`
 
-Mirrors production reality into Launch Hub Work Items. It writes exact production Remote Config values such as `missing`, `false`, `research-preview`, `true`, or any other live Firebase string, plus `no platform key` when a Work Item has no Remote Config key for that platform. It also mirrors production deployment/release evidence. It does not block deploys or decide whether a feature should be enabled.
+Mirrors production observations into Work Items, the source of truth for feature scope, ownership and status. Feature Status is a view of those same records. The workflow and input names retain their legacy `launch_hub`/`launch-hub` spelling for caller compatibility; they do not depend on a dashboard page. It writes exact production Remote Config values such as `missing`, `false`, `research-preview`, `true`, or any other live Firebase string, plus `no platform key` when a Work Item has no Remote Config key for that platform. It also mirrors production deployment/release evidence. It does not block deploys or decide whether a feature should be enabled.
 
 ```yaml
 jobs:
@@ -146,13 +146,13 @@ jobs:
     secrets: inherit
 ```
 
-- `product` — product slug used to filter Launch Hub Work Items. Supported values are `cip` and `sap`.
+- `product` — product slug used to filter Work Items. Supported values are `cip` and `sap`.
 - `product_page_id` — optional Notion Product page ID override.
 - `platform` — one of `ios`, `web`, `android`, `backend`, or `all`; deployment/release status writes only apply to `ios`, `web`, and `android`. `backend` and `all` refresh Remote Config values only.
 - `firebase_project_id` — optional production Firebase project ID. When set with `SERVICE_ACCOUNT_BASE64`, the workflow reads the production Remote Config template and writes exact values to the `iOS Prod RC Value`, `Web Prod RC Value`, and `Android Prod RC Value` select fields. A configured key absent from Firebase is written as `missing`; a blank platform key is written as `no platform key`.
 - `github_environment` — optional GitHub environment name, such as `prod`, used when `SERVICE_ACCOUNT_BASE64` is scoped to a deployment environment.
 - `production_state` and `production_evidence` — optional deployment/release mirror inputs. `production_state` writes to `iOS Release Status`, `Web Deploy Status`, or `Android Release Status` based on `platform`; `production_evidence` is written only when one of those status fields is written.
-- `production_version` — deprecated and ignored. Launch Hub no longer stores a shared production version.
+- `production_version` — deprecated and ignored. Work Items do not store a shared production version.
 - `dry_run` — prints the planned updates without changing Notion.
 
 ### `update-changelog-website.yml`
@@ -243,7 +243,7 @@ jobs:
 | `deploy-ios-testflight.yml` | Build and upload an iOS app to TestFlight |
 | `hotfix-prepare.yml` / `hotfix-deploy.yml` | iOS hotfix branch and deploy flow |
 | `ios-app-store-live-monitor.yml` | Poll App Store Connect and notify Slack once a marked iOS release is live |
-| `launch-hub-production-mirror.yml` | Mirror production Remote Config values and deployment/release state into Launch Hub |
+| `launch-hub-production-mirror.yml` | Mirror production Remote Config values and deployment/release state into Work Items |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
 | `qa-pipeline.yml` | PR governance: `Has Linked Notion Work Item` on PR open/update (`Work Items:` list with one or more Notion WI URLs required for `feat` titles, including scoped or breaking forms; singular `Work Item:` remains supported), `bot: qa needed` routing to QA Project 26 as `Not Started`, and label-gated QA auto-merge |

@@ -4,6 +4,8 @@
 
 Use this page when authoring release metadata or maintaining the automation. Expand only the section you need.
 
+Work Items are the source of truth for feature scope, ownership and status. Feature Status is a view of that database. Releases and Feature Availability hold linked evidence; the automation targets data sources and Work Item IDs, independent of dashboard views.
+
 ## Release-note example
 
 Include a unique file in every PR, never reuse another PR's note filename:

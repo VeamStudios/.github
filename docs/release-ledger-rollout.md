@@ -110,7 +110,8 @@ Baseline manifests are provided in `release-baseline-candidates.json`. They deli
 <details>
 <summary>Implementation and validation record</summary>
 
-- 7 September: release evidence, availability processing, Launch Hub views and draft callers prepared.
+- 7 September: release evidence, availability processing, Work Items views and draft callers prepared.
+- 8 September: Work Items confirmed as the source of truth; Feature Status replaces the removed dashboard view. Automation does not depend on a dashboard page.
 - 8 September: added platform Done on main merge and Released after verified platform availability. Both lifecycle switches remain gated; no Work Item status was changed during implementation.
 - 114 worker tests and 15 shared release/completion tests passed; TypeScript typecheck and production compilation passed.
 - Changed workflows passed actionlint. The initial implementation excluded its stale `create-github-app-token@v3` client-id diagnostic after checking the official action schema.
