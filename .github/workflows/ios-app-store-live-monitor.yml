@@ -64,6 +64,7 @@ permissions:
 
 jobs:
   monitor:
+    if: ${{ vars.RELEASE_LEDGER_MODE != 'live' }}
     name: Monitor App Store live release
     runs-on: ubuntu-latest
     steps:

@@ -32,6 +32,7 @@ on:
 
 jobs:
   notify:
+    if: ${{ vars.RELEASE_LEDGER_MODE != 'live' }}
     name: Send Slack notification
     runs-on: ubuntu-latest
     steps:

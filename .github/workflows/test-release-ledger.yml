@@ -1,0 +1,25 @@
+name: Test Release Ledger
+on:
+  pull_request:
+    paths:
+      - '.github/actions/release-ledger/**'
+      - '.github/actions/complete-work-item-development/**'
+      - '.github/workflows/complete-work-item-development.yml'
+      - '.github/workflows/*release*.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/actions/release-ledger/**'
+      - '.github/actions/complete-work-item-development/**'
+      - '.github/workflows/complete-work-item-development.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - run: node --test .github/actions/release-ledger/*.test.js

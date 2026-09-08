@@ -532,3 +532,16 @@ jobs:
             echo ""
             echo "Reminder: propagate this fix to the default branch and any active feature branches that still need it."
           fi
+
+  record-release-ledger:
+    needs: [resolve-hotfix, build-cloud, validate-release, create-release]
+    if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
+    uses: VeamStudios/.github/.github/workflows/record-release.yml@main
+    with:
+      product: ${{ github.repository == 'VeamStudios/SiteAuditPro-iOS' && 'Site Audit Pro' || 'Checklist Inspector Pro' }}
+      target: ios-consumer
+      version: v${{ inputs.expected_version }}
+      commit: ${{ needs.resolve-hotfix.outputs.hotfix_sha }}
+      build: ${{ needs.build-cloud.outputs.build_number }}
+      phase: uploaded
+    secrets: inherit

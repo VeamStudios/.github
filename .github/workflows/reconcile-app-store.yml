@@ -1,0 +1,58 @@
+name: Reconcile App Store Release Evidence
+on:
+  workflow_call:
+    inputs:
+      target:
+        required: true
+        type: string
+      bundle_id:
+        required: true
+        type: string
+      dry_run:
+        default: false
+        type: boolean
+    secrets:
+      BOT_RELEASE_PRIVATE_KEY:
+        required: true
+      NOTION_TOKEN:
+        required: true
+      APP_STORE_CONNECT_API_KEY_CONTENT:
+        required: true
+      APP_STORE_CONNECT_API_KEY_ID:
+        required: true
+      APP_STORE_CONNECT_ISSUER_ID:
+        required: true
+permissions:
+  contents: read
+jobs:
+  reconcile:
+    if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: token
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+      - uses: actions/checkout@v6
+        with:
+          repository: VeamStudios/.github
+          token: ${{ steps.token.outputs.token }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - name: Verify exact App Store builds
+        run: node .github/actions/release-ledger/monitor-store.js
+        env:
+          INPUT_TARGET: ${{ inputs.target }}
+          INPUT_BUNDLE_ID: ${{ inputs.bundle_id }}
+          INPUT_RELEASES_ID: 8beb58ea-dd4f-4777-8799-b6694ade6317
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_GITHUB_TOKEN: ${{ steps.token.outputs.token }}
+          INPUT_NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}

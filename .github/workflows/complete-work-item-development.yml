@@ -1,0 +1,43 @@
+name: Complete Work Item Development
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: number
+    secrets:
+      BOT_RELEASE_PRIVATE_KEY:
+        required: true
+      NOTION_TOKEN:
+        required: false
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  complete:
+    if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
+    runs-on: ubuntu-latest
+    steps:
+      # No caller checkout or PR code runs in this privileged workflow.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - uses: actions/create-github-app-token@v3
+        id: token
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+      - uses: VeamStudios/.github/.github/actions/complete-work-item-development@main
+        with:
+          pr_number: ${{ inputs.pr_number }}
+          github_token: ${{ steps.token.outputs.token }}
+          notion_token: ${{ secrets.NOTION_TOKEN }}
+          mode: ${{ vars.RELEASE_LEDGER_MODE || 'off' }}
+          lifecycle_writes: ${{ vars.RELEASE_LIFECYCLE_WRITES || 'false' }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: development-completion-${{ inputs.pr_number }}-${{ github.run_attempt }}
+          path: development-completion.json
+          if-no-files-found: warn
