@@ -72,6 +72,7 @@ test('monitor retains failed records and continues recording verified releases',
   const rows = [bad, good].map(m => ({ id: m.key, properties: { Manifest: rich(JSON.stringify(m)), 'Manifest Hash': rich(hash(m)) } }));
   const writes = [];
   const result = await monitor({ repo: good.repository, target: good.target, bundleId: 'com.test.app', releasesId: 'releases' }, { notion: async (path, method, body) => {
+    if (path === '/data_sources/releases') return { properties: { Target: { type: 'rich_text' }, Products: { type: 'relation', relation: { data_source_id: '30c06908-3a03-80ca-bd1b-000b2bbce6d8' } } } };
     if (method === 'PATCH') { writes.push({ path, body }); return {}; }
     return { results: rows, has_more: false };
   } }, fixture());

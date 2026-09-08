@@ -1,3 +1,4 @@
+const { releaseSchema, targetFilter } = require('./presentation');
 const { AppStoreConnectClient, normalizeVersion } = require('../ios-app-store-live-monitor/monitor.js');
 const { clients, allPages, withLock, text, rich, hash } = require('./record.js');
 
@@ -35,7 +36,8 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
   return { phase: limited ? 'rollout' : 'live', source: `https://appstoreconnect.apple.com/apps/${app.id}/distribution/ios/version/inflight`, releasedAt: observedAt, timeBasis: 'first-observed', verification: { kind: 'app-store', build: manifest.build, commit: manifest.commit, bundleId, appId: app.id, appStoreVersionId: version.id, state, checkedAt: observedAt, evidence: `https://api.appstoreconnect.apple.com/v1/appStoreVersions/${version.id}/build` } };
 }
 async function monitor(config, api, apple) {
-  const rows = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter: { and: [{ property: 'Repository', rich_text: { equals: config.repo } }, { property: 'Target', rich_text: { equals: config.target } }] } });
+  const schema = await releaseSchema(api.notion, config.releasesId);
+  const rows = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter: { and: [{ property: 'Repository', rich_text: { equals: config.repo } }, targetFilter(schema, config.target)] } });
   const errors = []; let observed = 0;
   for (const row of rows) {
     const m = JSON.parse(text(row.properties.Manifest));
