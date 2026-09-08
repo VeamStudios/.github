@@ -14,8 +14,22 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
   if (String(build.data?.attributes?.version) !== manifest.build) throw new Error('App Store build differs from recorded shipped build');
   const state = version.attributes.appStoreState || version.attributes.appVersionState;
   if (!['READY_FOR_DISTRIBUTION', 'READY_FOR_SALE'].includes(state)) return null;
-  const phased = await apple.get(`/appStoreVersions/${version.id}/appStoreVersionPhasedRelease`);
-  const limited = phased.data && phased.data.attributes?.phasedReleaseState !== 'COMPLETE';
+  // The related resource can return 404 when no phased release exists. Only an
+  // explicit null relationship proves absence; failed lookups remain errors.
+  const relationship = await apple.get(`/appStoreVersions/${version.id}/relationships/appStoreVersionPhasedRelease`);
+  let limited = false;
+  if (relationship?.data !== null) {
+    const linked = relationship?.data;
+    if (linked?.type !== 'appStoreVersionPhasedReleases' || typeof linked.id !== 'string' || !linked.id.trim()) {
+      throw new Error('App Store phased-release relationship is missing or malformed');
+    }
+    const phased = await apple.get(`/appStoreVersions/${version.id}/appStoreVersionPhasedRelease`);
+    const phasedState = phased?.data?.attributes?.phasedReleaseState;
+    if (phased?.data?.id !== linked.id || phased.data.type !== linked.type || typeof phasedState !== 'string' || !phasedState.trim()) {
+      throw new Error('App Store phased-release evidence is missing or inconsistent');
+    }
+    limited = phasedState !== 'COMPLETE';
+  }
   const observedAt = now();
   // ASC createdDate is not the actual release time. Record first observed live time explicitly.
   return { phase: limited ? 'rollout' : 'live', source: `https://appstoreconnect.apple.com/apps/${app.id}/distribution/ios/version/inflight`, releasedAt: observedAt, timeBasis: 'first-observed', verification: { kind: 'app-store', build: manifest.build, commit: manifest.commit, bundleId, appId: app.id, appStoreVersionId: version.id, state, checkedAt: observedAt, evidence: `https://api.appstoreconnect.apple.com/v1/appStoreVersions/${version.id}/build` } };
