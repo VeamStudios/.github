@@ -1,9 +1,9 @@
 const fs = require('node:fs');
+const { parseWorkItemLinks } = require('./work-item-links');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 
 const SHA = /^[a-f0-9]{40}$/;
-const WI = /https:\/\/(?:[a-z0-9-]+\.)?notion\.(?:so|com|site)\/[^\s)>]*?([a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})(?=[?/#\s)>]|$)/gi;
 const canonical = value => JSON.stringify(value, (_, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v);
 const hash = value => crypto.createHash('sha256').update(canonical(value)).digest('hex');
 const rich = value => {
@@ -14,9 +14,11 @@ const rich = value => {
 const text = prop => (prop?.rich_text || prop?.title || []).map(x => x.plain_text ?? x.text?.content ?? '').join('');
 const select = name => ({ select: { name } });
 function workItems(body) {
-  const section = String(body).match(/(?:^|\n)(?:#{1,6}\s*)?Work Items:\s*\n((?:[ \t]*[-*][^\n]+\n?)+)/i)?.[1] || '';
-  return [...new Set([...section.matchAll(WI)].map(x => x[1].replace(/-/g, '').toLowerCase()))].sort();
+  const { ids, invalidEntries } = parseWorkItemLinks(body);
+  if (invalidEntries.length) throw new Error('Invalid Work Items links: use one Notion page URL per entry.');
+  return ids;
 }
+
 function validateNote(note, ids) {
   if (!note || !['feature', 'fix', 'internal'].includes(note.kind)) throw new Error('Release note kind must be feature, fix or internal.');
   for (const key of ['summary', 'audience', 'limitations', 'scope']) {
