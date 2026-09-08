@@ -122,3 +122,9 @@ The durable Sending marker precedes Slack. If Slack succeeds but receipt persist
 </details>
 
 Primary API references: [Notion sync schedules](https://developers.notion.com/workers/guides/syncs), [App Store related build](https://developer.apple.com/documentation/appstoreconnectapi/get-v1-appstoreversions-_id_-build), [App Store phased release](https://developer.apple.com/documentation/appstoreconnectapi/get-v1-appstoreversions-_id_-appstoreversionphasedrelease), [Slack message updates](https://docs.slack.dev/reference/methods/chat.update/).
+
+## Releases presentation
+
+Notion release titles use `SAP Web 5.10.0`, `CIP iOS 2.2.0`, or `CloudServices 1.14.0`; Enterprise editions and separate Activation/Withdrawal events remain explicit. Titles and Products relations are presentation fields, not release identities. Frozen manifest product/target/version strings and hashes are unchanged.
+
+The recorder and App Store monitor inspect Releases.Target's schema and support both machine text values and readable select options during migration. Products uses the existing Products relation, with explicit SAP/CIP/Shared page mappings; conflicting existing relations and unknown mappings require reconciliation. Install both shared-action and worker support before converting Target under the shared release lock. Keep notification receipts and hashes, hidden from normal views, for delivery recovery.

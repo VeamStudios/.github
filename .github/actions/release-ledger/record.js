@@ -1,3 +1,4 @@
+const { releaseSchema, targetFilter, presentation } = require('./presentation');
 const fs = require('node:fs');
 const { parseWorkItemLinks } = require('./work-item-links');
 const crypto = require('node:crypto');
@@ -127,6 +128,7 @@ async function buildManifest(config, gh, baseline) {
   return { schemaVersion: 1, key: releaseKey(config.repo, config.target, config.version, config.event), repository: config.repo, product: config.product, target: config.target, version: config.version, build: config.build || '', commit: sha, baseline: baseline || '', event: config.event || 'release', prs, changes, issues, provenanceComplete: unmapped.length === 0 && validBaseline, provenanceMapping: mappingEvidence, source: config.source };
 }
 async function record(config, api) {
+  const schema = await releaseSchema(api.notion, config.releasesId);
   const filter = { property: 'Release Key', rich_text: { equals: releaseKey(config.repo, config.target, config.version, config.event) } };
   const existing = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter });
   if (existing.length > 1) throw new Error('Duplicate release identity found; reconcile before continuing.');
@@ -137,7 +139,7 @@ async function record(config, api) {
   } else {
     let baseline = config.baseline;
     if (!baseline) {
-      const previous = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter: { and: [{ property: 'Repository', rich_text: { equals: config.repo } }, { property: 'Target', rich_text: { equals: config.target } }, { property: 'State', select: { equals: 'Available' } }] }, sorts: [{ property: 'Released At', direction: 'descending' }] });
+      const previous = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter: { and: [{ property: 'Repository', rich_text: { equals: config.repo } }, targetFilter(schema, config.target), { property: 'State', select: { equals: 'Available' } }] }, sorts: [{ property: 'Released At', direction: 'descending' }] });
       baseline = previous.find(row => text(row.properties['Release Key']) !== filter.rich_text.equals)?.properties.Commit;
       baseline = typeof baseline === 'object' ? text(baseline) : baseline;
     }
@@ -155,7 +157,7 @@ async function record(config, api) {
   const rank = { prepare: 0, uploaded: 1, deployed: 2, rollout: 3, live: 4, withdrawn: 5 };
   const acceptObservation = !previousObservation || rank[config.phase] >= rank[previousObservation.phase];
   const oldState = existing[0]?.properties.State?.select?.name;
-  const properties = { Name: { title: [{ text: { content: `${config.product} · ${config.target} · ${config.version}` } }] }, 'Release Key': rich(manifest.key), Product: rich(config.product), Repository: rich(config.repo), Target: rich(config.target), Version: rich(config.version), Commit: rich(manifest.commit), Build: rich(manifest.build), Event: select(manifest.event), Manifest: rich(JSON.stringify(manifest)), 'Manifest Hash': rich(digest), Changelog: rich(manifest.changes.filter(c => c.kind !== 'internal').map(c => `- ${c.summary}`).join('\n')), 'Work Items': { relation: ids.map(id => ({ id })) }, Source: { url: config.source }, 'Observed At': { date: { start: observedAt } } };
+  const properties = { ...presentation(manifest, schema, existing[0]), 'Release Key': rich(manifest.key), Product: rich(config.product), Repository: rich(config.repo), Version: rich(config.version), Commit: rich(manifest.commit), Build: rich(manifest.build), Event: select(manifest.event), Manifest: rich(JSON.stringify(manifest)), 'Manifest Hash': rich(digest), Changelog: rich(manifest.changes.filter(c => c.kind !== 'internal').map(c => `- ${c.summary}`).join('\n')), 'Work Items': { relation: ids.map(id => ({ id })) }, Source: { url: config.source }, 'Observed At': { date: { start: observedAt } } };
   if (ids.length > 100) delete properties['Work Items'];
   if (!existing[0]) Object.assign(properties, { State: select(states[config.phase]), 'Historical': { checkbox: config.historical === true }, 'Notification State': select(config.historical ? 'Suppressed' : 'Pending'), Error: rich(manifest.issues.join('\n')) });
   if (readyNotes && !existing[0]) Object.assign(properties, { 'Approved Hash': rich(digest), 'Approval Evidence': { url: manifest.prs[0].url } });
