@@ -28,7 +28,8 @@ function validateNote(note, ids) {
   if (!Array.isArray(note.requiredReleaseKeys) || note.requiredReleaseKeys.some(x => typeof x !== 'string' || !x)) throw new Error('requiredReleaseKeys must be an explicit array (empty is allowed).');
   if (!Array.isArray(note.targets) || note.targets.length === 0 || note.targets.some(x => typeof x !== 'string' || !/^[a-z0-9][a-z0-9.-]+$/.test(x))) throw new Error('Release note requires explicit targets.');
   if (typeof note.audienceGate !== 'boolean') throw new Error('Release note must explicitly set audienceGate.');
-  return { kind: note.kind, summary: note.summary.trim(), audience: note.audience, limitations: note.limitations, scope: note.scope, targets: [...new Set(note.targets)].sort(), audienceGate: note.audienceGate, requiredReleaseKeys: [...new Set(note.requiredReleaseKeys)].sort(), workItems: ids };
+  if (note.developmentComplete !== undefined && typeof note.developmentComplete !== 'boolean') throw new Error('developmentComplete must be a boolean when supplied.');
+  return { kind: note.kind, summary: note.summary.trim(), audience: note.audience, limitations: note.limitations, scope: note.scope, targets: [...new Set(note.targets)].sort(), audienceGate: note.audienceGate, requiredReleaseKeys: [...new Set(note.requiredReleaseKeys)].sort(), workItems: ids, ...(note.developmentComplete === undefined ? {} : { developmentComplete: note.developmentComplete }) };
 }
 function releaseKey(repo, target, version, event = 'release') {
   return `${repo}/${target}/${event}/${version}`;

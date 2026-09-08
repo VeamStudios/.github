@@ -2,6 +2,12 @@
 
 Implementation is prepared for review; no worker deployment, production cutover or Slack publication has occurred.
 
+## 8 September addition: platform Done and Released
+
+Matt requested automatic updates to the existing platform Dev Status fields after merge and production deployment. The shared main-merge workflow and five client callers now record Done for linked Work Items; the worker projects verified platform availability to Released. The completing PR is persisted in the new Work Items `Platform Development` rich-text property. Other linked open PRs, an explicit incomplete declaration, product mismatches and replayed completion events are guarded. Releases must include the completing PR and satisfy every approved required scope for that platform.
+
+Both organisation and worker lifecycle switches remain disabled pending hosted Work Item Drift ownership inspection. The new workflow uses trusted shared code without checking out PR code. Test the main-merge trigger, manual retry, shadow proposal, multi-PR completion, per-edition availability and exact completing-PR mapping during the coordinated shadow rollout. No Work Item statuses were changed as part of implementation.
+
 ## Access verified
 
 - Hosted NotionWorkers capabilities are reachable; the release processor is not deployed.

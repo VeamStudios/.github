@@ -42,7 +42,22 @@ Targets distinguish editions: `ios-consumer`, `ios-enterprise`, `android-consume
 
 A current-head human PR approval freezes wording, classification, audience, limitations, target, scope, dependencies and WI links into the manifest. A missing review holds publication. The admin utility can explicitly approve an exact complete manifest with a review evidence link. Changing Notion's Changelog or Manifest afterward invalidates readiness; retries do not overwrite the edit. Corrections use a reviewed new event when the frozen manifest would change.
 
-Use a **new scope ID for enhancements**. To plan delivery before a PR exists, create Feature Availability rows with their Work Item, target, scope, audience, limitations and explicit required release keys. Link all agreed targets through Work Items.Required Availability. The admin `approve-scope` operation snapshots the relation and its contracts; subsequent scope edits invalidate aggregate completion. One platform can be Available while the overall WI remains in development. The worker does not write developer status or implementation tabs.
+Use a **new scope ID for enhancements**. To plan delivery before a PR exists, create Feature Availability rows with their Work Item, target, scope, audience, limitations and explicit required release keys. Link all agreed targets through Work Items.Required Availability. The admin `approve-scope` operation snapshots the relation and its contracts; subsequent scope edits invalidate aggregate completion. One platform can be Available while the overall WI remains in development. Implementation tabs remain owned by the existing developer workflow.
+
+## Automatic platform development status
+
+The existing `Web Dev Status`, `iOS Dev Status` and `Android Dev Status` fields follow **In Development → Done → Released**:
+
+1. The existing implementation skill/Cursor automation sets In Development.
+2. A client PR merged into `main` triggers `work-item-development.yml`, which calls the shared completion workflow. It reads explicit `Work Items:` links from GitHub and sets **only that repository's platform** to Done. SAP/CIP product relations must match. Unmerged closes, other base branches, inactive Work Items and unlinked fixes do not update status. Other linked open PRs in the same platform repository, including drafts and intermediate branches, hold completion. If required follow-up work has no PR yet, put `"developmentComplete": false` in the committed release note; the final PR can omit it or use true. Reviewers must check this declaration when a feature is split across PRs.
+3. The release processor sets that platform to Released after every approved required availability scope for that platform is Available. It also verifies that the completing PR's exact head appears in the frozen release evidence for that scope. An old release cannot complete a new enhancement cycle. Consumer and Enterprise rows remain separate; both must be available if both belong to the agreed platform scope.
+4. Only when **all** required platforms/components are available does the overall Work Item become Released. A successful web deploy plus its verification check can satisfy this; uploads, flags, dependencies, partial rollouts and failed deployments still wait.
+
+The Work Items `Platform Development` rich-text property stores the latest completing PR, exact head/merge commit, merge time and scope for each platform. It is automation evidence, not a field authors maintain. Completion and its receipt are written in one Notion page update under the same central lock used by release processing. Duplicate/older events cannot mark a new development cycle Done, and merge events never downgrade Released. For enhancements, the existing development workflow must explicitly start In Development again.
+
+Callers exist in both client Web repositories, both iOS repositories and SiteAuditPro-AndroidNew. Backend, CloudServices, packages, Console and promotional websites cannot complete a client platform. The privileged merge workflow never checks out or executes PR code; it reads committed JSON as data through the GitHub API. A manual workflow dispatch accepts a merged PR number to retry a failed status update without redeploying.
+
+Completion writes require **both** organisation `RELEASE_LEDGER_MODE=live` and `RELEASE_LIFECYCLE_WRITES=true`. Shadow mode emits a proposed update as an Actions artifact without editing Work Items. The worker uses its corresponding mode/lifecycle environment settings for Released. Keep both lifecycle switches false until hosted Work Item Drift ownership is verified. These switches do not authorize blanket historical completion.
 
 ## Exact contents and evidence
 
@@ -64,7 +79,9 @@ Android and managed distribution initially use the verified manual path. Specify
 
 | Fields | Sole writer after cutover |
 |---|---|
-| Work Item developer status and AI Implementation | Existing developer/Work Item Drift process; hosted configuration must be inspected before cutover |
+| Platform Dev Status: Not Started / In Development; AI Implementation | Existing developer/Work Item Drift process; hosted configuration must be inspected before cutover |
+| Platform Dev Status: Done; Platform Development evidence | Shared main-merge completion workflow, with lifecycle writes enabled after ownership verification |
+| Platform Dev Status: Released | Release processor, after approved platform scope and completing-PR evidence are verified |
 | Work Item Required Availability and scope approval | Product owner, through reviewed scope/admin helper |
 | Work Item Released | Release processor, only with `RELEASE_LIFECYCLE_WRITES=true` after ownership verification |
 | Production Remote Config values | Existing production mirror; release-state input is disabled when org mode is live |
@@ -92,7 +109,7 @@ The durable Sending marker precedes Slack. If Slack succeeds but receipt persist
 ## Coordinated rollout and remaining qualification
 
 1. Merge shared actions, then all production callers and NotionWorkers, with mode off. Configure integration access and verify Console app access. Enable required release-note checks after all callers exist.
-2. Inspect hosted Work Item Drift and Manager Product; agree ownership. Keep lifecycle writes false until verified. Resolve the current incomplete Enterprise evidence first.
+2. Inspect hosted Work Item Drift and Manager Product; agree transition ownership, including platform Done/Released. Ensure Work Items has the `Platform Development` rich-text property and the completion workflow integration can read/write it. Keep both GitHub and worker lifecycle writes false until verified. Resolve the current incomplete Enterprise evidence first.
 3. Create historical baseline records with exact current production source/build and verification. Unsupported claims remain Unverified; historical announcements are always suppressed. Latest GitHub release metadata alone is not current audience availability.
 4. Enable shadow across **all** callers and the worker. Exercise normal, Enterprise, store, manual Android, hotfix, activation, rollback, failed/partial deployment and retry paths. Validate exact platform identifiers and production checks. Confirm post-upload snapshot paths and phased-rollout policy meet the operational requirements before accepting them for cutover.
 5. Compare frozen records and proposed posts with actual releases. Check no duplicate identities/receipts or stuck locks. Verify more-than-cap contents, multi-repo scopes, bug-fix-only releases, internal service suppression, dependency delays and wording invalidation.

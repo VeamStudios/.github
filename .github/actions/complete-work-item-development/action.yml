@@ -1,0 +1,29 @@
+name: Complete Work Item platform development
+description: Record merged PR completion using trusted code and explicit Work Item links.
+inputs:
+  pr_number:
+    description: Merged PR number in the caller repository
+    required: true
+  github_token:
+    description: GitHub read access and central lock write access
+    required: true
+  notion_token:
+    description: Integration with access to Work Items
+    required: true
+  mode:
+    description: off, shadow or live
+    default: off
+  lifecycle_writes:
+    description: Enable only after field ownership is verified
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        PR_NUMBER: ${{ inputs.pr_number }}
+        GH_TOKEN: ${{ inputs.github_token }}
+        NOTION_TOKEN: ${{ inputs.notion_token }}
+        RELEASE_LEDGER_MODE: ${{ inputs.mode }}
+        RELEASE_LIFECYCLE_WRITES: ${{ inputs.lifecycle_writes }}
+      run: node "${{ github.action_path }}/../release-ledger/complete-development.js"
