@@ -1,7 +1,7 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {releaseName, presentation, releaseSchema, targetFilter, TARGETS, PRODUCTS} = require('./presentation');
-const schema = type => ({properties:{Target:{type},Products:{type:'relation',relation:{data_source_id:'30c06908-3a03-80ca-bd1b-000b2bbce6d8'}}}});
+const schema = type => ({properties:{Target:{type,select:{options:Object.values(TARGETS).map(name=>({name}))}},Products:{type:'relation',relation:{data_source_id:'30c06908-3a03-80ca-bd1b-000b2bbce6d8'}}}});
 const m = {product:'Checklist Inspector Pro',target:'ios-consumer',version:'v2.2.0',event:'baseline'};
 test('readable names keep edition and event distinctions without changing source data',()=>{
  const before=JSON.stringify(m);
@@ -18,7 +18,7 @@ test('all targets support legacy text and select reads/writes during conversion'
   const source={...m,target}, a=presentation(source,schema('rich_text')), b=presentation(source,schema('select'));
   assert.equal(a.Target.rich_text[0].text.content,target);assert.equal(b.Target.select.name,label);
   assert.equal(targetFilter(schema('rich_text'),target).rich_text.equals,target);
-  assert.deepEqual(targetFilter(schema('select'),target).or.map(f=>f.select.equals),[label,target]);
+  assert.deepEqual(targetFilter(schema('select'),target).or.map(f=>f.select.equals),[label]);
  }
  await assert.rejects(releaseSchema(async()=>schema('number'),'releases'),/text or select/);
  await assert.rejects(releaseSchema(async()=>({properties:{Target:{type:'select'}}}),'releases'),/existing Products/);
@@ -30,4 +30,12 @@ test('relations are explicit and existing conflicting products fail before write
  assert.throws(()=>presentation({...m,product:'Unknown'},schema('select')),/Unknown release product/);
  assert.throws(()=>presentation({...m,target:'future'},schema('select')),/Unknown release target/);
  assert.deepEqual(Object.keys(presentation(m,schema('select'))),['Name','Target','Products']);
+});
+
+test('select filters include only existing friendly or legacy options',()=>{
+ const withOptions=names=>({properties:{Target:{type:'select',select:{options:names.map(name=>({name}))}}}});
+ assert.deepEqual(targetFilter(withOptions(['Web']),'web').or.map(f=>f.select.equals),['Web']);
+ assert.deepEqual(targetFilter(withOptions(['web']),'web').or.map(f=>f.select.equals),['web']);
+ assert.deepEqual(targetFilter(withOptions(['Web','web']),'web').or.map(f=>f.select.equals),['Web','web']);
+ assert.throws(()=>targetFilter(withOptions(['Website']),'web'),/no select option/);
 });

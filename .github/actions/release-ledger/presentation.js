@@ -25,8 +25,11 @@ async function releaseSchema(notion, id) {
 function targetFilter(schema, target) {
   const label = targetLabel(target);
   if (schema.properties.Target.type === 'rich_text') return { property: 'Target', rich_text: { equals: target } };
-  // The old machine option can briefly exist during in-place conversion.
-  return { or: [...new Set([label, target])].map(name => ({ property: 'Target', select: { equals: name } })) };
+  // Notion rejects unknown select names, even inside an OR filter.
+  const options = new Set((schema.properties.Target.select?.options || []).map((option) => option.name));
+  const names = [...new Set([label, target])].filter(name => options.has(name));
+  if (!names.length) throw new Error(`Releases.Target has no select option for ${target}; reconcile the schema`);
+  return { or: names.map(name => ({ property: 'Target', select: { equals: name } })) };
 }
 function presentation(m, schema, row) {
   const label = targetLabel(m.target), productId = Object.hasOwn(PRODUCTS, m.product) ? PRODUCTS[m.product] : undefined;
