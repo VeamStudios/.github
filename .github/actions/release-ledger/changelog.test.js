@@ -27,3 +27,6 @@ test('exact shipped changelog includes skipped versions and frozen Work Items wi
     assert.equal(m.schemaVersion,2);assert.equal(m.commit,shipped);assert.equal(m.changes.length,2);assert.deepEqual(m.changes.map(c=>c.kind),['feature','fix']);assert.ok(m.changes.every(c=>c.approved));assert.equal(m.workItemSnapshots[0].description,'Export your reports as spreadsheets.');assert.doesNotMatch(m.completeChangelog,/Old fix|rcValue/);assert.match(m.completeChangelog,/1\.1\.0/);assert.ok(!queried.some(url=>url.includes(later)));assert.deepEqual(m.changes[1].workItems,[]);
   }finally{process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
 });
+
+test('a repeated fix is new only when an additional version occurrence was added',()=>{const before='## 1.0.0\n### Fixed\n- Performance improvements.\n';const after='## 1.1.0\n### Fixed\n- Performance improvements.\n'+before;const added=newEntries(before,after);assert.equal(added.length,1);assert.equal(added[0].version,'1.1.0')});
+test('adding a source link while moving a section does not duplicate the entry',()=>{assert.deepEqual(newEntries('## Unreleased\n### Fixed\n- Fix exports.\n','## 1.1.0\n### Fixed\n- Fix exports. [PR](https://github.com/VeamStudios/Test/pull/2)\n'),[])});

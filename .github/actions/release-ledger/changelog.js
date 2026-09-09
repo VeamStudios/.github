@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 const { parseWorkItemLinks } = require('./work-item-links');
 const digest = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const normalized = value => value.replace(/\s+/g,' ').trim();
-const identity = e => normalized(e.summary.replace(/\[([^\]]+)\]\((?:https:\/\/(?:www\.)?notion\.so\/|https:\/\/app\.notion\.com\/p\/|https:\/\/github\.com\/)[^)]+\)/g,'$1'));
+const identity = e => normalized(e.summary.replace(/\s*\[(?:Work Item|PR|source)\]\(https?:\/\/[^)]+\)/gi,'').replace(/\[([^\]]+)\]\((?:https:\/\/(?:www\.)?notion\.so\/|https:\/\/app\.notion\.com\/p\/|https:\/\/github\.com\/)[^)]+\)/g,'$1'));
 
 function parseChangelog(input) {
   const entries=[];let version='',heading='',entry;
@@ -32,7 +32,17 @@ function renderChangelog(entries) {
   for(const e of entries){const v=e.version||e.sourceVersion;if(multiple&&v!==version){version=v;heading='';lines.push(`## ${v}`,'')};if(e.heading!==heading){heading=e.heading;lines.push(`### ${heading}`,'')};lines.push(`- ${e.summary}`,'')}
   return lines.join('\n').trim();
 }
-function newEntries(before,after){const old=new Set(parseChangelog(before).map(identity));return parseChangelog(after).filter(e=>!old.has(identity(e)))}
+function newEntries(before,after){
+  const old=parseChangelog(before),next=parseChangelog(after),matched=new Set();
+  // Preserve duplicate counts: a repeated fix in a new version is new, while a
+  // section move consumes the existing occurrence and cannot announce it twice.
+  for(const exactVersion of [true,false])for(let i=0;i<next.length;i++) {
+    if(matched.has(i))continue;
+    const j=old.findIndex(e=>e&&identity(e)===identity(next[i])&&(!exactVersion||e.version===next[i].version));
+    if(j>=0){old[j]=null;matched.add(i)}
+  }
+  return next.filter((_,i)=>!matched.has(i));
+}
 function internalFiles(files){return files.length>0 && files.every(f=> /^(?:\.github\/|docs\/|README(?:\.|$)|LICENSE|.*\.md$)/.test(f.filename) && f.filename!=='CHANGELOG.md')}
 
 async function buildChangelogManifest(config,gh,baseline,notion) {
@@ -110,6 +120,8 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
     const c={id,kind,summary,heading:entry.heading,sourceVersion:entry.version,audience:'Users of this production target',limitations:entry.previewTag?`Preview: ${entry.previewTag}`:'',scope:`changelog-${id.slice(0,24)}`,targets:[config.target],audienceGate:kind==='feature'||flagKeys.length>0,requiredReleaseKeys:[],workItems:linked,pr:wording?.pr.number||sources[0]?.pr.number||0,noteHash:hash({summary,heading:entry.heading,sourcePrs}),approved:Boolean(wording?.approved),reviewEvidence:wording?.approved?wording.pr.html_url:'',blocked,flagKeys,gateKeys,sourcePrs};
     changes.push(c);
   }
-  return {schemaVersion:2,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs,changes,workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url}:null,issues,provenanceComplete:validBaseline&&unmapped.length===0,source:config.source};
+  const covered=new Set(changes.filter(c=>!c.blocked.length).flatMap(c=>c.sourcePrs));
+  const warnings=issues.filter(message=>{const missing=message.match(/^PR #(\d+) has no new changelog entry/);return !missing||!covered.has(Number(missing[1]))});
+  return {schemaVersion:2,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs,changes,workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url}:null,issues:warnings,provenanceComplete:validBaseline&&unmapped.length===0,source:config.source};
 }
 module.exports={parseChangelog,newEntries,renderChangelog,identity,buildChangelogManifest,internalFiles};
