@@ -4,8 +4,6 @@ on:
     paths:
       - '.github/actions/remote-config-notion-sync/**'
       - '.github/workflows/remote-config-notion-sync.yml'
-      - '.github/workflows/launch-hub-production-mirror.yml'
-      - '.github/actions/launch-hub-production-mirror/action.yml'
       - '.github/workflows/ios-app-store-live-monitor.yml'
       - '.github/workflows/test-remote-config-notion-sync.yml'
   push:
@@ -13,8 +11,6 @@ on:
     paths:
       - '.github/actions/remote-config-notion-sync/**'
       - '.github/workflows/remote-config-notion-sync.yml'
-      - '.github/workflows/launch-hub-production-mirror.yml'
-      - '.github/actions/launch-hub-production-mirror/action.yml'
       - '.github/workflows/ios-app-store-live-monitor.yml'
       - '.github/workflows/test-remote-config-notion-sync.yml'
 permissions:
