@@ -1,0 +1,11 @@
+{
+  "kind": "internal",
+  "summary": "Skip buildless historical baselines during App Store monitoring while retaining current release verification.",
+  "workItems": [],
+  "scope": "historical-store-monitor",
+  "targets": ["ios-consumer", "ios-enterprise"],
+  "audience": "VeamStudios engineering",
+  "limitations": "Historical records remain unverified and announcement-suppressed.",
+  "audienceGate": false,
+  "requiredReleaseKeys": []
+}
