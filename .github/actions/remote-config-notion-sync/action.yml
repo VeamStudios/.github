@@ -1,13 +1,13 @@
-name: Launch Hub production mirror
-description: Mirrors production Remote Config values and release/deploy status into Launch Hub Work Items.
+name: Remote Config → Notion Sync
+description: Syncs production Firebase Remote Config defaults and optional legacy release/deploy status to Notion Work Items.
 
 inputs:
   product:
-    description: "Product slug used to resolve the Launch Hub Product page ID. Supported values: cip, sap."
+    description: "Product slug used to resolve the Notion Product page ID. Supported values: cip, sap."
     required: false
     default: ""
   product_page_id:
-    description: "Optional Notion Product page ID override used to filter Launch Hub Work Items."
+    description: "Optional Notion Product page ID override used to filter Notion Work Items."
     required: false
     default: ""
   work_items_data_source_id:
@@ -23,7 +23,7 @@ inputs:
     required: false
     default: ""
   production_version:
-    description: "Deprecated; ignored. Launch Hub no longer stores a shared production version."
+    description: "Deprecated; ignored. Work Items no longer store a shared production version."
     required: false
     default: ""
   production_evidence:
@@ -39,7 +39,7 @@ inputs:
     required: false
     default: ""
   notion_token:
-    description: "Notion API token with access to Launch Hub."
+    description: "Notion API token with access to Work Items and Products."
     required: false
     default: ""
   dry_run:
@@ -49,10 +49,10 @@ inputs:
 
 outputs:
   matched_pages:
-    description: "Number of Launch Hub Work Items matched."
+    description: "Number of Notion Work Items matched."
     value: ${{ steps.sync.outputs.matched_pages }}
   updated_pages:
-    description: "Number of Launch Hub Work Items updated."
+    description: "Number of Notion Work Items updated."
     value: ${{ steps.sync.outputs.updated_pages }}
   remote_config_checked:
     description: "Number of Remote Config keys checked."
@@ -61,7 +61,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Sync Launch Hub production mirror
+    - name: Remote Config → Notion Sync
       id: sync
       shell: bash
       env:

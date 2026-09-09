@@ -242,7 +242,7 @@ async function run() {
   await testBackendDoesNotWriteStatusOrEvidence();
   await testPlatformFilteringUsesRelevantRcKeys();
   await testDryRunDoesNotUpdate();
-  console.log("launch-hub-production-mirror tests passed");
+  console.log("remote-config-notion-sync tests passed");
 }
 
 run().catch((error) => {
