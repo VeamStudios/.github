@@ -1,4 +1,8 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 const {
   buildPageProperties,
   remoteConfigValue,
@@ -33,9 +37,11 @@ class FakeNotion {
   constructor(pages) {
     this.pages = pages;
     this.updates = [];
+    this.queries = 0;
   }
 
   async queryDataSource() {
+    this.queries += 1;
     return { results: this.pages, has_more: false };
   }
 
@@ -120,6 +126,7 @@ async function testSyncWritesExactRcValues() {
   assert.equal(notion.updates[0].properties["iOS Prod RC Value"].select.name, "research-preview");
   assert.equal(notion.updates[0].properties["Web Prod RC Value"].select.name, "missing");
   assert.equal(notion.updates[0].properties["Android Prod RC Value"].select.name, "custom-live-value");
+  assert.equal(notion.updates[0].properties["Last Production Sync"].date.start, "2026-06-19T12:00:00.000Z");
 }
 
 async function testSyncWritesNoPlatformKeyForBlankRcKeys() {
@@ -162,6 +169,7 @@ async function testProductionStatusTargetsPlatform() {
   assert.equal(properties["iOS Release Status"], "Uploaded to App Store Connect");
   assert.equal(properties["Web Deploy Status"], undefined);
   assert.equal(properties["Production Evidence"], "https://github.com/run");
+  assert.equal(properties["Last Production Sync"], undefined);
 }
 
 async function testAndroidReleaseStatusTargetsPlatform() {
@@ -213,6 +221,117 @@ async function testPlatformFilteringUsesRelevantRcKeys() {
   assert.equal(notion.updates.length, 1);
   assert.equal(notion.updates[0].id, "ios-item");
   assert.equal(notion.updates[0].properties["iOS Release Status"].select.name, "Uploaded to App Store Connect");
+  assert.equal(notion.updates[0].properties["Last Production Sync"], undefined);
+}
+
+function oneItem() {
+  return page({ id: "work-item-1", title: "Feature", productId: cipProductId, iosKey: "flag" });
+}
+
+async function testFailedReadsNeverClaimFreshness() {
+  for (const dryRun of [false, true]) {
+    const notion = new FakeNotion([oneItem()]);
+    const firebase = { getTemplate: async () => { throw new Error("Firebase 403"); } };
+    const summary = await runSync(baseConfig({ dryRun, platform: "ios", productionState: "Live" }), { notion, firebase });
+    assert.deepEqual(summary.errors, ["Remote Config read failed: Firebase 403"]);
+    assert.equal(summary.updatedPages, 0);
+    assert.equal(notion.queries, 0);
+    assert.deepEqual(notion.updates, []);
+  }
+}
+
+async function testMissingCredentialsAndMalformedTemplates() {
+  const notion = new FakeNotion([oneItem()]);
+  const missing = await runSync(baseConfig({ firebaseProjectId: "test-project" }), { notion, firebase: null });
+  assert.match(missing.errors.join(" "), /credentials are not configured/);
+  for (const template of [null, undefined, [], "bad-template"]) {
+    const summary = await runSync(baseConfig(), { notion, firebase: new FakeFirebase(template) });
+    assert.match(summary.errors.join(" "), /invalid Remote Config template/);
+  }
+  assert.equal(notion.queries, 0);
+  assert.deepEqual(notion.updates, []);
+}
+
+async function testLiveUploadWithNothingToObserveIsNoOp() {
+  const notion = new FakeNotion([oneItem()]);
+  for (const client of [notion, null]) {
+    const summary = await runSync(baseConfig({ platform: "ios" }), { notion: client, firebase: null });
+    assert.deepEqual(summary.errors, []);
+    assert.equal(summary.matchedPages, 0);
+    assert.equal(summary.updatedPages, 0);
+  }
+  assert.equal(notion.queries, 0);
+  assert.deepEqual(notion.updates, []);
+}
+
+async function testNotionReadFailureIsReported() {
+  const notion = new FakeNotion([oneItem()]);
+  notion.queryDataSource = async () => { throw new Error("Notion 502"); };
+  const summary = await runSync(baseConfig(), { notion, firebase: new FakeFirebase({}) });
+  assert.deepEqual(summary.errors, ["Work Items read failed: Notion 502"]);
+  assert.equal(summary.updatedPages, 0);
+  assert.deepEqual(notion.updates, []);
+}
+
+async function testPageFailureDoesNotDiscardOtherUpdates() {
+  const notion = new FakeNotion([
+    oneItem(),
+    page({ id: "work-item-2", title: "Other feature", productId: cipProductId, iosKey: "flag" }),
+  ]);
+  const update = notion.updatePage.bind(notion);
+  notion.updatePage = async (id, properties) => {
+    if (id === "work-item-1") throw new Error("Notion 502");
+    return update(id, properties);
+  };
+  const summary = await runSync(baseConfig(), { notion, firebase: new FakeFirebase({}) });
+  assert.equal(summary.matchedPages, 2);
+  assert.equal(summary.updatedPages, 1);
+  assert.equal(summary.remoteConfigChecked, 2);
+  assert.deepEqual(summary.errors, ["Work Item work-item-1 update failed: Notion 502"]);
+  assert.deepEqual(summary.items.map(item => item.updated), [false, true]);
+  assert.equal(notion.updates[0].id, "work-item-2");
+}
+
+async function testCommandExitStatusAndOutputs() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "remote-config-notion-test-"));
+  try {
+    const preload = path.join(dir, "fetch.cjs");
+    // Exercise the actual CLI without allowing any production API requests.
+    fs.writeFileSync(preload, 'global.fetch = async () => { throw new Error("simulated Notion outage"); };');
+    const invoke = (inputs = {}, extra = {}) => {
+      const output = path.join(dir, "outputs");
+      fs.writeFileSync(output, "");
+      const result = spawnSync(process.execPath, ["--require", preload, path.join(__dirname, "sync.js")], {
+        encoding: "utf8",
+        env: {
+          INPUT_PRODUCT: "cip",
+          INPUT_PLATFORM: "ios",
+          INPUT_WORK_ITEMS_DATA_SOURCE_ID: "test-data-source",
+          INPUT_NOTION_TOKEN: "fake-test-token",
+          INPUT_PRODUCTION_STATE: "Live",
+          ...inputs,
+          GITHUB_OUTPUT: output,
+          ...extra,
+        },
+      });
+      return { ...result, outputs: fs.readFileSync(output, "utf8") };
+    };
+    const failed = invoke();
+    assert.equal(failed.status, 1);
+    assert.match(failed.stderr, /::error::Work Items read failed: simulated Notion outage/);
+    assert.match(failed.outputs, /updated_pages=0/);
+    const missing = invoke({ INPUT_FIREBASE_PROJECT_ID: "test-project" });
+    assert.equal(missing.status, 1);
+    assert.match(missing.stderr, /credentials are not configured/);
+    const skipped = invoke({ INPUT_PRODUCTION_STATE: "", INPUT_NOTION_TOKEN: "" });
+    assert.equal(skipped.status, 0);
+    assert.match(skipped.outputs, /matched_pages=0/);
+    const outerFailure = invoke({ INPUT_PRODUCTION_STATE: "" }, { GITHUB_STEP_SUMMARY: dir });
+    assert.equal(outerFailure.status, 1);
+    assert.match(outerFailure.stderr, /EISDIR/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 async function testDryRunDoesNotUpdate() {
@@ -242,6 +361,12 @@ async function run() {
   await testBackendDoesNotWriteStatusOrEvidence();
   await testPlatformFilteringUsesRelevantRcKeys();
   await testDryRunDoesNotUpdate();
+  await testFailedReadsNeverClaimFreshness();
+  await testMissingCredentialsAndMalformedTemplates();
+  await testLiveUploadWithNothingToObserveIsNoOp();
+  await testNotionReadFailureIsReported();
+  await testPageFailureDoesNotDiscardOtherUpdates();
+  await testCommandExitStatusAndOutputs();
   console.log("remote-config-notion-sync tests passed");
 }
 

@@ -280,11 +280,10 @@ function itemMatchesPlatform(item, platform) {
 }
 
 function buildPageProperties({ item, template, config, syncedAt }) {
-  const properties = {
-    "Last Production Sync": syncedAt,
-  };
+  const properties = {};
 
   if (template) {
+    properties["Last Production Sync"] = syncedAt;
     properties["iOS Prod RC Value"] = productionRcValue(template, item.iosRcKey);
     properties["Web Prod RC Value"] = productionRcValue(template, item.webRcKey);
     properties["Android Prod RC Value"] = productionRcValue(template, item.androidRcKey);
@@ -328,7 +327,6 @@ function toNotionProperties(rawProperties) {
 }
 
 async function runSync(config, clients) {
-  const syncedAt = config.now().toISOString();
   const summary = {
     matchedPages: 0,
     updatedPages: 0,
@@ -337,6 +335,10 @@ async function runSync(config, clients) {
     dryRun: config.dryRun,
     items: [],
   };
+
+  // Live-mode iOS upload callers have no RC project and their legacy status is
+  // suppressed. They have nothing to observe or write, including a timestamp.
+  if (!clients.firebase && !config.firebaseProjectId && !config.productionState) return summary;
 
   if (!clients.notion) {
     summary.errors.push("Notion token is not configured; skipped Remote Config → Notion sync.");
@@ -349,16 +351,37 @@ async function runSync(config, clients) {
     return summary;
   }
 
+  if (!config.workItemsDataSourceId) {
+    summary.errors.push("Work Items data source is not configured.");
+    return summary;
+  }
+
+  if (config.firebaseProjectId && !clients.firebase) {
+    summary.errors.push("Remote Config credentials are not configured for the requested Firebase project.");
+    return summary;
+  }
+
   let template = null;
   if (clients.firebase) {
     try {
       template = await clients.firebase.getTemplate();
+      if (!template || typeof template !== "object" || Array.isArray(template)) {
+        throw new Error("Firebase returned an invalid Remote Config template.");
+      }
     } catch (error) {
       summary.errors.push(`Remote Config read failed: ${error.message}`);
+      return summary;
     }
   }
 
-  const pages = await listLaunchHubItems(clients.notion, config.workItemsDataSourceId);
+  const syncedAt = config.now().toISOString();
+  let pages;
+  try {
+    pages = await listLaunchHubItems(clients.notion, config.workItemsDataSourceId);
+  } catch (error) {
+    summary.errors.push(`Work Items read failed: ${error.message}`);
+    return summary;
+  }
   const items = pages
     .map(extractWorkItem)
     .filter((item) => item.productIds.includes(productId))
@@ -383,8 +406,13 @@ async function runSync(config, clients) {
     });
 
     if (!config.dryRun && Object.keys(properties).length > 0) {
-      await clients.notion.updatePage(item.id, toNotionProperties(properties));
-      summary.updatedPages += 1;
+      try {
+        await clients.notion.updatePage(item.id, toNotionProperties(properties));
+        summary.updatedPages += 1;
+      } catch (error) {
+        summary.items[summary.items.length - 1].updated = false;
+        summary.errors.push(`Work Item ${item.id} update failed: ${error.message}`);
+      }
     }
   }
 
@@ -407,7 +435,7 @@ function buildSummaryMarkdown(config, summary) {
   ];
 
   if (summary.errors.length > 0) {
-    lines.push("### Warnings");
+    lines.push("### Errors");
     for (const error of summary.errors) lines.push(`- ${error}`);
     lines.push("");
   }
@@ -493,12 +521,20 @@ async function main() {
   setOutput("matched_pages", summary.matchedPages);
   setOutput("updated_pages", summary.updatedPages);
   setOutput("remote_config_checked", summary.remoteConfigChecked);
+
+  if (summary.errors.length > 0) {
+    for (const error of summary.errors) {
+      const escaped = error.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+      console.error(`::error::${escaped}`);
+    }
+    process.exitCode = 1;
+  }
 }
 
 if (require.main === module) {
   main().catch((error) => {
     console.error(error);
-    process.exit(0);
+    process.exitCode = 1;
   });
 }
 
