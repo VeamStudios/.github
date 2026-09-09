@@ -9,6 +9,49 @@ const resourcePath = '/appStoreVersions/version/appStoreVersionPhasedRelease';
 const linked = { id: 'phase', type: 'appStoreVersionPhasedReleases' };
 const now = () => '2026-09-08T12:00:00.000Z';
 
+function monitorFixture(entries) {
+  const writes = [];
+  const rows = entries.map(({ m, historical = false, digest = hash(m) }) => ({ id: m.key, properties: { Manifest: rich(JSON.stringify(m)), 'Manifest Hash': rich(digest), Historical: { checkbox: historical } } }));
+  return { writes, api: { notion: async (path, method, body) => {
+    if (path === '/data_sources/releases') return { properties: { Target: { type: 'rich_text' }, Products: { type: 'relation', relation: { data_source_id: '30c06908-3a03-80ca-bd1b-000b2bbce6d8' } } } };
+    if (method === 'PATCH') { writes.push({ path, body }); return {}; }
+    return { results: rows, has_more: false };
+  } } };
+}
+const monitorConfig = { repo: 'VeamStudios/Test', target: 'ios-consumer', bundleId: 'com.test.app', releasesId: 'releases' };
+
+test('buildless historical baseline is unchanged while the current build is verified', async () => {
+  const current = { ...manifest, key: 'current', repository: monitorConfig.repo, target: monitorConfig.target, event: 'release' };
+  const baseline = { ...current, key: 'history', event: 'baseline', build: '', version: '10.7.0.1' };
+  const { api, writes } = monitorFixture([{ m: baseline, historical: true }, { m: current }]);
+  const result = await monitor(monitorConfig, api, fixture());
+  assert.deepEqual(result, { checked: 2, observed: 1, skippedHistorical: 1, errors: [] });
+  assert.deepEqual(writes.map(x => x.path), ['/pages/current']);
+});
+
+test('historical status does not bypass integrity checks or missing current-build evidence', async () => {
+  const base = { ...manifest, repository: monitorConfig.repo, target: monitorConfig.target, event: 'baseline', build: '' };
+  const { api, writes } = monitorFixture([
+    { m: { ...base, key: 'current-baseline' } },
+    { m: { ...base, key: 'historical-release', event: 'release' }, historical: true },
+    { m: { ...base, key: 'tampered-history' }, historical: true, digest: 'wrong' },
+    { m: { ...base, key: 'wrong-repository', repository: 'VeamStudios/Other' }, historical: true },
+  ]);
+  const result = await monitor(monitorConfig, api, fixture());
+  assert.equal(result.errors.length, 4);
+  assert.equal(result.skippedHistorical, 0);
+  assert.equal(result.observed, 0);
+  assert.deepEqual(writes, []);
+});
+
+test('historical baselines with exact builds remain eligible for verification; dry run writes nothing', async () => {
+  const m = { ...manifest, key: 'history-build', repository: monitorConfig.repo, target: monitorConfig.target, event: 'baseline' };
+  const { api, writes } = monitorFixture([{ m, historical: true }]);
+  const result = await monitor({ ...monitorConfig, dryRun: true }, api, fixture());
+  assert.deepEqual(result, { checked: 1, observed: 1, skippedHistorical: 0, errors: [] });
+  assert.deepEqual(writes, []);
+});
+
 function fixture({ relationship = { data: null }, phased = { data: { ...linked, attributes: { phasedReleaseState: 'COMPLETE' } } }, state = 'READY_FOR_DISTRIBUTION', build = '123', bundleId = 'com.test.app' } = {}) {
   const calls = [];
   return { calls, findAppByBundleId: async () => ({ id: 'app', attributes: { bundleId } }), get: async path => {

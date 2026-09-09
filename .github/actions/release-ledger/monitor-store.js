@@ -38,10 +38,15 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
 async function monitor(config, api, apple) {
   const schema = await releaseSchema(api.notion, config.releasesId);
   const rows = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter: { and: [{ property: 'Repository', rich_text: { equals: config.repo } }, targetFilter(schema, config.target)] } });
-  const errors = []; let observed = 0;
+  const errors = []; let observed = 0; let skippedHistorical = 0;
   for (const row of rows) {
     const m = JSON.parse(text(row.properties.Manifest));
-    if (!m.build || m.target !== config.target || m.repository !== config.repo || hash(m) !== text(row.properties['Manifest Hash'])) { errors.push(`${row.id}: invalid manifest`); continue; }
+    if (m.target !== config.target || m.repository !== config.repo || hash(m) !== text(row.properties['Manifest Hash'])) { errors.push(`${row.id}: invalid manifest`); continue; }
+    // Imported history deliberately has no verified build. Preserve it as
+    // Unverified; it is not a pending upload for the store monitor to resolve.
+    // Keep integrity checks above this exception and validate current releases.
+    if (!m.build && m.event === 'baseline' && row.properties.Historical?.checkbox === true) { skippedHistorical++; continue; }
+    if (!m.build) { errors.push(`${row.id}: invalid manifest`); continue; }
     const previous = text(row.properties.Observation) ? JSON.parse(text(row.properties.Observation)) : null;
     if (previous?.phase === 'withdrawn' || previous?.phase === 'live') continue;
     try {
@@ -51,7 +56,7 @@ async function monitor(config, api, apple) {
       if (!config.dryRun) await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { Observation: rich(JSON.stringify(observation)), 'Observed At': { date: { start: observation.releasedAt } }, 'Released At': { date: { start: previous?.phase === observation.phase && row.properties['Released At']?.date?.start || observation.releasedAt } }, 'Availability Evidence': { url: observation.verification.evidence }, Error: rich('') } });
     } catch (e) { errors.push(`${m.key}: ${e.message}`); }
   }
-  return { checked: rows.length, observed, errors };
+  return { checked: rows.length, observed, skippedHistorical, errors };
 }
 async function main() {
   const config = { repo: process.env.GITHUB_REPOSITORY, target: process.env.INPUT_TARGET, bundleId: process.env.INPUT_BUNDLE_ID, releasesId: process.env.INPUT_RELEASES_ID, githubToken: process.env.INPUT_GITHUB_TOKEN, notionToken: process.env.INPUT_NOTION_TOKEN, dryRun: process.env.INPUT_DRY_RUN === 'true' };
