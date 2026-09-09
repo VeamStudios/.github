@@ -1,8 +1,8 @@
-name: Check release note contract
-description: Validate release metadata as data; never executes repository code.
+name: Preview release changelog
+description: Preview CHANGELOG.md and Work Item links as data; never executes repository code.
 inputs:
   body:
-    description: PR body containing the note path and Work Items links
+    description: PR body containing existing Work Items links
     required: true
   head:
     description: Exact reviewed PR head

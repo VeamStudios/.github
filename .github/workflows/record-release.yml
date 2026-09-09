@@ -52,6 +52,9 @@ permissions:
 jobs:
   record:
     runs-on: ubuntu-latest
+    # Preparation is supporting bookkeeping. Preserve its artifact/error, but a
+    # Notion outage must not prevent the production deployment from starting.
+    continue-on-error: ${{ inputs.phase == 'prepare' }}
     environment: ${{ inputs.github_environment }}
     steps:
       - name: Report release ledger mode

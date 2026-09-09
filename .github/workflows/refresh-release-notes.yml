@@ -1,0 +1,52 @@
+name: Refresh reviewed release notes
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: 'Repository containing the shipped code (VeamStudios/name)'
+        required: true
+      release_page:
+        description: 'Existing Notion release page ID'
+        required: true
+      wording_pr:
+        description: 'Merged PR with reviewed CHANGELOG.md wording and links to shipped source PRs'
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: refresh-release-notes-${{ inputs.release_page }}
+  cancel-in-progress: true
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: token
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: VeamStudios
+      - uses: actions/checkout@v6
+        with:
+          path: ledger-tooling
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.repository }}
+          token: ${{ steps.token.outputs.token }}
+          fetch-depth: 0
+          path: release-source
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - name: Supplement the frozen release with reviewed notes
+        working-directory: release-source
+        run: node "$GITHUB_WORKSPACE/ledger-tooling/.github/actions/release-ledger/amend.js"
+        env:
+          RELEASE_REPOSITORY: ${{ inputs.repository }}
+          RELEASE_PAGE_ID: ${{ inputs.release_page }}
+          RELEASE_WORDING_PR: ${{ inputs.wording_pr }}
+          RELEASES_DATA_SOURCE_ID: ${{ vars.RELEASES_DATA_SOURCE_ID }}
+          GITHUB_TOKEN: ${{ steps.token.outputs.token }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}

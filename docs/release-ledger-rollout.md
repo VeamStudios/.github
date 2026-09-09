@@ -1,3 +1,9 @@
+# Release rollout record
+
+Current operating instructions: [release reference](release-ledger-reference.md) and [Notion runbook](https://www.notion.so/3d5069083a0381b191e6fe4daa0899f5). The dated checklist below describes the original rollout and is retained as history; its JSON/shadow-mode instructions are superseded by the changelog announcement implementation.
+
+<details><summary>Original rollout evidence and checklist</summary>
+
 # Release setup and troubleshooting
 
 [Notion runbook](https://www.notion.so/3d5069083a0381b191e6fe4daa0899f5) · [Technical reference](release-ledger-reference.md) · [Implementation Work Item](https://www.notion.so/3d4069083a038174982cc98d9c3b20cd)
@@ -117,5 +123,8 @@ Baseline manifests are provided in `release-baseline-candidates.json`. They deli
 - Changed workflows passed actionlint. The initial implementation excluded its stale `create-github-app-token@v3` client-id diagnostic after checking the official action schema.
 - Existing App Store and production mirror tests passed during the initial implementation.
 - Real hosted shadow runs, App Store credentials, manual Android evidence, Slack scopes/channel membership and production verification remain rollout checks.
+
+</details>
+
 
 </details>
