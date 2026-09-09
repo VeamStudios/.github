@@ -8,13 +8,19 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
   // Exact filtered version + platform, then its related build. Never infer a build from the latest upload.
   const versionString = normalizeVersion(manifest.version).split('-')[0];
   const result = await apple.get(`/apps/${app.id}/appStoreVersions`, { 'filter[versionString]': versionString, 'filter[platform]': 'IOS', limit: 200 });
-  const versions = (result.data || []).filter(v => v.attributes?.versionString === versionString && v.attributes?.platform === 'IOS');
-  if (result.links?.next || versions.length !== 1) throw new Error('App Store version is missing or ambiguous');
+  if (!Array.isArray(result?.data)) throw new Error('App Store version evidence is malformed');
+  const versions = result.data.filter(v => v.attributes?.versionString === versionString && v.attributes?.platform === 'IOS');
+  if (result.links?.next || versions.length > 1) throw new Error('App Store version is ambiguous');
+  // An uploaded TestFlight build can precede creation of its store version.
+  // A successful, explicitly empty query means waiting, never live evidence.
+  if (!versions.length && !result.data.length) return null;
+  if (!versions.length) throw new Error('App Store version evidence does not match the requested version/platform');
   const version = versions[0];
+  const state = version.attributes.appStoreState || version.attributes.appVersionState;
+  if (typeof state !== 'string' || !state) throw new Error('App Store version state is missing');
+  if (!['READY_FOR_DISTRIBUTION', 'READY_FOR_SALE'].includes(state)) return null;
   const build = await apple.get(`/appStoreVersions/${version.id}/build`);
   if (String(build.data?.attributes?.version) !== manifest.build) throw new Error('App Store build differs from recorded shipped build');
-  const state = version.attributes.appStoreState || version.attributes.appVersionState;
-  if (!['READY_FOR_DISTRIBUTION', 'READY_FOR_SALE'].includes(state)) return null;
   // The related resource can return 404 when no phased release exists. Only an
   // explicit null relationship proves absence; failed lookups remain errors.
   const relationship = await apple.get(`/appStoreVersions/${version.id}/relationships/appStoreVersionPhasedRelease`);
@@ -40,21 +46,21 @@ async function monitor(config, api, apple) {
   const rows = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter: { and: [{ property: 'Repository', rich_text: { equals: config.repo } }, targetFilter(schema, config.target)] } });
   const errors = []; let observed = 0; let skippedHistorical = 0;
   for (const row of rows) {
-    const m = JSON.parse(text(row.properties.Manifest));
-    if (m.target !== config.target || m.repository !== config.repo || hash(m) !== text(row.properties['Manifest Hash'])) { errors.push(`${row.id}: invalid manifest`); continue; }
-    // Imported history deliberately has no verified build. Preserve it as
-    // Unverified; it is not a pending upload for the store monitor to resolve.
-    // Keep integrity checks above this exception and validate current releases.
-    if (!m.build && m.event === 'baseline' && row.properties.Historical?.checkbox === true) { skippedHistorical++; continue; }
-    if (!m.build) { errors.push(`${row.id}: invalid manifest`); continue; }
-    const previous = text(row.properties.Observation) ? JSON.parse(text(row.properties.Observation)) : null;
-    if (previous?.phase === 'withdrawn' || previous?.phase === 'live') continue;
     try {
+      const m = JSON.parse(text(row.properties.Manifest));
+      if (m.target !== config.target || m.repository !== config.repo || hash(m) !== text(row.properties['Manifest Hash'])) { errors.push(`${row.id}: invalid manifest`); continue; }
+      // Imported history deliberately has no verified build. Preserve it as
+      // Unverified; it is not a pending upload for the store monitor to resolve.
+      // Keep integrity checks above this exception and validate current releases.
+      if (!m.build && m.event === 'baseline' && row.properties.Historical?.checkbox === true) { skippedHistorical++; continue; }
+      if (!m.build) { errors.push(`${row.id}: invalid manifest`); continue; }
+      const previous = text(row.properties.Observation) ? JSON.parse(text(row.properties.Observation)) : null;
+      if (previous?.phase === 'withdrawn' || previous?.phase === 'live') continue;
       const observation = await observeStore(m, config.bundleId, apple);
       if (!observation) continue;
       observed++;
       if (!config.dryRun) await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { Observation: rich(JSON.stringify(observation)), 'Observed At': { date: { start: observation.releasedAt } }, 'Released At': { date: { start: previous?.phase === observation.phase && row.properties['Released At']?.date?.start || observation.releasedAt } }, 'Availability Evidence': { url: observation.verification.evidence }, Error: rich('') } });
-    } catch (e) { errors.push(`${m.key}: ${e.message}`); }
+    } catch (e) { errors.push(`${row.id}: ${e.message}`); }
   }
   return { checked: rows.length, observed, skippedHistorical, errors };
 }

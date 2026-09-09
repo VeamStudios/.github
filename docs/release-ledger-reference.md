@@ -54,7 +54,9 @@ If Slack delivery is uncertain, the worker searches channel history for the stab
 
 Needs attention includes actual unresolved errors, including historical records. Historical/Unverified alone is not an operational failure. Recovered errors are cleared only after processing succeeds; Operations Receipt retains diagnostics, and worker logs preserve failures even when error-reporting writes fail. Retry the recording or worker job, never redeploy software solely to retry a notification.
 
-A cancelled job can leave `refs/tags/veam-release-ledger-lock`. Verify no holder is active, reconcile Sending receipts, then remove only that exact lock ref. Preserve cancel-in-progress: true. Never remove software version tags.
+Concurrent writers wait for the existing lock for up to 30 acquisition attempts (two seconds between attempts), then return an actionable retry error. A lost creation or deletion response is reconciled by the unique owner tag before proceeding. Normal consumer/Enterprise overlap does not require manual recovery.
+
+A cancelled job can leave `refs/tags/veam-release-ledger-lock`. Verify no holder is active, reconcile Sending receipts, then remove only that exact lock ref. Preserve cancel-in-progress: true. Never remove software version tags. The lock is never stolen merely because it is old.
 
 </details>
 
