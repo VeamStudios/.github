@@ -42,3 +42,16 @@ jobs:
           UPDATED: ${{ steps.smoke.outputs.updated_pages }}
           CHECKED: ${{ steps.smoke.outputs.remote_config_checked }}
         run: test "$MATCHED" = 0 && test "$UPDATED" = 0 && test "$CHECKED" = 0
+      # Only this negative test tolerates failure, then asserts the action failed.
+      - name: Requested sync must fail without credentials
+        id: missing-credentials
+        continue-on-error: true
+        uses: ./.github/actions/remote-config-notion-sync
+        with:
+          product: cip
+          firebase_project_id: test-project
+          dry_run: 'true'
+      - name: Check configuration failure is visible
+        env:
+          OUTCOME: ${{ steps.missing-credentials.outcome }}
+        run: test "$OUTCOME" = failure
