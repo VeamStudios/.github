@@ -11,5 +11,4 @@ Work Items:
 <!-- Optional: Any additional context -->
 - 
 
-## Release note
-<!-- For release-ledger targets, commit .release-notes/<change>.json and add: Release note: .release-notes/<change>.json. Keep CHANGELOG.md updated where used; the JSON contract supplements it. Feature notes require Work Items; fixes/internal notes may use an empty workItems array. -->
+<!-- Add customer-facing wording to CHANGELOG.md, normally in this PR. A release PR may consolidate notes. No release-note JSON file is needed. Internal maintenance need not have a customer announcement. -->

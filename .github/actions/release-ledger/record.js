@@ -40,9 +40,26 @@ function releaseKey(repo, target, version, event = 'release') {
 function git(...args) { return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }).trim(); }
 function ancestor(base, head) { try { git('merge-base', '--is-ancestor', base, head); return true; } catch { return false; } }
 async function request(url, token, method = 'GET', body, notion = false) {
-  const r = await fetch(url, { method, headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json', ...(notion ? { 'Notion-Version': '2026-03-11' } : { 'X-GitHub-Api-Version': '2022-11-28' }) }, body: body === undefined ? undefined : JSON.stringify(body) });
-  if (!r.ok) { const e = new Error(`${notion ? 'Notion' : 'GitHub'} ${method} failed (${r.status})`); e.status = r.status; throw e; }
-  return r.status === 204 ? {} : r.json();
+  const safe=notion && (method==='GET' || url.endsWith('/query') || (method==='PATCH'&&!url.endsWith('/children')));
+  for(let attempt=0;;attempt++) {
+    let r;
+    try {r=await fetch(url,{method,headers:{Authorization:`Bearer ${token}`,Accept:'application/vnd.github+json','Content-Type':'application/json',...(notion?{'Notion-Version':'2026-03-11'}:{'X-GitHub-Api-Version':'2022-11-28'})},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(20000)})}
+    catch(error){if(!safe||attempt>=3)throw error;await new Promise(resolve=>setTimeout(resolve,500*2**attempt));continue}
+    if(r.ok)return r.status===204?{}:r.json();
+    const delay=Number(r.headers.get('retry-after')||0)*1000;
+    if(safe&&attempt<3&&[429,500,502,503,504,529].includes(r.status)&&delay<=20000){await new Promise(resolve=>setTimeout(resolve,Math.max(delay,500*2**attempt)));continue}
+    const e=new Error(`${notion?'Notion':'GitHub'} ${method} failed (${r.status})`);e.status=r.status;throw e;
+  }
+}
+function propertyValue(p) {
+  if(!p)return null;
+  if(p.rich_text||p.title)return text(p);
+  if(p.relation)return p.relation.map(x=>x.id.replace(/-/g,'')).sort();
+  if('date' in p)return p.date?{start:p.date.start.includes('T')?Date.parse(p.date.start):p.date.start,end:p.date.end||null}:null;
+  if('select' in p)return p.select?.name||null;
+  if('url' in p)return p.url;
+  if('checkbox' in p)return p.checkbox;
+  return p;
 }
 function clients(config) {
   return {
@@ -81,7 +98,7 @@ async function provenanceMapping(config, gh, sha, baseline) {
   if (mapping.baseline !== baseline || !mapping.commits || Object.entries(mapping.commits).some(([commit, number]) => !SHA.test(commit) || !Number.isSafeInteger(number) || number <= 0)) throw new Error('Invalid provenance map or baseline');
   return { ...mapping, evidence: pr.html_url };
 }
-async function buildManifest(config, gh, baseline) {
+async function buildLegacyManifest(config, gh, baseline) {
   const sha = git('rev-parse', `${config.commit}^{commit}`);
   if (!SHA.test(sha)) throw new Error('Cannot resolve exact deployed commit.');
   const issues = [];
@@ -127,6 +144,17 @@ async function buildManifest(config, gh, baseline) {
   }
   return { schemaVersion: 1, key: releaseKey(config.repo, config.target, config.version, config.event), repository: config.repo, product: config.product, target: config.target, version: config.version, build: config.build || '', commit: sha, baseline: baseline || '', event: config.event || 'release', prs, changes, issues, provenanceComplete: unmapped.length === 0 && validBaseline, provenanceMapping: mappingEvidence, source: config.source };
 }
+async function buildManifest(config, gh, baseline, notion) {
+  return config.legacy ? buildLegacyManifest(config,gh,baseline) : require('./changelog').buildChangelogManifest(config,gh,baseline,notion);
+}
+function deployedBaseline(row) {
+  try {
+    const m=JSON.parse(text(row.properties.Manifest)),o=JSON.parse(text(row.properties.Observation)||'null');
+    if(hash(m)!==text(row.properties['Manifest Hash'])||!o)return false;
+    if(m.target.includes('ios')||m.target.includes('android'))return Boolean(o.phase==='live'&&m.build&&((o.verification?.kind==='app-store'&&o.verification.build===m.build)||(o.verification?.kind==='manual'&&o.verification.build===m.build&&row.properties['Audience Verified']?.checkbox&&row.properties['Availability Evidence']?.url)));
+    return Boolean(o.phase==='deployed'&&((o.verification?.kind==='http'&&o.verification.commit===m.commit&&o.verification.evidence)||(o.verification?.kind==='manual'&&row.properties['Audience Verified']?.checkbox&&row.properties['Availability Evidence']?.url)));
+  }catch{return false}
+}
 async function record(config, api) {
   const schema = await releaseSchema(api.notion, config.releasesId);
   const filter = { property: 'Release Key', rich_text: { equals: releaseKey(config.repo, config.target, config.version, config.event) } };
@@ -139,15 +167,15 @@ async function record(config, api) {
   } else {
     let baseline = config.baseline;
     if (!baseline) {
-      const previous = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter: { and: [{ property: 'Repository', rich_text: { equals: config.repo } }, targetFilter(schema, config.target), { property: 'State', select: { equals: 'Available' } }] }, sorts: [{ property: 'Released At', direction: 'descending' }] });
-      baseline = previous.find(row => text(row.properties['Release Key']) !== filter.rich_text.equals)?.properties.Commit;
+      const previous = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter: { and: [{ property: 'Repository', rich_text: { equals: config.repo } }, targetFilter(schema, config.target)] }, sorts: [{ property: 'Released At', direction: 'descending' }] });
+      baseline = previous.find(row => text(row.properties['Release Key']) !== filter.rich_text.equals && deployedBaseline(row))?.properties.Commit;
       baseline = typeof baseline === 'object' ? text(baseline) : baseline;
     }
-    manifest = await buildManifest(config, api.gh, baseline);
+    manifest = await buildManifest(config, api.gh, baseline, api.notion);
   }
   const digest = hash(manifest);
   fs.writeFileSync('release-manifest.json', JSON.stringify(manifest, null, 2) + '\n');
-  const readyNotes = manifest.provenanceComplete && manifest.prs.length > 0 && manifest.prs.every(pr => pr.approved && pr.noteHash);
+  const readyNotes = manifest.schemaVersion===1 && manifest.provenanceComplete && manifest.prs.length > 0 && manifest.prs.every(pr => pr.approved && pr.noteHash);
   const ids = [...new Set(manifest.prs.flatMap(pr => pr.workItems))];
   if (ids.length > 100) console.warn('Work Item relation exceeds Notion API capacity; complete contents remain in Manifest.');
   const states = { prepare: 'Waiting', deployed: 'Waiting', uploaded: 'Waiting', live: 'Waiting', rollout: 'Limited rollout', withdrawn: 'Withdrawn' };
@@ -157,15 +185,15 @@ async function record(config, api) {
   const rank = { prepare: 0, uploaded: 1, deployed: 2, rollout: 3, live: 4, withdrawn: 5 };
   const acceptObservation = !previousObservation || rank[config.phase] >= rank[previousObservation.phase];
   const oldState = existing[0]?.properties.State?.select?.name;
-  const properties = { ...presentation(manifest, schema, existing[0]), 'Release Key': rich(manifest.key), Product: rich(config.product), Repository: rich(config.repo), Version: rich(config.version), Commit: rich(manifest.commit), Build: rich(manifest.build), Event: select(manifest.event), Manifest: rich(JSON.stringify(manifest)), 'Manifest Hash': rich(digest), Changelog: rich(manifest.changes.filter(c => c.kind !== 'internal').map(c => `- ${c.summary}`).join('\n')), 'Work Items': { relation: ids.map(id => ({ id })) }, Source: { url: config.source }, 'Observed At': { date: { start: observedAt } } };
+  const properties = { ...presentation(manifest, schema, existing[0]), 'Release Key': rich(manifest.key), Repository: rich(config.repo), Version: rich(config.version), Commit: rich(manifest.commit), Build: rich(manifest.build), Event: select(manifest.event), Manifest: rich(JSON.stringify(manifest)), 'Manifest Hash': rich(digest), Changelog: rich(manifest.schemaVersion===2?manifest.completeChangelog:manifest.changes.filter(c => c.kind !== 'internal').map(c => `- ${c.summary}`).join('\n')), 'Work Items': { relation: ids.map(id => ({ id })) }, Source: { url: config.source }, 'Observed At': { date: { start: observedAt } } };
   if (ids.length > 100) delete properties['Work Items'];
-  if (!existing[0]) Object.assign(properties, { State: select(states[config.phase]), 'Historical': { checkbox: config.historical === true }, 'Notification State': select(config.historical ? 'Suppressed' : 'Pending'), Error: rich(manifest.issues.join('\n')) });
+  if (!existing[0]) Object.assign(properties, { State: select(states[config.phase]), 'Historical': { checkbox: config.historical === true }, 'Notification State': select(config.historical ? 'Suppressed' : 'Pending'), Error: rich(manifest.schemaVersion===2?'':manifest.issues.join('\n')) });
   if (readyNotes && !existing[0]) Object.assign(properties, { 'Approved Hash': rich(digest), 'Approval Evidence': { url: manifest.prs[0].url } });
   // Transport evidence does not imply audience availability. The processor verifies this observation.
   if (config.phase !== 'prepare' && acceptObservation) {
     properties['Availability Evidence'] = { url: config.source };
     if (['deployed', 'live', 'rollout', 'withdrawn'].includes(config.phase)) properties['Released At'] = { date: { start: config.releasedAt || existing[0]?.properties['Released At']?.date?.start || observedAt } };
-    properties.Observation = rich(JSON.stringify({ phase: config.phase, source: config.source, releasedAt: config.releasedAt || observedAt, verification: config.verification || null }));
+    properties.Observation = rich(JSON.stringify({ phase: config.phase, source: config.source, releasedAt: config.releasedAt || previousObservation?.releasedAt || observedAt, verification: config.verification || null }));
     if (oldState !== 'Available' && oldState !== 'Withdrawn') properties.State = select(states[config.phase]);
   }
   if (config.phase === 'withdrawn') properties.State = select('Withdrawn');
@@ -173,8 +201,21 @@ async function record(config, api) {
     // Human edits must invalidate readiness, never be silently overwritten by a retry.
     for (const name of ['Manifest', 'Manifest Hash', 'Changelog', 'Work Items', 'Product', 'Repository', 'Target', 'Version', 'Commit', 'Build', 'Event']) delete properties[name];
   }
+  if(existing[0]) {
+    const sameObservation=properties.Observation && text(properties.Observation)===text(existing[0].properties.Observation);
+    if(!properties.Observation || sameObservation)delete properties['Observed At'];
+    for(const [name,value] of Object.entries(properties))if(hash(propertyValue(value))===hash(propertyValue(existing[0].properties[name])))delete properties[name];
+    if(!Object.keys(properties).length)return {key:manifest.key,pageId:existing[0].id,url:existing[0].url,hash:digest,issues:manifest.issues};
+  }
   if (config.dryRun) return { manifest, properties, dryRun: true };
-  const row = existing[0] ? await api.notion(`/pages/${existing[0].id}`, 'PATCH', { properties }) : await api.notion('/pages', 'POST', { parent: { type: 'data_source_id', data_source_id: config.releasesId }, properties });
+  let row;
+  try { row = existing[0] ? await api.notion(`/pages/${existing[0].id}`, 'PATCH', { properties }) : await api.notion('/pages', 'POST', { parent: { type: 'data_source_id', data_source_id: config.releasesId }, properties }); }
+  catch(error) {
+    if(existing[0])throw error;
+    const found=await allPages(api.notion,`/data_sources/${config.releasesId}/query`,{filter});
+    if(found.length!==1||text(found[0].properties['Manifest Hash'])!==digest)throw error;
+    row=found[0];
+  }
   return { key: manifest.key, pageId: row.id, url: row.url, hash: digest, issues: manifest.issues };
 }
 async function main() {
@@ -198,5 +239,5 @@ async function main() {
   const result = config.dryRun ? await record(config, api) : await withLock(api.gh, 'VeamStudios/.github', () => record(config, api));
   console.log(JSON.stringify({ key: result.key || result.manifest.key, url: result.url, hash: result.hash, dryRun: config.dryRun }));
 }
-module.exports = { canonical, hash, rich, text, select, workItems, validateNote, releaseKey, request, clients, allPages, withLock, buildManifest, record };
+module.exports = { canonical, hash, rich, text, select, workItems, validateNote, releaseKey, request, clients, allPages, withLock, buildManifest, buildLegacyManifest, record, git, ancestor, reviewed, provenanceMapping, deployedBaseline };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

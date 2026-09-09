@@ -4,7 +4,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { workItems, validateNote, buildManifest, withLock, record, hash, rich } = require('./record');
+const { workItems, validateNote, buildLegacyManifest: buildManifest, withLock, record: recordCurrent, hash, rich } = require('./record');
+// Retain regression coverage for existing immutable version-one records.
+const record=(config,api)=>recordCurrent({...config,legacy:true},api);
 const { observeStore } = require('./monitor-store');
 const id = 'a'.repeat(32);
 const note = {kind:'feature',summary:'Export reports',audience:'Enterprise',limitations:'Cloud only',scope:'report-export-v1',targets:['web'],audienceGate:true,requiredReleaseKeys:[],workItems:[id]};
