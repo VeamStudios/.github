@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const { parseWorkItemLinks } = require('./work-item-links');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
+const { withLock } = require('./lock');
 
 const SHA = /^[a-f0-9]{40}$/;
 const canonical = value => JSON.stringify(value, (_, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v);
@@ -40,7 +41,7 @@ function releaseKey(repo, target, version, event = 'release') {
 function git(...args) { return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }).trim(); }
 function ancestor(base, head) { try { git('merge-base', '--is-ancestor', base, head); return true; } catch { return false; } }
 async function request(url, token, method = 'GET', body, notion = false) {
-  const safe=notion && (method==='GET' || url.endsWith('/query') || (method==='PATCH'&&!url.endsWith('/children')));
+  const safe=method==='GET' || notion && (url.endsWith('/query') || (method==='PATCH'&&!url.endsWith('/children')));
   for(let attempt=0;;attempt++) {
     let r;
     try {r=await fetch(url,{method,headers:{Authorization:`Bearer ${token}`,Accept:'application/vnd.github+json','Content-Type':'application/json',...(notion?{'Notion-Version':'2026-03-11'}:{'X-GitHub-Api-Version':'2022-11-28'})},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(20000)})}
@@ -71,15 +72,6 @@ async function allPages(call, path, body) {
   const result = []; let cursor;
   do { const r = await call(path, 'POST', { ...body, page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) }); result.push(...r.results); cursor = r.has_more ? r.next_cursor : undefined; } while (cursor);
   return result;
-}
-// Atomic GitHub ref creation is the shared cross-process lock. Never use a Notion checkbox as a mutex.
-async function withLock(gh, repo, fn) {
-  const ref = 'tags/veam-release-ledger-lock';
-  const head = await gh(`/repos/${repo}/git/ref/heads/main`);
-  const tag = await gh(`/repos/${repo}/git/tags`, 'POST', { tag: 'veam-release-ledger-lock', message: JSON.stringify({ owner: process.env.GITHUB_RUN_ID || 'worker', nonce: crypto.randomUUID(), createdAt: new Date().toISOString() }), object: head.object.sha, type: 'commit' });
-  await gh(`/repos/${repo}/git/refs`, 'POST', { ref: `refs/${ref}`, sha: tag.sha });
-  try { return await fn(); }
-  finally { const current = await gh(`/repos/${repo}/git/ref/${ref}`); if (current.object.sha !== tag.sha) throw new Error('Release lock ownership changed; operator recovery required.'); await gh(`/repos/${repo}/git/refs/${ref}`, 'DELETE'); }
 }
 async function reviewed(gh, repo, pr) {
   const reviews = [];
