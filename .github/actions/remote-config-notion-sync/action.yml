@@ -1,6 +1,5 @@
-# Compatibility only: implementation lives in remote-config-notion-sync.
-name: Remote Config → Notion Sync (compatibility)
-description: Temporary forwarding entry for existing callers of launch-hub-production-mirror.
+name: Remote Config → Notion Sync
+description: Syncs production Firebase Remote Config defaults and optional legacy release/deploy status to Notion Work Items.
 
 inputs:
   product:
@@ -62,18 +61,19 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Forward to Remote Config → Notion Sync
+    - name: Remote Config → Notion Sync
       id: sync
-      uses: VeamStudios/.github/.github/actions/remote-config-notion-sync@main
-      with:
-        product: ${{ inputs.product }}
-        product_page_id: ${{ inputs.product_page_id }}
-        work_items_data_source_id: ${{ inputs.work_items_data_source_id }}
-        platform: ${{ inputs.platform }}
-        production_state: ${{ inputs.production_state }}
-        production_version: ${{ inputs.production_version }}
-        production_evidence: ${{ inputs.production_evidence }}
-        firebase_project_id: ${{ inputs.firebase_project_id }}
-        firebase_service_account: ${{ inputs.firebase_service_account }}
-        notion_token: ${{ inputs.notion_token }}
-        dry_run: ${{ inputs.dry_run }}
+      shell: bash
+      env:
+        INPUT_PRODUCT_PAGE_ID: ${{ inputs.product_page_id }}
+        INPUT_PRODUCT: ${{ inputs.product }}
+        INPUT_WORK_ITEMS_DATA_SOURCE_ID: ${{ inputs.work_items_data_source_id }}
+        INPUT_PLATFORM: ${{ inputs.platform }}
+        # Workflow callers apply the release-ledger gate; composite actions cannot read vars.
+        INPUT_PRODUCTION_STATE: ${{ inputs.production_state }}
+        INPUT_PRODUCTION_EVIDENCE: ${{ inputs.production_evidence }}
+        INPUT_FIREBASE_PROJECT_ID: ${{ inputs.firebase_project_id }}
+        INPUT_FIREBASE_SERVICE_ACCOUNT: ${{ inputs.firebase_service_account }}
+        INPUT_NOTION_TOKEN: ${{ inputs.notion_token }}
+        INPUT_DRY_RUN: ${{ inputs.dry_run }}
+      run: node "${{ github.action_path }}/sync.js"

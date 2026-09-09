@@ -1,5 +1,4 @@
-# Compatibility only: remove after all callers use remote-config-notion-sync.yml.
-name: Remote Config → Notion Sync (compatibility)
+name: Remote Config → Notion Sync
 
 on:
   workflow_call:
@@ -62,16 +61,40 @@ on:
 
 jobs:
   sync:
-    uses: VeamStudios/.github/.github/workflows/remote-config-notion-sync.yml@main
-    with:
-      product: ${{ inputs.product }}
-      product_page_id: ${{ inputs.product_page_id }}
-      work_items_data_source_id: ${{ inputs.work_items_data_source_id }}
-      platform: ${{ inputs.platform }}
-      production_state: ${{ inputs.production_state }}
-      production_version: ${{ inputs.production_version }}
-      production_evidence: ${{ inputs.production_evidence }}
-      firebase_project_id: ${{ inputs.firebase_project_id }}
-      github_environment: ${{ inputs.github_environment }}
-      dry_run: ${{ inputs.dry_run }}
-    secrets: inherit
+    name: Remote Config → Notion Sync
+    if: ${{ inputs.github_environment == '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remote Config → Notion Sync
+        uses: VeamStudios/.github/.github/actions/remote-config-notion-sync@main
+        with:
+          product: ${{ inputs.product }}
+          product_page_id: ${{ inputs.product_page_id }}
+          work_items_data_source_id: ${{ inputs.work_items_data_source_id }}
+          platform: ${{ inputs.platform }}
+          production_state: ${{ vars.RELEASE_LEDGER_MODE != 'live' && inputs.production_state || '' }}
+          production_evidence: ${{ inputs.production_evidence }}
+          firebase_project_id: ${{ inputs.firebase_project_id }}
+          firebase_service_account: ${{ secrets.SERVICE_ACCOUNT_BASE64 }}
+          notion_token: ${{ secrets.NOTION_TOKEN }}
+          dry_run: ${{ inputs.dry_run }}
+
+  sync-with-environment:
+    name: Remote Config → Notion Sync (${{ inputs.github_environment }})
+    if: ${{ inputs.github_environment != '' }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.github_environment }}
+    steps:
+      - name: Remote Config → Notion Sync
+        uses: VeamStudios/.github/.github/actions/remote-config-notion-sync@main
+        with:
+          product: ${{ inputs.product }}
+          product_page_id: ${{ inputs.product_page_id }}
+          work_items_data_source_id: ${{ inputs.work_items_data_source_id }}
+          platform: ${{ inputs.platform }}
+          production_state: ${{ vars.RELEASE_LEDGER_MODE != 'live' && inputs.production_state || '' }}
+          production_evidence: ${{ inputs.production_evidence }}
+          firebase_project_id: ${{ inputs.firebase_project_id }}
+          firebase_service_account: ${{ secrets.SERVICE_ACCOUNT_BASE64 }}
+          notion_token: ${{ secrets.NOTION_TOKEN }}
+          dry_run: ${{ inputs.dry_run }}

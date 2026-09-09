@@ -339,7 +339,7 @@ async function runSync(config, clients) {
   };
 
   if (!clients.notion) {
-    summary.errors.push("Notion token is not configured; skipped Launch Hub sync.");
+    summary.errors.push("Notion token is not configured; skipped Remote Config → Notion sync.");
     return summary;
   }
 
@@ -393,7 +393,7 @@ async function runSync(config, clients) {
 
 function buildSummaryMarkdown(config, summary) {
   const lines = [
-    "## Launch Hub production mirror",
+    "## Remote Config → Notion Sync",
     "",
     `- Product: ${config.product || "(not set)"}`,
     `- Product page: ${config.productPageId}`,
@@ -480,7 +480,7 @@ async function main() {
       remoteConfigChecked: 0,
       dryRun: config.dryRun,
       items: [],
-      errors: [`Launch Hub sync failed: ${error.message}`],
+      errors: [`Remote Config → Notion sync failed: ${error.message}`],
     };
   }
 
