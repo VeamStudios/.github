@@ -130,7 +130,7 @@ jobs:
 
 ### `remote-config-notion-sync.yml`
 
-The old `launch-hub-production-mirror.yml` workflow and action entry forward to the renamed implementation during the caller rollout; they contain no sync implementation. Merge the shared rename before the product callers, then remove these forwarding entries after all callers have migrated.
+For sync retries, use the current standalone workflow. An old run may contain a retired workflow reference; rerunning that historical caller can no longer resolve the removed path.
 
 Mirrors production observations into Work Items, the source of truth for feature scope, ownership and status. Feature Status is a view of those same records. The shared workflow/action and product schedule files use `remote-config-notion-sync`; they do not depend on a dashboard page. The legacy monitor inputs and the `launch-hub-sync-prod` GitHub environment keep their existing names for compatibility with callers and configured credentials. It copies production Remote Config defaults such as `missing`, `false`, `research-preview`, `true`, or any other Firebase default string, plus `no platform key` when a Work Item has no Remote Config key for that platform. It also mirrors production deployment/release evidence. It does not establish intended-audience availability or decide whether a feature should be enabled. Legacy platform status writes remain suppressed in live release-ledger mode.
 
