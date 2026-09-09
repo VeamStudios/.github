@@ -1,18 +1,22 @@
-name: Test Production Mirror
+name: Test Remote Config → Notion Sync
 on:
   pull_request:
     paths:
-      - '.github/actions/launch-hub-production-mirror/**'
+      - '.github/actions/remote-config-notion-sync/**'
+      - '.github/workflows/remote-config-notion-sync.yml'
       - '.github/workflows/launch-hub-production-mirror.yml'
+      - '.github/actions/launch-hub-production-mirror/action.yml'
       - '.github/workflows/ios-app-store-live-monitor.yml'
-      - '.github/workflows/test-production-mirror.yml'
+      - '.github/workflows/test-remote-config-notion-sync.yml'
   push:
     branches: [main]
     paths:
-      - '.github/actions/launch-hub-production-mirror/**'
+      - '.github/actions/remote-config-notion-sync/**'
+      - '.github/workflows/remote-config-notion-sync.yml'
       - '.github/workflows/launch-hub-production-mirror.yml'
+      - '.github/actions/launch-hub-production-mirror/action.yml'
       - '.github/workflows/ios-app-store-live-monitor.yml'
-      - '.github/workflows/test-production-mirror.yml'
+      - '.github/workflows/test-remote-config-notion-sync.yml'
 permissions:
   contents: read
 jobs:
@@ -23,12 +27,12 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
-      - run: node .github/actions/launch-hub-production-mirror/sync.test.js
+      - run: node .github/actions/remote-config-notion-sync/sync.test.js
       # Load the actual composite manifest in GitHub's runner. No credentials are
       # provided, so the smoke test cannot read or write production data.
       - name: Load composite action without production credentials
         id: smoke
-        uses: ./.github/actions/launch-hub-production-mirror
+        uses: ./.github/actions/remote-config-notion-sync
         with:
           product: cip
           dry_run: 'true'

@@ -1,0 +1,79 @@
+# Compatibility only: implementation lives in remote-config-notion-sync.
+name: Remote Config → Notion Sync (compatibility)
+description: Temporary forwarding entry for existing callers of launch-hub-production-mirror.
+
+inputs:
+  product:
+    description: "Product slug used to resolve the Notion Product page ID. Supported values: cip, sap."
+    required: false
+    default: ""
+  product_page_id:
+    description: "Optional Notion Product page ID override used to filter Notion Work Items."
+    required: false
+    default: ""
+  work_items_data_source_id:
+    description: "Notion Work Items data source ID."
+    required: false
+    default: "20aeddfe-a3f7-41e9-b440-c9eb6b26887f"
+  platform:
+    description: "Release/deploy status target: ios, web, android, backend, or all."
+    required: false
+    default: "all"
+  production_state:
+    description: "Optional release/deploy status value to write for the platform."
+    required: false
+    default: ""
+  production_version:
+    description: "Deprecated; ignored. Work Items no longer store a shared production version."
+    required: false
+    default: ""
+  production_evidence:
+    description: "Optional URL or text evidence for the production sync."
+    required: false
+    default: ""
+  firebase_project_id:
+    description: "Optional Firebase project ID for production Remote Config reads."
+    required: false
+    default: ""
+  firebase_service_account:
+    description: "Optional Firebase service account JSON or base64 JSON."
+    required: false
+    default: ""
+  notion_token:
+    description: "Notion API token with access to Work Items and Products."
+    required: false
+    default: ""
+  dry_run:
+    description: "Compute updates and print a summary without writing Notion."
+    required: false
+    default: "false"
+
+outputs:
+  matched_pages:
+    description: "Number of Notion Work Items matched."
+    value: ${{ steps.sync.outputs.matched_pages }}
+  updated_pages:
+    description: "Number of Notion Work Items updated."
+    value: ${{ steps.sync.outputs.updated_pages }}
+  remote_config_checked:
+    description: "Number of Remote Config keys checked."
+    value: ${{ steps.sync.outputs.remote_config_checked }}
+
+runs:
+  using: composite
+  steps:
+    - name: Forward to Remote Config → Notion Sync
+      id: sync
+      uses: VeamStudios/.github/.github/actions/remote-config-notion-sync@main
+      with:
+        product: ${{ inputs.product }}
+        product_page_id: ${{ inputs.product_page_id }}
+        work_items_data_source_id: ${{ inputs.work_items_data_source_id }}
+        platform: ${{ inputs.platform }}
+        production_state: ${{ inputs.production_state }}
+        production_version: ${{ inputs.production_version }}
+        production_evidence: ${{ inputs.production_evidence }}
+        firebase_project_id: ${{ inputs.firebase_project_id }}
+        firebase_service_account: ${{ inputs.firebase_service_account }}
+        notion_token: ${{ inputs.notion_token }}
+        dry_run: ${{ inputs.dry_run }}

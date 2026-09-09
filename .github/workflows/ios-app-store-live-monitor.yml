@@ -28,12 +28,12 @@ on:
         default: false
         type: boolean
       launch_hub_product:
-        description: "Optional product slug used to mirror iOS live state into Launch Hub. Supported values: cip, sap"
+        description: "Optional product slug used to sync iOS live state to Notion Work Items. Supported values: cip, sap"
         required: false
         default: ""
         type: string
       launch_hub_product_page_id:
-        description: "Optional Notion Product page ID override used to mirror iOS live state into Launch Hub"
+        description: "Optional Notion Product page ID override used to sync iOS live state to Notion Work Items"
         required: false
         default: ""
         type: string
@@ -43,7 +43,7 @@ on:
         default: "20aeddfe-a3f7-41e9-b440-c9eb6b26887f"
         type: string
       launch_hub_dry_run:
-        description: "Compute Launch Hub updates without writing Notion"
+        description: "Compute Notion Work Item updates without writing Notion"
         required: false
         default: false
         type: boolean
@@ -82,9 +82,9 @@ jobs:
           app_store_connect_issuer_id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           app_store_connect_api_key_content: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
           slack_releases_webhook_url: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
-      - name: Sync Launch Hub iOS live state
+      - name: Notion Sync (iOS live state)
         if: ${{ (inputs.launch_hub_product != '' || inputs.launch_hub_product_page_id != '') && steps.monitor.outputs.live_version != '' && inputs.dry_run == false }}
-        uses: VeamStudios/.github/.github/actions/launch-hub-production-mirror@main
+        uses: VeamStudios/.github/.github/actions/remote-config-notion-sync@main
         with:
           product: ${{ inputs.launch_hub_product }}
           product_page_id: ${{ inputs.launch_hub_product_page_id }}

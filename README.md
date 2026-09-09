@@ -128,14 +128,16 @@ jobs:
 - `launch_hub_product` — optional product slug, `cip` or `sap`. When set, a newly notified live App Store release also writes `iOS Release Status`, `Last Production Sync`, and `Production Evidence` to Work Items.
 - `launch_hub_product_page_id` — optional Notion Product page ID override for unusual cases.
 
-### `launch-hub-production-mirror.yml`
+### `remote-config-notion-sync.yml`
 
-Mirrors production observations into Work Items, the source of truth for feature scope, ownership and status. Feature Status is a view of those same records. The workflow and input names retain their legacy `launch_hub`/`launch-hub` spelling for caller compatibility; they do not depend on a dashboard page. It writes exact production Remote Config values such as `missing`, `false`, `research-preview`, `true`, or any other live Firebase string, plus `no platform key` when a Work Item has no Remote Config key for that platform. It also mirrors production deployment/release evidence. It does not block deploys or decide whether a feature should be enabled.
+The old `launch-hub-production-mirror.yml` workflow and action entry forward to the renamed implementation during the caller rollout; they contain no sync implementation. Merge the shared rename before the product callers, then remove these forwarding entries after all callers have migrated.
+
+Mirrors production observations into Work Items, the source of truth for feature scope, ownership and status. Feature Status is a view of those same records. The shared workflow/action and product schedule files use `remote-config-notion-sync`; they do not depend on a dashboard page. The legacy monitor inputs and the `launch-hub-sync-prod` GitHub environment keep their existing names for compatibility with callers and configured credentials. It copies production Remote Config defaults such as `missing`, `false`, `research-preview`, `true`, or any other Firebase default string, plus `no platform key` when a Work Item has no Remote Config key for that platform. It also mirrors production deployment/release evidence. It does not establish intended-audience availability or decide whether a feature should be enabled. Legacy platform status writes remain suppressed in live release-ledger mode.
 
 ```yaml
 jobs:
-  sync-launch-hub:
-    uses: VeamStudios/.github/.github/workflows/launch-hub-production-mirror.yml@main
+  remote-config-notion-sync:
+    uses: VeamStudios/.github/.github/workflows/remote-config-notion-sync.yml@main
     with:
       product: cip
       platform: web
@@ -243,7 +245,7 @@ jobs:
 | `deploy-ios-testflight.yml` | Build and upload an iOS app to TestFlight |
 | `hotfix-prepare.yml` / `hotfix-deploy.yml` | iOS hotfix branch and deploy flow |
 | `ios-app-store-live-monitor.yml` | Poll App Store Connect and notify Slack once a marked iOS release is live |
-| `launch-hub-production-mirror.yml` | Mirror production Remote Config values and deployment/release state into Work Items |
+| `remote-config-notion-sync.yml` | Mirror production Remote Config values and deployment/release state into Work Items |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
 | `qa-pipeline.yml` | PR governance: `Has Linked Notion Work Item` on PR open/update (`Work Items:` list with one or more Notion WI URLs required for `feat` titles, including scoped or breaking forms; singular `Work Item:` remains supported), `bot: qa needed` routing to QA Project 26 as `Not Started`, and label-gated QA auto-merge |
@@ -273,7 +275,7 @@ The new templates rely on secrets already configured at the org or repo level:
 | `qa.yml` | `BOT_QA_PRIVATE_KEY`, org `vars.BOT_QA_CLIENT_ID` | Caller for `qa-pipeline.yml`; the QA GitHub App needs Organization Projects write access |
 | `web-tests.yml` | none beyond `GITHUB_TOKEN` | `packages: read` is granted by the caller |
 | `ios-tests.yml` | `BOT_RELEASE_PRIVATE_KEY`, org `vars.BOT_RELEASE_CLIENT_ID` | Same Release Bot App used by `pr-ios-build.yml` |
-| `launch-hub-production-mirror.yml` | `NOTION_TOKEN`, `SERVICE_ACCOUNT_BASE64` | `SERVICE_ACCOUNT_BASE64` is only required when reading Firebase Remote Config; use `github_environment` when it is environment-scoped |
+| `remote-config-notion-sync.yml` | `NOTION_TOKEN`, `SERVICE_ACCOUNT_BASE64` | `SERVICE_ACCOUNT_BASE64` is only required when reading Firebase Remote Config; use `github_environment` when it is environment-scoped |
 | `dependency-review.yml` | `GITHUB_TOKEN` | None required; uses `actions/dependency-review-action` |
 | `stale.yml` | `GITHUB_TOKEN` | `issues: write`, `pull-requests: write` granted by reusable |
 | `auto-assign-reviewers.yml` | `GITHUB_TOKEN` | `pull-requests: write` granted by reusable |
