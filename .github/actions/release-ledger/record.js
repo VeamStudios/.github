@@ -150,6 +150,19 @@ function deployedBaseline(row) {
     return Boolean(o.phase==='deployed'&&((o.verification?.kind==='http'&&o.verification.commit===m.commit&&o.verification.reportedCommit===m.commit&&o.verification.repository===m.repository&&o.verification.evidence)||(o.verification?.kind==='cloud-run'&&validCloudRun(o.verification,m.commit,m.repository))||(o.verification?.kind==='manual'&&o.verification.commit===m.commit&&o.verification.evidence&&row.properties['Audience Verified']?.checkbox&&row.properties['Availability Evidence']?.url)));
   }catch{return false}
 }
+function verificationProperties(config, previous, oldProperties, observedAt) {
+  // A failed recheck is a new diagnostic, not evidence that the original deployment never happened.
+  const retain = Boolean(config.verificationError && previous?.phase === config.phase && previous.verification);
+  const observation = { ...(previous?.baseline ? {baseline:previous.baseline} : {}), phase:config.phase, source:retain ? previous.source : config.source, releasedAt:config.releasedAt || previous?.releasedAt || observedAt, verification:config.verification || (retain ? previous.verification : null), ...(config.verificationError ? {verificationError:config.verificationError,verificationAttempt:{source:config.source,at:observedAt}} : {}) };
+  const properties = {Observation:rich(JSON.stringify(observation))};
+  if (config.verification && !config.verificationError && previous?.verificationError && text(oldProperties?.Error) === previous.verificationError) {
+    const receipt = JSON.parse(text(oldProperties?.['Operations Receipt']) || '{}');
+    receipt.resolutions = [...(receipt.resolutions || []), {at:observedAt,error:previous.verificationError,recovery:config.source}];
+    properties['Operations Receipt'] = rich(JSON.stringify(receipt));
+    properties.Error = rich('');
+  }
+  return properties;
+}
 async function record(config, api) {
   const schema = await releaseSchema(api.notion, config.releasesId);
   const filter = { property: 'Release Key', rich_text: { equals: releaseKey(config.repo, config.target, config.version, config.event) } };
@@ -178,7 +191,7 @@ async function record(config, api) {
   const observedAt = new Date().toISOString();
   const previousObservation = text(existing[0]?.properties.Observation) ? JSON.parse(text(existing[0].properties.Observation)) : null;
   const rank = { prepare: 0, uploaded: 1, deployed: 2, rollout: 3, live: 4, withdrawn: 5 };
-  const acceptObservation = !previousObservation || rank[config.phase] >= rank[previousObservation.phase];
+  const acceptObservation = !previousObservation || rank[config.phase] >= (rank[previousObservation.phase] ?? -1);
   const oldState = existing[0]?.properties.State?.select?.name;
   const properties = { ...presentation(manifest, schema, existing[0]), 'Release Key': rich(manifest.key), Repository: rich(config.repo), Version: rich(config.version), Commit: rich(manifest.commit), Build: rich(manifest.build), Event: select(manifest.event), Manifest: rich(JSON.stringify(manifest)), 'Manifest Hash': rich(digest), Changelog: rich(manifest.schemaVersion===2?manifest.completeChangelog:manifest.changes.filter(c => c.kind !== 'internal').map(c => `- ${c.summary}`).join('\n')), 'Work Items': { relation: ids.map(id => ({ id })) }, Source: { url: config.source }, 'Observed At': { date: { start: observedAt } } };
   if (ids.length > 100) delete properties['Work Items'];
@@ -188,7 +201,7 @@ async function record(config, api) {
   if (config.phase !== 'prepare' && acceptObservation) {
     properties['Availability Evidence'] = { url: config.source };
     if (['deployed', 'live', 'rollout', 'withdrawn'].includes(config.phase)) properties['Released At'] = { date: { start: config.releasedAt || existing[0]?.properties['Released At']?.date?.start || observedAt } };
-    properties.Observation = rich(JSON.stringify({ ...(previousObservation?.baseline?{baseline:previousObservation.baseline}:{}), phase: config.phase, source: config.source, releasedAt: config.releasedAt || previousObservation?.releasedAt || observedAt, verification: config.verification || null, ...(config.verificationError?{verificationError:config.verificationError}:{}) }));
+    Object.assign(properties,verificationProperties(config,previousObservation,existing[0]?.properties,observedAt));
     if (oldState !== 'Available' && oldState !== 'Withdrawn') properties.State = select(states[config.phase]);
   }
   if(config.verification?.kind==='manual')properties['Audience Verified']={checkbox:true};
@@ -244,5 +257,5 @@ async function main() {
   console.log(JSON.stringify({ key: result.key || result.manifest.key, url: result.url, hash: result.hash, dryRun: config.dryRun }));
   if(config.verificationError)throw new Error(config.verificationError);
 }
-module.exports = { canonical, hash, rich, text, select, workItems, validateNote, releaseKey, request, clients, allPages, withLock, buildManifest, buildLegacyManifest, record, git, ancestor, reviewed, provenanceMapping, deployedBaseline };
+module.exports = { verificationProperties, canonical, hash, rich, text, select, workItems, validateNote, releaseKey, request, clients, allPages, withLock, buildManifest, buildLegacyManifest, record, git, ancestor, reviewed, provenanceMapping, deployedBaseline };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });
