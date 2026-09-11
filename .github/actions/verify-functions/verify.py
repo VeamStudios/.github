@@ -68,6 +68,15 @@ def list_functions(project, token, get=request):
     return list(rows.values())
 
 
+def require_expected(functions, expected):
+    if not isinstance(expected, list) or not expected or any(not isinstance(n, str) or not re.fullmatch(r'[A-Za-z0-9_-]+', n) for n in expected) or len(set(expected)) != len(expected):
+        raise ValueError('Expected compiled function inventory is invalid')
+    deployed = {row['name'].rsplit('/', 1)[1] for _, row in functions}
+    missing = set(expected) - deployed
+    if missing:
+        raise ValueError('Expected functions are absent from production: ' + ', '.join(sorted(missing)))
+
+
 def inspect_function(item, repository, commit, token, get=request):
     version, row = item
     name = row['name']
@@ -98,6 +107,7 @@ def main():
         raise ValueError('Expected production project, repository and exact commit are required')
     token = subprocess.check_output(['gcloud', 'auth', 'print-access-token'], text=True).strip()
     functions = list_functions(project, token)
+    require_expected(functions, json.loads(os.environ.get('VERIFY_EXPECTED_FUNCTIONS', 'null')))
     errors = []
     def check(item):
         try:

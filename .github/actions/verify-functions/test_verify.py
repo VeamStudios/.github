@@ -2,7 +2,7 @@ import io
 import json
 import unittest
 import zipfile
-from verify import inspect_function, list_functions
+from verify import inspect_function, list_functions, require_expected
 
 REPO = 'VeamStudios/ChecklistInspectorPro-Backend'
 COMMIT = 'a' * 40
@@ -28,6 +28,13 @@ class Verification(unittest.TestCase):
             self.assertEqual(token, '')
             return content
         return inspect_function((version, row), REPO, COMMIT, 'secret', get)
+
+    def test_new_function_missing_from_provider(self):
+        with self.assertRaisesRegex(ValueError, 'absent.*new-function'):
+            require_expected([('v1', {'name': NAME})], ['example', 'new-function'])
+
+    def test_expected_inventory_present(self):
+        require_expected([('v1', {'name': NAME})], ['example'])
 
     def test_matching_build(self):
         self.assertEqual(self.run_check({'schemaVersion': 1, 'repository': REPO, 'commit': COMMIT}), NAME)

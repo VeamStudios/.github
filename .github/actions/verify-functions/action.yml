@@ -19,6 +19,9 @@ runs:
       env:
         VERIFY_SERVICE_ACCOUNT: ${{ inputs.service_account_file }}
       run: gcloud auth activate-service-account --key-file="$VERIFY_SERVICE_ACCOUNT" --quiet
+    - name: Read expected functions from the compiled application
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/inventory.js"
     - name: Verify each deployed function build
       shell: bash
       env:
