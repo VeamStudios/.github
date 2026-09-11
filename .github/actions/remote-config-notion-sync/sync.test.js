@@ -374,3 +374,12 @@ run().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+
+{
+ const template={parameterGroups:{features:{parameters:{export:{defaultValue:{value:'false'},conditionalValues:{enterprise:{value:'true'}}}}}},conditions:[{name:'enterprise',expression:"app.id == 'enterprise'"}]};
+ assert.equal(remoteConfigValue(template,'export'),'false');
+ const item={iosRcKey:'',webRcKey:'export',androidRcKey:'',supportsRemoteConfigEvidence:true};
+ const properties=buildPageProperties({item,template,config:{firebaseProjectId:'site-audit-pro',platform:'all'},syncedAt:'2026-09-11T12:00:00Z'});
+ const evidence=JSON.parse(properties['Remote Config Evidence']);assert.equal(evidence.flags.export.conditions[0].expression,"app.id == 'enterprise'");assert.equal(evidence.project,'site-audit-pro');
+ assert.equal(buildPageProperties({item:{...item,supportsRemoteConfigEvidence:false},template,config:{platform:'all'},syncedAt:''})['Remote Config Evidence'],undefined);
+}

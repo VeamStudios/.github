@@ -34,6 +34,15 @@ inputs:
   verification_url:
     description: HTTPS production endpoint checked after deployment.
     default: ''
+  provider_verification:
+    description: Exact serving-revision evidence produced by verify-cloud-run.
+    default: ''
+  distribution_confirmed:
+    description: Explicit operator confirmation of this exact Android production build.
+    default: 'false'
+  distribution_evidence:
+    description: HTTPS production distribution evidence.
+    default: ''
   released_at:
     description: Actual store release time, when available.
     default: ''
@@ -69,6 +78,9 @@ runs:
         INPUT_EVENT: ${{ inputs.event }}
         INPUT_SOURCE: ${{ inputs.source }}
         INPUT_VERIFICATION_URL: ${{ inputs.verification_url }}
+        INPUT_PROVIDER_VERIFICATION: ${{ inputs.provider_verification }}
+        INPUT_DISTRIBUTION_CONFIRMED: ${{ inputs.distribution_confirmed }}
+        INPUT_DISTRIBUTION_EVIDENCE: ${{ inputs.distribution_evidence }}
         INPUT_RELEASED_AT: ${{ inputs.released_at }}
         INPUT_HISTORICAL: ${{ inputs.historical }}
         INPUT_DRY_RUN: ${{ inputs.dry_run }}

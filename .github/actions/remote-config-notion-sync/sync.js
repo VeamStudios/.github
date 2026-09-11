@@ -238,6 +238,7 @@ function extractWorkItem(page) {
   return {
     id: page.id,
     title: textFromRichText(props.Name),
+    supportsRemoteConfigEvidence: Boolean(props['Remote Config Evidence']),
     productIds: relationIds(props.Product),
     iosRcKey: textFromRichText(props["iOS RC Key"]).trim(),
     webRcKey: textFromRichText(props["Web RC Key"]).trim(),
@@ -245,9 +246,12 @@ function extractWorkItem(page) {
   };
 }
 
+function remoteConfigParameter(template,key) {
+  return template?.parameters?.[key] || Object.values(template?.parameterGroups||{}).map(group=>group.parameters?.[key]).find(Boolean);
+}
 function remoteConfigValue(template, key) {
   if (!key) return null;
-  const parameter = template?.parameters?.[key];
+  const parameter = remoteConfigParameter(template,key);
   if (!parameter) {
     return "missing";
   }
@@ -287,6 +291,14 @@ function buildPageProperties({ item, template, config, syncedAt }) {
     properties["iOS Prod RC Value"] = productionRcValue(template, item.iosRcKey);
     properties["Web Prod RC Value"] = productionRcValue(template, item.webRcKey);
     properties["Android Prod RC Value"] = productionRcValue(template, item.androidRcKey);
+    if(item.supportsRemoteConfigEvidence) {
+      const flags={};
+      for(const key of [item.iosRcKey,item.webRcKey,item.androidRcKey].filter(Boolean)) {
+        const parameter=remoteConfigParameter(template,key);
+        flags[key]={default:remoteConfigValue(template,key),conditions:Object.entries(parameter?.conditionalValues||{}).map(([name,value])=>({name,expression:(template.conditions||[]).find(c=>c.name===name)?.expression??'',value:value.value??'useInAppDefault'})).sort((a,b)=>a.name.localeCompare(b.name))};
+      }
+      properties['Remote Config Evidence']=JSON.stringify({version:1,project:config.firebaseProjectId,checkedAt:syncedAt,source:`https://console.firebase.google.com/project/${config.firebaseProjectId}/config`,flags});
+    }
   }
 
   const platform = normalizePlatform(config.platform);
@@ -320,7 +332,7 @@ function toNotionProperties(rawProperties) {
     } else if (PRODUCTION_STATUS_PROPERTIES.has(key) || REMOTE_CONFIG_VALUE_PROPERTIES.has(key)) {
       properties[key] = notionSelect(value);
     } else {
-      properties[key] = notionRichText(value);
+      properties[key] = key === 'Remote Config Evidence' ? {rich_text:(String(value).match(/[\s\S]{1,1800}/g)||[]).map(content=>({type:'text',text:{content}}))} : notionRichText(value);
     }
   }
   return properties;

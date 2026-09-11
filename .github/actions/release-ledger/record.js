@@ -139,12 +139,15 @@ async function buildLegacyManifest(config, gh, baseline) {
 async function buildManifest(config, gh, baseline, notion) {
   return config.legacy ? buildLegacyManifest(config,gh,baseline) : require('./changelog').buildChangelogManifest(config,gh,baseline,notion);
 }
+function validCloudRun(v,commit,repository){try{return Boolean(require('./cloud-run').validateCloudRun(v,commit,repository))}catch{return false}}
 function deployedBaseline(row) {
   try {
     const m=JSON.parse(text(row.properties.Manifest)),o=JSON.parse(text(row.properties.Observation)||'null');
     if(hash(m)!==text(row.properties['Manifest Hash'])||!o)return false;
+    const b=o.baseline;
+    if(b?.kind==='audited-production-baseline'&&b.manifestHash===hash(m)&&b.commit===m.commit&&b.repository===m.repository&&b.target===m.target&&Number.isFinite(Date.parse(b.checkedAt))&&Array.isArray(b.evidence)&&b.evidence.length>=2&&b.evidence.every(url=>typeof url==='string'&&url.startsWith('https://'))&&(!m.target.match(/^(ios|android)-/)||Boolean(b.build&&b.build===(m.build||text(row.properties.Build)))))return true;
     if(m.target.includes('ios')||m.target.includes('android'))return Boolean(o.phase==='live'&&m.build&&((o.verification?.kind==='app-store'&&o.verification.build===m.build)||(o.verification?.kind==='manual'&&o.verification.build===m.build&&row.properties['Audience Verified']?.checkbox&&row.properties['Availability Evidence']?.url)));
-    return Boolean(o.phase==='deployed'&&((o.verification?.kind==='http'&&o.verification.commit===m.commit&&o.verification.evidence)||(o.verification?.kind==='manual'&&row.properties['Audience Verified']?.checkbox&&row.properties['Availability Evidence']?.url)));
+    return Boolean(o.phase==='deployed'&&((o.verification?.kind==='http'&&o.verification.commit===m.commit&&o.verification.reportedCommit===m.commit&&o.verification.repository===m.repository&&o.verification.evidence)||(o.verification?.kind==='cloud-run'&&validCloudRun(o.verification,m.commit,m.repository))||(o.verification?.kind==='manual'&&o.verification.commit===m.commit&&o.verification.evidence&&row.properties['Audience Verified']?.checkbox&&row.properties['Availability Evidence']?.url)));
   }catch{return false}
 }
 async function record(config, api) {
@@ -160,8 +163,8 @@ async function record(config, api) {
     let baseline = config.baseline;
     if (!baseline) {
       const previous = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter: { and: [{ property: 'Repository', rich_text: { equals: config.repo } }, targetFilter(schema, config.target)] }, sorts: [{ property: 'Released At', direction: 'descending' }] });
-      baseline = previous.find(row => text(row.properties['Release Key']) !== filter.rich_text.equals && deployedBaseline(row))?.properties.Commit;
-      baseline = typeof baseline === 'object' ? text(baseline) : baseline;
+      const prior=previous.find(row => text(row.properties['Release Key']) !== filter.rich_text.equals && deployedBaseline(row));
+      baseline=prior?JSON.parse(text(prior.properties.Manifest)).commit:undefined;
     }
     manifest = await buildManifest(config, api.gh, baseline, api.notion);
   }
@@ -185,9 +188,11 @@ async function record(config, api) {
   if (config.phase !== 'prepare' && acceptObservation) {
     properties['Availability Evidence'] = { url: config.source };
     if (['deployed', 'live', 'rollout', 'withdrawn'].includes(config.phase)) properties['Released At'] = { date: { start: config.releasedAt || existing[0]?.properties['Released At']?.date?.start || observedAt } };
-    properties.Observation = rich(JSON.stringify({ phase: config.phase, source: config.source, releasedAt: config.releasedAt || previousObservation?.releasedAt || observedAt, verification: config.verification || null }));
+    properties.Observation = rich(JSON.stringify({ ...(previousObservation?.baseline?{baseline:previousObservation.baseline}:{}), phase: config.phase, source: config.source, releasedAt: config.releasedAt || previousObservation?.releasedAt || observedAt, verification: config.verification || null, ...(config.verificationError?{verificationError:config.verificationError}:{}) }));
     if (oldState !== 'Available' && oldState !== 'Withdrawn') properties.State = select(states[config.phase]);
   }
+  if(config.verification?.kind==='manual')properties['Audience Verified']={checkbox:true};
+  if(config.verificationError)properties.Error=rich(config.verificationError);
   if (config.phase === 'withdrawn') properties.State = select('Withdrawn');
   if (existing[0]) {
     // Human edits must invalidate readiness, never be silently overwritten by a retry.
@@ -220,16 +225,24 @@ async function main() {
     fs.writeFileSync('release-manifest.json', JSON.stringify(manifest, null, 2) + '\n');
     console.log(JSON.stringify({ dryRun: true, key: manifest.key, issues: manifest.issues })); return;
   }
-  if (input('VERIFICATION_URL') && config.phase === 'deployed') {
-    const endpoint = new URL(input('VERIFICATION_URL'));
-    if (endpoint.protocol !== 'https:') throw new Error('Production verification requires HTTPS.');
-    const check = await fetch(endpoint, { redirect: 'error', signal: AbortSignal.timeout(30000) });
-    if (!check.ok) throw new Error(`Production verification failed (${check.status}).`);
-    config.verification = { kind: 'http', evidence: endpoint.href, checkedAt: new Date().toISOString(), commit: git('rev-parse', `${config.commit}^{commit}`) };
+  if(config.phase==='deployed') {
+    try {
+      if(input('PROVIDER_VERIFICATION'))config.verification=require('./cloud-run').validateCloudRun(JSON.parse(input('PROVIDER_VERIFICATION')),git('rev-parse',`${config.commit}^{commit}`),config.repo);
+      else {
+      if(!input('VERIFICATION_URL'))throw new Error('Configure RELEASE_VERIFICATION_URL for the deployed commit endpoint');
+      config.verification=await require('./verify-deployment').verifyDeployment(input('VERIFICATION_URL'),git('rev-parse',`${config.commit}^{commit}`),config.repo);
+      }
+    }catch(error){config.verificationError=error.message;console.warn(`::warning::${error.message}. Deployment is recorded; retry evidence recording without redeploying.`)}
+  }
+  if(input('DISTRIBUTION_CONFIRMED')==='true') {
+    if(!['live','rollout'].includes(config.phase)||!config.target.startsWith('android-')||!config.build||!input('DISTRIBUTION_EVIDENCE'))throw new Error('Manual distribution confirmation requires Android target, exact build, live/rollout phase and evidence');
+    const evidence=new URL(input('DISTRIBUTION_EVIDENCE'));if(evidence.protocol!=='https:')throw new Error('Distribution evidence must use HTTPS');
+    config.verification={kind:'manual',build:config.build,commit:git('rev-parse',`${config.commit}^{commit}`),evidence:evidence.href,checkedAt:new Date().toISOString(),actor:process.env.GITHUB_ACTOR};
   }
   const api = clients(config);
   const result = config.dryRun ? await record(config, api) : await withLock(api.gh, 'VeamStudios/.github', () => record(config, api));
   console.log(JSON.stringify({ key: result.key || result.manifest.key, url: result.url, hash: result.hash, dryRun: config.dryRun }));
+  if(config.verificationError)throw new Error(config.verificationError);
 }
 module.exports = { canonical, hash, rich, text, select, workItems, validateNote, releaseKey, request, clients, allPages, withLock, buildManifest, buildLegacyManifest, record, git, ancestor, reviewed, provenanceMapping, deployedBaseline };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

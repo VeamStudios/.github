@@ -1,4 +1,4 @@
-name: Complete Work Item Development
+name: Record Work Item merge evidence
 on:
   workflow_call:
     inputs:

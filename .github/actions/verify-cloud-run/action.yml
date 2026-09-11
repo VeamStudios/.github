@@ -1,0 +1,18 @@
+name: Verify CloudServices production revisions
+description: Read all four serving revisions and bind their commit labels to the shipped commit.
+inputs:
+  project:
+    description: Production Google Cloud project.
+    required: true
+outputs:
+  verification:
+    description: Verified production evidence or empty when verification could not complete.
+    value: ${{ steps.verify.outputs.verification }}
+runs:
+  using: composite
+  steps:
+    - id: verify
+      shell: bash
+      env:
+        VERIFY_PROJECT: ${{ inputs.project }}
+      run: node "${{ github.action_path }}/../release-ledger/cloud-run.js"
