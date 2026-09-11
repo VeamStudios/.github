@@ -140,6 +140,11 @@ async function buildManifest(config, gh, baseline, notion) {
   return config.legacy ? buildLegacyManifest(config,gh,baseline) : require('./changelog').buildChangelogManifest(config,gh,baseline,notion);
 }
 function validCloudRun(v,commit,repository){try{return Boolean(require('./cloud-run').validateCloudRun(v,commit,repository))}catch{return false}}
+function workItemRelation(ids, previous) {
+  // An old frozen manifest can lack links recovered later from its exact source range.
+  if (ids.length > 100 || (!ids.length && (previous?.relation?.length || previous?.has_more))) return undefined;
+  return { relation: ids.map(id => ({ id })) };
+}
 function deployedBaseline(row) {
   try {
     const m=JSON.parse(text(row.properties.Manifest)),o=JSON.parse(text(row.properties.Observation)||'null');
@@ -194,7 +199,8 @@ async function record(config, api) {
   const acceptObservation = !previousObservation || rank[config.phase] >= (rank[previousObservation.phase] ?? -1);
   const oldState = existing[0]?.properties.State?.select?.name;
   const properties = { ...presentation(manifest, schema, existing[0]), 'Release Key': rich(manifest.key), Repository: rich(config.repo), Version: rich(config.version), Commit: rich(manifest.commit), Build: rich(manifest.build), Event: select(manifest.event), Manifest: rich(JSON.stringify(manifest)), 'Manifest Hash': rich(digest), Changelog: rich(manifest.schemaVersion===2?manifest.completeChangelog:manifest.changes.filter(c => c.kind !== 'internal').map(c => `- ${c.summary}`).join('\n')), 'Work Items': { relation: ids.map(id => ({ id })) }, Source: { url: config.source }, 'Observed At': { date: { start: observedAt } } };
-  if (ids.length > 100) delete properties['Work Items'];
+  const relation = workItemRelation(ids, existing[0]?.properties['Work Items']);
+  if (relation) properties['Work Items'] = relation; else delete properties['Work Items'];
   if (!existing[0]) Object.assign(properties, { State: select(states[config.phase]), 'Historical': { checkbox: config.historical === true }, 'Notification State': select(config.historical ? 'Suppressed' : 'Pending'), Error: rich(manifest.schemaVersion===2?'':manifest.issues.join('\n')) });
   if (readyNotes && !existing[0]) Object.assign(properties, { 'Approved Hash': rich(digest), 'Approval Evidence': { url: manifest.prs[0].url } });
   // Transport evidence does not imply audience availability. The processor verifies this observation.
@@ -257,5 +263,5 @@ async function main() {
   console.log(JSON.stringify({ key: result.key || result.manifest.key, url: result.url, hash: result.hash, dryRun: config.dryRun }));
   if(config.verificationError)throw new Error(config.verificationError);
 }
-module.exports = { verificationProperties, canonical, hash, rich, text, select, workItems, validateNote, releaseKey, request, clients, allPages, withLock, buildManifest, buildLegacyManifest, record, git, ancestor, reviewed, provenanceMapping, deployedBaseline };
+module.exports = { workItemRelation, verificationProperties, canonical, hash, rich, text, select, workItems, validateNote, releaseKey, request, clients, allPages, withLock, buildManifest, buildLegacyManifest, record, git, ancestor, reviewed, provenanceMapping, deployedBaseline };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });
