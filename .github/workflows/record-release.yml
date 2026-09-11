@@ -38,6 +38,15 @@ on:
       github_environment:
         default: prod
         type: string
+      provider_verification:
+        default: ''
+        type: string
+      distribution_confirmed:
+        default: false
+        type: boolean
+      distribution_evidence:
+        default: ''
+        type: string
       historical:
         default: false
         type: boolean
@@ -92,6 +101,9 @@ jobs:
           event: ${{ inputs.event }}
           source: ${{ inputs.source }}
           verification_url: ${{ inputs.verification_url }}
+          provider_verification: ${{ inputs.provider_verification }}
+          distribution_confirmed: ${{ inputs.distribution_confirmed }}
+          distribution_evidence: ${{ inputs.distribution_evidence }}
           historical: ${{ inputs.historical }}
           dry_run: ${{ vars.RELEASE_LEDGER_MODE != 'shadow' && vars.RELEASE_LEDGER_MODE != 'live' }}
           github_token: ${{ steps.token.outputs.token }}

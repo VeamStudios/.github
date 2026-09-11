@@ -60,7 +60,7 @@ async function completeDevelopment(config, api) {
     if (['Rejected', 'Deferred', 'Duplicate'].includes(props['Work Item Status']?.status?.name)) { skipped.push({ id, reason: 'Work Item is inactive' }); continue; }
     const property = `${mapping.platform} Dev Status`;
     const current = props[property]?.select?.name;
-    if (!['Not Started', 'In Development', 'Done', 'Released'].includes(current)) throw new Error(`Work Item requires an existing ${property} value`);
+    if (!['Not Started', 'In Development', 'Done', 'Released'].includes(current)) { skipped.push({id,reason:`Set the applicable ${property} on the Work Item`});continue; }
     if (!props['Platform Development'] || !Array.isArray(props['Platform Development'].rich_text)) throw new Error('Add the Platform Development rich-text property before enabling this workflow');
     const evidence = JSON.parse(text(props['Platform Development']) || '{}');
     if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('Invalid Platform Development evidence');
@@ -69,10 +69,11 @@ async function completeDevelopment(config, api) {
     if (previous && (previous.pr === pr.number || Date.parse(previous.mergedAt) >= Date.parse(pr.merged_at))) { skipped.push({ id, reason: 'Completion already recorded or superseded' }); continue; }
     if (current === 'Released') { skipped.push({ id, reason: 'Preserve Released; start enhancement development explicitly' }); continue; }
     evidence[mapping.platform] = { repository: config.repo, pr: pr.number, head: pr.head.sha, mergeCommit: pr.merge_commit_sha, mergedAt: pr.merged_at, source: pr.html_url, scope: note?.scope || '', targets };
-    const properties = { [property]: select('Done'), 'Platform Development': rich(JSON.stringify(evidence)) };
+    // Done remains the team's existing completion/QA signoff. Merging only records exact source evidence.
+    const properties = { 'Platform Development': rich(JSON.stringify(evidence)) };
     const written = config.mode === 'live' && config.lifecycleWrites === true;
     if (written) await api.notion(`/pages/${id}`, 'PATCH', { properties });
-    changes.push({ id, property, from: current, to: 'Done', source: pr.html_url, written });
+    changes.push({ id, property, from: current, to: current, source: pr.html_url, written });
   }
   return { changes, skipped };
 }

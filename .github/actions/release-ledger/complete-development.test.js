@@ -14,9 +14,9 @@ function fixture() {
   };
   return { config, pr, row, reads, patches, open, api };
 }
-test('main merge completes only its product/platform and atomically records exact PR evidence', async () => {
+test('main merge records exact PR evidence and preserves team development status', async () => {
   const f = fixture(); await completeDevelopment(f.config, f.api);
-  assert.equal(f.patches.length, 1); assert.equal(f.row.properties['Web Dev Status'].select.name, 'Done');
+  assert.equal(f.patches.length, 1); assert.equal(f.row.properties['Web Dev Status'].select.name, 'In Development');
   assert.equal(f.row.properties['iOS Dev Status'].select.name, 'Not Started');
   assert.equal(f.row.properties['Work Item Status'].status.name, 'In Development');
   const evidence = JSON.parse(text(f.row.properties['Platform Development'])).Web;

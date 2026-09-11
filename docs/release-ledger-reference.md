@@ -61,3 +61,13 @@ A cancelled job can leave `refs/tags/veam-release-ledger-lock`. Verify no holder
 </details>
 
 Checked: 2026-09-09 against shared recorder, NotionWorkers and focused regression tests. Live deployment and evidence checks are recorded in the rollout record. API references: [Notion status codes](https://developers.notion.com/reference/status-codes), [Slack corrections](https://docs.slack.dev/reference/methods/chat.update/).
+
+## Work Item delivery contract (version 1)
+
+New manifests freeze optional Release Targets/Release Restrictions and the existing platform RC Key from the Work Item. The team uses existing platform Dev Status = Done for development and QA completion; the merge action records exact PR/head evidence without marking unfinished work Done. Blank platform fields remain unknown, N/A excludes a platform, and mobile editions are explicit Release Targets. No separate Required Availability/approval-hash workflow is needed for ordinary new features.
+
+NotionWorkers generates supporting availability rows per Work Item, target, change and release. Exact transport evidence, the latest completed PR, current matching scope and dependencies must agree. Fresh production RC evidence includes defaults and conditional expressions; unrestricted true values can resolve automatically. Restricted audiences require a confirmation bound to the exact release/configuration hash. Missing wording holds publication without blocking verified delivery status. Earlier availability is retained when a new development cycle starts.
+
+HTTP verification requires a JSON endpoint reporting the shipped repository and commit, not merely HTTP 200. Hosting deploys embed release-info.json through a post-build Firebase predeploy hook; backends return it from version. CloudServices verifies Ready state, immutable revision commit labels and 100% traffic for email/exporter/main/pdf. Android Mark Production Release supplies exact-build distribution evidence once. Recording failures can be retried via Re-run failed jobs without rerunning successful deployment jobs.
+
+An audited historical production baseline may be stored in Observation.baseline with the immutable manifest hash, repository/target/commit/build and source evidence links. It is used only to choose the next comparison baseline. Historical announcement suppression and unverified historical feature availability remain unchanged. The baseline commit is read from the verified frozen manifest, never a mutable display property.

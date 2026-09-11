@@ -84,7 +84,10 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
       const title=text(row.properties.Name),description=text(row.properties['Feature Changelog Text'])||title;
       const relation=row.properties['Required Availability'];
       if(relation?.has_more){const all=[];let cursor;do{const page=await notion(`/pages/${row.id}/properties/${encodeURIComponent(relation.id)}?${new URLSearchParams({page_size:'100',...(cursor?{start_cursor:cursor}:{})})}`);all.push(...page.results.map(x=>({id:x.relation.id})));cursor=page.has_more?page.next_cursor:undefined}while(cursor);row.properties['Required Availability']={...relation,relation:all,has_more:false}}
-      workItemSnapshots.push({id,url:`https://www.notion.so/${id}`,title,description});workItemPages.set(id,row);
+      const platform=config.target.startsWith('ios-')?'iOS':config.target.startsWith('android-')?'Android':config.target==='web'?'Web':'';
+      const labels=require('./presentation').TARGETS;
+      const delivery={targets:(row.properties['Release Targets']?.multi_select||[]).map(x=>Object.keys(labels).find(k=>k===x.name||labels[k]===x.name)||'').sort(),restrictions:text(row.properties['Release Restrictions']).trim(),rcKey:platform?text(row.properties[`${platform} RC Key`]).trim():''};
+      workItemSnapshots.push({id,delivery,url:`https://www.notion.so/${id}`,title,description});workItemPages.set(id,row);
     }catch(error){issues.push(`Work Item ${id}: ${error.message}`)}
     if(ids.length)try{availability.push(...await allPages(notion,`/data_sources/${config.availabilityId||'b21439db-b5b5-433d-9b53-6e3cabf430b3'}/query`,{}))}catch(error){issues.push(`Availability lookup: ${error.message}`)}
   } else if(ids.length)issues.push('Work Item snapshots require Notion access before publication.');
@@ -117,11 +120,11 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
     const id=digest({repository:config.repo,sources:sourcePrs,entry:identity(entry)});
     if(seen.has(id))continue;seen.add(id);
     const summary=entry.summary.replace(/\s*\[(?:Work Item|PR|source)\]\((?:https:\/\/(?:www\.)?notion\.so\/|https:\/\/app\.notion\.com\/p\/|https:\/\/github\.com\/)[^)]+\)/gi,'').trim();
-    const c={id,kind,summary,heading:entry.heading,sourceVersion:entry.version,audience:'Users of this production target',limitations:entry.previewTag?`Preview: ${entry.previewTag}`:'',scope:`changelog-${id.slice(0,24)}`,targets:[config.target],audienceGate:kind==='feature'||flagKeys.length>0,requiredReleaseKeys:[],workItems:linked,pr:wording?.pr.number||sources[0]?.pr.number||0,noteHash:hash({summary,heading:entry.heading,sourcePrs}),approved:Boolean(wording?.approved),reviewEvidence:wording?.approved?wording.pr.html_url:'',blocked,flagKeys,gateKeys,sourcePrs};
+    const c={id,kind,summary,heading:entry.heading,sourceVersion:entry.version,audience:'Users of this production target',limitations:entry.previewTag?`Preview: ${entry.previewTag}`:'',scope:`changelog-${id.slice(0,24)}`,targets:[config.target],availabilityMode:'work-item',audienceGate:kind==='feature'||flagKeys.length>0,requiredReleaseKeys:[],workItems:linked,pr:wording?.pr.number||sources[0]?.pr.number||0,noteHash:hash({summary,heading:entry.heading,sourcePrs}),approved:Boolean(wording?.approved),reviewEvidence:wording?.approved?wording.pr.html_url:'',blocked,flagKeys,gateKeys,sourcePrs};
     changes.push(c);
   }
   const covered=new Set(changes.filter(c=>!c.blocked.length).flatMap(c=>c.sourcePrs));
   const warnings=issues.filter(message=>{const missing=message.match(/^PR #(\d+) has no new changelog entry/);return !missing||!covered.has(Number(missing[1]))});
-  return {schemaVersion:2,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs,changes,workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url}:null,issues:warnings,provenanceComplete:validBaseline&&unmapped.length===0,source:config.source};
+  return {schemaVersion:2,deliveryVersion:1,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs,changes,workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url}:null,issues:warnings,provenanceComplete:validBaseline&&unmapped.length===0,source:config.source};
 }
 module.exports={parseChangelog,newEntries,renderChangelog,identity,buildChangelogManifest,internalFiles};

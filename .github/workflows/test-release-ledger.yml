@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - '.github/actions/release-ledger/**'
+      - '.github/actions/release-marker/**'
+      - '.github/actions/verify-cloud-run/**'
       - '.github/actions/complete-work-item-development/**'
       - '.github/workflows/complete-work-item-development.yml'
       - '.github/workflows/qa-pipeline.yml'
@@ -11,6 +13,8 @@ on:
     branches: [main]
     paths:
       - '.github/actions/release-ledger/**'
+      - '.github/actions/release-marker/**'
+      - '.github/actions/verify-cloud-run/**'
       - '.github/actions/complete-work-item-development/**'
       - '.github/workflows/complete-work-item-development.yml'
       - '.github/workflows/qa-pipeline.yml'

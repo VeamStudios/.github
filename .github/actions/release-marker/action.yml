@@ -1,0 +1,21 @@
+name: Write deployed release identity
+description: Embed the exact repository and commit in the deployed artifact.
+inputs:
+  firebase_config:
+    description: Firebase configuration whose hosting public directories receive the marker.
+    default: ''
+  output:
+    description: Explicit output file for a service artifact.
+    default: ''
+  predeploy:
+    description: Also install a Firebase predeploy hook for build-and-deploy commands.
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        MARKER_FIREBASE_CONFIG: ${{ inputs.firebase_config }}
+        MARKER_PREDEPLOY: ${{ inputs.predeploy }}
+        MARKER_OUTPUT: ${{ inputs.output }}
+      run: node "${{ github.action_path }}/write.js"
