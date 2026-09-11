@@ -5,6 +5,7 @@ on:
       - '.github/actions/release-ledger/**'
       - '.github/actions/release-marker/**'
       - '.github/actions/verify-cloud-run/**'
+      - '.github/actions/verify-functions/**'
       - '.github/actions/complete-work-item-development/**'
       - '.github/workflows/complete-work-item-development.yml'
       - '.github/workflows/qa-pipeline.yml'
@@ -15,6 +16,7 @@ on:
       - '.github/actions/release-ledger/**'
       - '.github/actions/release-marker/**'
       - '.github/actions/verify-cloud-run/**'
+      - '.github/actions/verify-functions/**'
       - '.github/actions/complete-work-item-development/**'
       - '.github/workflows/complete-work-item-development.yml'
       - '.github/workflows/qa-pipeline.yml'
@@ -29,3 +31,4 @@ jobs:
         with:
           node-version: '24'
       - run: node --test .github/actions/release-ledger/*.test.js
+      - run: python3 -m unittest discover -s .github/actions/verify-functions -p 'test_*.py'

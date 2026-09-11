@@ -1,0 +1,27 @@
+name: Verify production function builds
+description: Check every Firebase-managed function is ACTIVE and carries the intended repository/commit marker.
+inputs:
+  project:
+    required: true
+    description: Production Firebase project.
+  service_account_file:
+    required: true
+    description: Existing deployment service account file.
+  commit:
+    required: true
+    description: Exact deployed commit.
+runs:
+  using: composite
+  steps:
+    - uses: google-github-actions/setup-gcloud@v3
+    - name: Authenticate existing deployment account
+      shell: bash
+      env:
+        VERIFY_SERVICE_ACCOUNT: ${{ inputs.service_account_file }}
+      run: gcloud auth activate-service-account --key-file="$VERIFY_SERVICE_ACCOUNT" --quiet
+    - name: Verify each deployed function build
+      shell: bash
+      env:
+        VERIFY_PROJECT: ${{ inputs.project }}
+        VERIFY_COMMIT: ${{ inputs.commit }}
+      run: python3 "$GITHUB_ACTION_PATH/verify.py"
