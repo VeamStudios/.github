@@ -14,9 +14,9 @@ function fixture() {
   };
   return { config, pr, row, reads, patches, open, api };
 }
-test('main merge records exact PR evidence and preserves team development status', async () => {
+test('main merge records exact PR evidence and marks only its platform Done', async () => {
   const f = fixture(); await completeDevelopment(f.config, f.api);
-  assert.equal(f.patches.length, 1); assert.equal(f.row.properties['Web Dev Status'].select.name, 'In Development');
+  assert.equal(f.patches.length, 1); assert.equal(f.row.properties['Web Dev Status'].select.name, 'Done');
   assert.equal(f.row.properties['iOS Dev Status'].select.name, 'Not Started');
   assert.equal(f.row.properties['Work Item Status'].status.name, 'In Development');
   const evidence = JSON.parse(text(f.row.properties['Platform Development'])).Web;
@@ -35,13 +35,13 @@ test('a retry cannot complete a new development cycle or downgrade Released', as
   }
   assert.equal(f.patches.length, 1);
 });
-test('Released without previous automation evidence is preserved too', async () => {
+test('a newly recorded merged enhancement marks a previously Released platform Done', async () => {
   const f = fixture(); f.row.properties['Web Dev Status'] = select('Released');
-  await completeDevelopment(f.config, f.api); assert.equal(f.patches.length, 0);
+  await completeDevelopment(f.config, f.api); assert.equal(f.row.properties['Web Dev Status'].select.name, 'Done');
 });
-test('open linked PR on page two blocks premature completion, including a draft', async () => {
+test('open linked PRs do not block the requested merged PR transition', async () => {
   const f = fixture(); f.api.gh = async path => path.includes('?state=open') ? path.endsWith('page=1') ? Array.from({ length: 100 }, () => ({ body: '' })) : [{ draft: true, body: f.pr.body }] : f.pr;
-  const result = await completeDevelopment(f.config, f.api); assert.equal(f.patches.length, 0); assert.match(result.skipped[0].reason, /Another linked/);
+  const result = await completeDevelopment(f.config, f.api); assert.equal(f.patches.length, 1); assert.equal(result.changes[0].to, 'Done'); assert.ok(!f.reads.some(p => p.includes('?state=open')));
 });
 test('other Work Item open PR does not block, and PR without Work Items does nothing', async () => {
   const f = fixture(); f.open.push({ body: `Work Items:\n- https://www.notion.so/${'d'.repeat(32)}` });
@@ -59,15 +59,17 @@ test('unrelated open PR placeholders do not abort completion', async () => {
   await completeDevelopment(f.config, f.api);
   assert.equal(f.patches.length, 1);
 });
-test('valid sibling links still block their Work Item despite malformed entries', async () => {
+test('sibling links and malformed sibling entries do not prevent marking both linked Work Items Done', async () => {
   const f = fixture();
   const other = 'd'.repeat(32);
   f.pr.body += `\n- https://www.notion.so/${other}`;
+  const rows={[wi]:f.row,[other]:structuredClone(f.row)};
+  f.api.notion=async(path,method,body)=>{const row=rows[path.split('/').at(-1)];if(method==='PATCH'){f.patches.push(body.properties);Object.assign(row.properties,body.properties)}return row};
   f.open.push({ body: `Work Items:\n- <url>\n- https://www.notion.so/${wi}` });
   const result = await completeDevelopment(f.config, f.api);
-  assert.deepEqual(result.skipped.map(x => x.id), [wi]);
-  assert.deepEqual(result.changes.map(x => x.id), [other]);
-  assert.equal(f.patches.length, 1);
+  assert.deepEqual(result.skipped, []);
+  assert.deepEqual(result.changes.map(x => x.id), [wi, other]);
+  assert.equal(f.patches.length, 2);
 });
 test('malformed links on the completing PR still fail before any mutation', async () => {
   const f = fixture(); f.pr.body += '\n- <url>';
@@ -91,11 +93,11 @@ test('older merge delivered after a newer completion cannot reset status', async
   const f = fixture(); f.row.properties['Platform Development'] = rich(JSON.stringify({ Web: { repository: repo, pr: 8, mergedAt: '2026-09-08T11:00:00Z' } }));
   await completeDevelopment(f.config, f.api); assert.equal(f.patches.length, 0);
 });
-test('explicit committed incomplete declaration holds Done without waiting for a future PR to exist', async () => {
+test('legacy release-note declarations cannot prevent merge-driven Done', async () => {
   const f = fixture(); f.pr.body += '\n\nRelease note: .release-notes/part-one.json';
   const note = { kind: 'feature', summary: 'Export reports', scope: 'export-v1', workItems: [wi], targets: ['web'], audience: 'All', limitations: '', requiredReleaseKeys: [], audienceGate: false, developmentComplete: false };
   f.api.gh = async path => path.includes('/contents/') ? { encoding: 'base64', content: Buffer.from(JSON.stringify(note)).toString('base64') } : f.pr;
-  const result = await completeDevelopment(f.config, f.api); assert.match(result.skipped, /incomplete/); assert.equal(f.patches.length, 0);
+  const result = await completeDevelopment(f.config, f.api); assert.equal(result.changes[0].to, 'Done'); assert.equal(f.patches.length, 1);
   assert.throws(() => validateNote({ ...note, developmentComplete: 'false' }, [wi]), /boolean/);
 });
 
@@ -110,3 +112,24 @@ test('unknown Work Item types still enforce product identity', async () => {
   await assert.rejects(completeDevelopment(f.config, f.api), /product does not match/);
   assert.equal(f.patches.length, 0);
 });
+
+ test('an evidence-only legacy record is repaired once and retries preserve subsequent development', async () => {
+  const f=fixture();
+  f.row.properties['Platform Development']=rich(JSON.stringify({Web:{repository:repo,pr:7,head:f.pr.head.sha,mergeCommit:f.pr.merge_commit_sha,mergedAt:f.pr.merged_at}}));
+  await completeDevelopment(f.config,f.api);assert.equal(f.row.properties['Web Dev Status'].select.name,'Done');
+  f.row.properties['Web Dev Status']=select('In Development');await completeDevelopment(f.config,f.api);
+  assert.equal(f.row.properties['Web Dev Status'].select.name,'In Development');assert.equal(f.patches.length,1);
+ });
+ test('all five mapped client repos set their own platform Done',async()=>{
+  for(const [repository,mapping] of Object.entries(REPOSITORIES)){
+   const f=fixture();f.config.repo=repository;f.pr.base.repo.full_name=repository;
+   f.row.properties.Product.relation=[{id:mapping.product}];f.row.properties[mapping.platform+' Dev Status']=select('In Development');
+   await completeDevelopment(f.config,f.api);assert.equal(f.row.properties[mapping.platform+' Dev Status'].select.name,'Done');
+   assert.equal(f.patches.length,1);
+  }
+ });
+ test('inactive, archived and N/A Work Items are preserved',async()=>{
+  for(const change of [f=>{f.row.archived=true},f=>{f.row.properties['Web Dev Status']=select('N/A')},f=>{f.row.properties['Work Item Status']={status:{name:'Deferred'}}}]){
+   const f=fixture();change(f);await completeDevelopment(f.config,f.api);assert.equal(f.patches.length,0);
+  }
+ });

@@ -53,8 +53,8 @@ Complete these in order across all products.
 | Symptom | Next step |
 |---|---|
 | Workflow cannot fetch a shared file at `@main` | Confirm the shared PR has merged, then rerun the dependent check. |
-| Platform did not become Done | Check the PR merged into `main`, Work Item links/product, other open PRs and the incomplete declaration. After fixing access/configuration, retry **Work Item Development Completion** with the merged PR number. |
-| Platform is Done but not Released | Check its approved delivery scope, completing-PR evidence, store build, dependencies and audience access. |
+| Platform did not become Done | Check the PR merged into `main`, Work Item links/product and exact completion evidence. After fixing access/configuration, retry **Work Item Development Completion** with the merged PR number. |
+| Platform is Done but not Released | Check its completing-PR evidence and verified production deployment or exact live store build for each intended edition. |
 | Release evidence recording failed | Fix the error and retry **only the recording job**. Do not redeploy to retry a notification. |
 | Release wording changed | Have the exact frozen content reviewed again. Changed wording invalidates publication readiness. |
 | Slack delivery is uncertain | Inspect the original attempt and message receipt. Reconcile before retrying; reset Pending only after confirming no send occurred. |

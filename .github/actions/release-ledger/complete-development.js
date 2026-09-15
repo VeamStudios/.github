@@ -1,6 +1,5 @@
 const fs = require('node:fs');
-const { clients, withLock, workItems, validateNote, rich, text, select } = require('./record');
-const { parseWorkItemLinks } = require('./work-item-links');
+const { clients, withLock, workItems, rich, text, select } = require('./record');
 
 const normalize = id => String(id || '').replace(/-/g, '').toLowerCase();
 const SAP = '30c069083a0380d09845fe97daa54c31';
@@ -13,16 +12,6 @@ const REPOSITORIES = {
   'VeamStudios/ChecklistInspectorPro-iOS': { platform: 'iOS', product: CIP },
   'VeamStudios/SiteAuditPro-AndroidNew': { platform: 'Android', product: SAP },
 };
-const TARGETS = { Web: ['web'], iOS: ['ios-consumer', 'ios-enterprise'], Android: ['android-consumer', 'android-enterprise'] };
-
-async function completionNote(pr, repo, gh, ids) {
-  const path = String(pr.body).match(/^Release note:\s*(\.release-notes\/[A-Za-z0-9_-]+\.json)\s*$/m)?.[1];
-  if (!path) return null; // Existing feature PRs only need their explicit Work Items links.
-  const file = await gh(`/repos/${repo}/contents/${path}?ref=${pr.merge_commit_sha}`);
-  if (file.encoding !== 'base64' || !file.content) throw new Error('Cannot read committed development completion contract');
-  return validateNote(JSON.parse(Buffer.from(file.content, 'base64').toString('utf8')), ids);
-}
-
 async function completeDevelopment(config, api) {
   if (config.mode === 'off') return { skipped: 'off', changes: [] };
   if (!['shadow', 'live'].includes(config.mode)) throw new Error('Invalid release ledger mode');
@@ -35,23 +24,8 @@ async function completeDevelopment(config, api) {
   if (!/^[a-f0-9]{40}$/.test(pr.merge_commit_sha) || !/^[a-f0-9]{40}$/.test(pr.head?.sha) || !Number.isFinite(Date.parse(pr.merged_at))) throw new Error('Merged PR lacks exact commit evidence');
   const ids = workItems(pr.body);
   if (!ids.length) return { skipped: 'No Work Items links', changes: [] };
-  const note = await completionNote(pr, config.repo, api.gh, ids);
-  if (note?.developmentComplete === false) return { skipped: 'PR explicitly leaves development incomplete', changes: [] };
-  const targets = note ? note.targets.filter(target => TARGETS[mapping.platform].includes(target)) : [];
-  if (note && !targets.length) return { skipped: 'Release note does not affect this client platform', changes: [] };
-  const open = [];
-  // Read GitHub directly, including drafts and intermediate base branches, without mirror caps.
-  for (let page = 1;; page++) {
-    const rows = await api.gh(`/repos/${config.repo}/pulls?state=open&per_page=100&page=${page}`);
-    open.push(...rows);
-    if (rows.length < 100) break;
-  }
-  // Sibling PRs are discovery, not the subject of this completion check. Keep
-  // valid links even when an unrelated entry is still a template placeholder.
-  const openWorkItems = new Set(open.flatMap(other => parseWorkItemLinks(other.body).ids));
   const changes = [], skipped = [];
   for (const id of ids) {
-    if (openWorkItems.has(id)) { skipped.push({ id, reason: 'Another linked platform PR is open' }); continue; }
     const row = await api.notion(`/pages/${id}`);
     if (normalize(row.parent?.data_source_id) !== normalize(config.workItemsId)) throw new Error('Linked page is outside Work Items');
     if (row.archived || row.in_trash) { skipped.push({ id, reason: 'Work Item is archived' }); continue; }
@@ -63,20 +37,22 @@ async function completeDevelopment(config, api) {
     if (['Rejected', 'Deferred', 'Duplicate'].includes(props['Work Item Status']?.status?.name)) { skipped.push({ id, reason: 'Work Item is inactive' }); continue; }
     const property = `${mapping.platform} Dev Status`;
     const current = props[property]?.select?.name;
-    if (!['Not Started', 'In Development', 'Done', 'Released'].includes(current)) { skipped.push({id,reason:`Set the applicable ${property} on the Work Item`});continue; }
+    if (!['Not Started', 'Prototyping', 'In Development', 'Done', 'Released'].includes(current)) { skipped.push({id,reason:`Set the applicable ${property} on the Work Item`});continue; }
     if (!props['Platform Development'] || !Array.isArray(props['Platform Development'].rich_text)) throw new Error('Add the Platform Development rich-text property before enabling this workflow');
     const evidence = JSON.parse(text(props['Platform Development']) || '{}');
     if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('Invalid Platform Development evidence');
     const previous = evidence[mapping.platform];
     if (previous && (!Number.isFinite(Date.parse(previous.mergedAt)) || previous.repository !== config.repo)) throw new Error('Invalid existing platform completion evidence');
-    if (previous && (previous.pr === pr.number || Date.parse(previous.mergedAt) >= Date.parse(pr.merged_at))) { skipped.push({ id, reason: 'Completion already recorded or superseded' }); continue; }
-    if (current === 'Released') { skipped.push({ id, reason: 'Preserve Released; start enhancement development explicitly' }); continue; }
-    evidence[mapping.platform] = { repository: config.repo, pr: pr.number, head: pr.head.sha, mergeCommit: pr.merge_commit_sha, mergedAt: pr.merged_at, source: pr.html_url, scope: note?.scope || '', targets };
-    // Done remains the team's existing completion/QA signoff. Merging only records exact source evidence.
-    const properties = { 'Platform Development': rich(JSON.stringify(evidence)) };
+    const same = previous?.pr === pr.number;
+    if (previous && (!same && Date.parse(previous.mergedAt) >= Date.parse(pr.merged_at) || same && previous.doneOnMerge === true)) { skipped.push({ id, reason: 'Completion already recorded or superseded' }); continue; }
+    if (same && (previous.head !== pr.head.sha || previous.mergeCommit !== pr.merge_commit_sha)) throw new Error('Existing completion does not match the merged PR');
+    // Migrate evidence-only records once. Subsequent retries cannot finish a new development cycle.
+    const to = same && current === 'Released' ? 'Released' : 'Done';
+    evidence[mapping.platform] = { repository: config.repo, pr: pr.number, head: pr.head.sha, mergeCommit: pr.merge_commit_sha, mergedAt: pr.merged_at, source: pr.html_url, scope: same ? previous.scope || '' : '', targets: same ? previous.targets || [] : [], doneOnMerge: true };
+    const properties = { 'Platform Development': rich(JSON.stringify(evidence)), [property]: select(to) };
     const written = config.mode === 'live' && config.lifecycleWrites === true;
     if (written) await api.notion(`/pages/${id}`, 'PATCH', { properties });
-    changes.push({ id, property, from: current, to: current, source: pr.html_url, written });
+    changes.push({ id, property, from: current, to, source: pr.html_url, written });
   }
   return { changes, skipped };
 }
