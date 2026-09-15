@@ -1,20 +1,28 @@
 name: Recheck release announcement evidence
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       repository:
         description: 'Repository containing the shipped code (VeamStudios/name)'
+        type: string
         required: true
       release_page:
         description: 'Existing Notion release page ID'
+        type: string
         required: true
       wording_pr:
         description: 'Optional merged PR with reviewed wording; omit to recheck the original shipped sources'
+        type: string
         required: false
       dry_run:
         description: 'Preview evidence and holds without changing Notion or Slack'
         type: boolean
         default: true
+    secrets:
+      BOT_RELEASE_PRIVATE_KEY:
+        required: true
+      NOTION_TOKEN:
+        required: true
 permissions:
   contents: read
 concurrency:
@@ -32,6 +40,8 @@ jobs:
           owner: VeamStudios
       - uses: actions/checkout@v6
         with:
+          repository: VeamStudios/.github
+          ref: main
           path: ledger-tooling
           persist-credentials: false
       - uses: actions/checkout@v6
