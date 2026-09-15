@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const {readState,writeState}=require('./automation-state');
 const { clients, withLock, workItems, rich, text, select } = require('./record');
 
 const normalize = id => String(id || '').replace(/-/g, '').toLowerCase();
@@ -38,20 +39,22 @@ async function completeDevelopment(config, api) {
     const property = `${mapping.platform} Dev Status`;
     const current = props[property]?.select?.name;
     if (!['Not Started', 'Prototyping', 'In Development', 'Done', 'Released'].includes(current)) { skipped.push({id,reason:`Set the applicable ${property} on the Work Item`});continue; }
-    if (!props['Platform Development'] || !Array.isArray(props['Platform Development'].rich_text)) throw new Error('Add the Platform Development rich-text property before enabling this workflow');
-    const evidence = JSON.parse(text(props['Platform Development']) || '{}');
-    if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('Invalid Platform Development evidence');
-    const previous = evidence[mapping.platform];
+    const previous=(await readState(api.notion,id,`development-${mapping.platform}`)).value;
     if (previous && (!Number.isFinite(Date.parse(previous.mergedAt)) || previous.repository !== config.repo)) throw new Error('Invalid existing platform completion evidence');
     const same = previous?.pr === pr.number;
-    if (previous && (!same && Date.parse(previous.mergedAt) >= Date.parse(pr.merged_at) || same && previous.doneOnMerge === true)) { skipped.push({ id, reason: 'Completion already recorded or superseded' }); continue; }
+    if (previous && (!same && Date.parse(previous.mergedAt) >= Date.parse(pr.merged_at) || same && previous.statusApplied === true)) { skipped.push({ id, reason: 'Completion already recorded or superseded' }); continue; }
     if (same && (previous.head !== pr.head.sha || previous.mergeCommit !== pr.merge_commit_sha)) throw new Error('Existing completion does not match the merged PR');
     // Migrate evidence-only records once. Subsequent retries cannot finish a new development cycle.
     const to = same && current === 'Released' ? 'Released' : 'Done';
-    evidence[mapping.platform] = { repository: config.repo, pr: pr.number, head: pr.head.sha, mergeCommit: pr.merge_commit_sha, mergedAt: pr.merged_at, source: pr.html_url, scope: same ? previous.scope || '' : '', targets: same ? previous.targets || [] : [], doneOnMerge: true };
-    const properties = { 'Platform Development': rich(JSON.stringify(evidence)), [property]: select(to) };
+    const evidence = { repository: config.repo, pr: pr.number, head: pr.head.sha, mergeCommit: pr.merge_commit_sha, mergedAt: pr.merged_at, source: pr.html_url, scope: same ? previous.scope || '' : '', targets: same ? previous.targets || [] : [], doneOnMerge: true };
+    const properties = { [property]: select(to) };
     const written = config.mode === 'live' && config.lifecycleWrites === true;
-    if (written) await api.notion(`/pages/${id}`, 'PATCH', { properties });
+    if (written) {
+      // Persist the retry checkpoint before the status write, then confirm it.
+      await writeState(api.notion,id,`development-${mapping.platform}`,{...evidence,statusApplied:false},text(props.Name));
+      await api.notion(`/pages/${id}`, 'PATCH', { properties });
+      await writeState(api.notion,id,`development-${mapping.platform}`,{...evidence,statusApplied:true},text(props.Name));
+    }
     changes.push({ id, property, from: current, to, source: pr.html_url, written });
   }
   return { changes, skipped };

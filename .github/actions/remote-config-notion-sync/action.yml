@@ -1,5 +1,5 @@
 name: Remote Config → Notion Sync
-description: Syncs production Firebase Remote Config values and evidence to Notion Work Items.
+description: Syncs production Remote Config values to Work Items and evidence to the release ledger.
 
 inputs:
   product:
@@ -27,7 +27,7 @@ inputs:
     required: false
     default: ""
   notion_token:
-    description: "Notion API token with access to Work Items and Products."
+    description: "Notion API token with access to Work Items, Products and Feature Availability."
     required: false
     default: ""
   dry_run:

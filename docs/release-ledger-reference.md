@@ -16,7 +16,7 @@ Generate announcements from the reviewed changelog and shipped PR links, with a 
 
 Release heading → available changelog headings/bullets → full Notion release record → Includes these Work Items.
 
-Descriptions come from Feature Changelog Text, falling back to the Work Item title. Both wording and descriptions are frozen. Notion retains the complete changelog, all shipped Work Item links, waiting reasons, source evidence and an expandable Posted to Slack section with exact message text, timestamp and link. Corrections retain the original text and update the same Slack message.
+Work Item labels use their titles; release wording comes from the shipped repository changelog. Both wording and descriptions are frozen. Notion retains the complete changelog, all shipped Work Item links, waiting reasons, source evidence and an expandable Posted to Slack section with exact message text, timestamp and link. Corrections retain the original text and update the same Slack message.
 
 </details>
 
@@ -64,7 +64,7 @@ Checked: 2026-09-15 against shared recorder, NotionWorkers and focused regressio
 
 ## Work Item delivery contract (version 1)
 
-New manifests freeze optional Release Targets/Release Restrictions and the existing platform RC Key from the Work Item. A linked client PR merged into main sets its existing platform Dev Status to Done and records exact PR/head evidence. A verified production deployment/distribution containing that PR sets the same field to Released. Other open PRs, release-note declarations and wording approval do not block the merge transition. Platform Released is independent of feature flags, service dependencies and Slack publication; overall Work Item availability retains those checks. Blank platform fields remain unknown, N/A excludes a platform, and mobile editions are explicit Release Targets. No separate Required Availability/approval-hash workflow is needed for ordinary new features.
+New manifests freeze preserved scope exceptions from the supporting automation ledger and the existing platform RC Key from the Work Item. A linked client PR merged into main sets its existing platform Dev Status to Done and records exact PR/head evidence. A verified production deployment/distribution containing that PR sets the same field to Released. Other open PRs, release-note declarations and wording approval do not block the merge transition. Platform Released is independent of feature flags, service dependencies and Slack publication; overall Work Item availability retains those checks. Blank platform fields remain unknown, N/A excludes a platform, and mobile editions follow product defaults unless a preserved scope exception applies. No separate scope approval fields are maintained on Work Items.
 
 NotionWorkers generates supporting availability rows per Work Item, target, change and release. Exact transport evidence, the latest completed PR, current matching scope and dependencies must agree. Fresh production RC evidence includes defaults and conditional expressions; unrestricted true values can resolve automatically. Restricted audiences require a confirmation bound to the exact release/configuration hash. Missing wording holds publication without blocking verified delivery status. Earlier availability is retained when a new development cycle starts.
 

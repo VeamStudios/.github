@@ -1,25 +1,28 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { fakeState } = require('./automation-state.test-helper');
+const { readState, writeState } = require('./automation-state');
 const { completeDevelopment, REPOSITORIES } = require('./complete-development');
 const { rich, text, select, validateNote } = require('./record');
 const wi = 'a'.repeat(32), repo = 'VeamStudios/SiteAuditPro-Web';
 function fixture() {
   const config = { repo, number: 7, mode: 'live', lifecycleWrites: true, workItemsId: 'workitems' };
   const pr = { number: 7, merged: true, merged_at: '2026-09-08T10:00:00Z', base: { ref: 'main', repo: { full_name: repo } }, head: { sha: 'b'.repeat(40) }, merge_commit_sha: 'c'.repeat(40), html_url: `https://github.com/${repo}/pull/7`, body: `Work Items:\n- https://www.notion.so/${wi}` };
-  const row = { parent: { data_source_id: 'workitems' }, properties: { Product: { relation: [{ id: REPOSITORIES[repo].product }] }, 'Work Item Status': { status: { name: 'In Development' } }, 'Web Dev Status': select('In Development'), 'iOS Dev Status': select('Not Started'), 'Platform Development': rich('') } };
-  const reads = [], patches = [], open = [];
+  const row = { parent: { data_source_id: 'workitems' }, properties: { Product: { relation: [{ id: REPOSITORIES[repo].product }] }, 'Work Item Status': { status: { name: 'In Development' } }, 'Web Dev Status': select('In Development'), 'iOS Dev Status': select('Not Started') } };
+  const reads = [], patches = [], open = [], rows = {[wi]:row};
+  const state = fakeState();
   const api = {
     gh: async path => { reads.push(path); return path.includes('?state=open') ? open : pr; },
-    notion: async (path, method, body) => { if (method === 'PATCH') { patches.push(body.properties); Object.assign(row.properties, body.properties); } return row; },
+    notion: async (path, method, body) => { const target=rows[path.split('/').at(-1)]; if(!target)return state.notion(path,method,body); if (method === 'PATCH') { patches.push(body.properties); Object.assign(target.properties, body.properties); } return target; },
   };
-  return { config, pr, row, reads, patches, open, api };
+  return { config, pr, row, rows, reads, patches, open, api, state };
 }
 test('main merge records exact PR evidence and marks only its platform Done', async () => {
   const f = fixture(); await completeDevelopment(f.config, f.api);
   assert.equal(f.patches.length, 1); assert.equal(f.row.properties['Web Dev Status'].select.name, 'Done');
   assert.equal(f.row.properties['iOS Dev Status'].select.name, 'Not Started');
   assert.equal(f.row.properties['Work Item Status'].status.name, 'In Development');
-  const evidence = JSON.parse(text(f.row.properties['Platform Development'])).Web;
+  const evidence = (await readState(f.api.notion,wi,'development-Web')).value;
   assert.equal(evidence.head, f.pr.head.sha); assert.equal(evidence.pr, 7);
 });
 test('closed unmerged PR and merge into another base do not complete development', async () => {
@@ -63,8 +66,7 @@ test('sibling links and malformed sibling entries do not prevent marking both li
   const f = fixture();
   const other = 'd'.repeat(32);
   f.pr.body += `\n- https://www.notion.so/${other}`;
-  const rows={[wi]:f.row,[other]:structuredClone(f.row)};
-  f.api.notion=async(path,method,body)=>{const row=rows[path.split('/').at(-1)];if(method==='PATCH'){f.patches.push(body.properties);Object.assign(row.properties,body.properties)}return row};
+  f.rows[other]=structuredClone(f.row);
   f.open.push({ body: `Work Items:\n- <url>\n- https://www.notion.so/${wi}` });
   const result = await completeDevelopment(f.config, f.api);
   assert.deepEqual(result.skipped, []);
@@ -90,7 +92,7 @@ test('live disabled writes fail before reading or mutating', async () => {
   assert.equal(f.reads.length,0);assert.equal(f.patches.length,0);
 });
 test('older merge delivered after a newer completion cannot reset status', async () => {
-  const f = fixture(); f.row.properties['Platform Development'] = rich(JSON.stringify({ Web: { repository: repo, pr: 8, mergedAt: '2026-09-08T11:00:00Z' } }));
+  const f = fixture(); await writeState(f.api.notion,wi,'development-Web',{ repository: repo, pr: 8, mergedAt: '2026-09-08T11:00:00Z' });
   await completeDevelopment(f.config, f.api); assert.equal(f.patches.length, 0);
 });
 test('legacy release-note declarations cannot prevent merge-driven Done', async () => {
@@ -115,7 +117,7 @@ test('unknown Work Item types still enforce product identity', async () => {
 
  test('an evidence-only legacy record is repaired once and retries preserve subsequent development', async () => {
   const f=fixture();
-  f.row.properties['Platform Development']=rich(JSON.stringify({Web:{repository:repo,pr:7,head:f.pr.head.sha,mergeCommit:f.pr.merge_commit_sha,mergedAt:f.pr.merged_at}}));
+  await writeState(f.api.notion,wi,'development-Web',{repository:repo,pr:7,head:f.pr.head.sha,mergeCommit:f.pr.merge_commit_sha,mergedAt:f.pr.merged_at});
   await completeDevelopment(f.config,f.api);assert.equal(f.row.properties['Web Dev Status'].select.name,'Done');
   f.row.properties['Web Dev Status']=select('In Development');await completeDevelopment(f.config,f.api);
   assert.equal(f.row.properties['Web Dev Status'].select.name,'In Development');assert.equal(f.patches.length,1);
@@ -133,3 +135,5 @@ test('unknown Work Item types still enforce product identity', async () => {
    const f=fixture();change(f);await completeDevelopment(f.config,f.api);assert.equal(f.patches.length,0);
   }
  });
+
+test('failed status writes remain retryable without falsely recording completion',async()=>{const f=fixture(),normal=f.api.notion;let fail=true;f.api.notion=async(path,method,body)=>{if(path==='/pages/'+wi&&method==='PATCH'&&fail)throw Error('unavailable');return normal(path,method,body)};await assert.rejects(completeDevelopment(f.config,f.api),/unavailable/);assert.equal((await readState(normal,wi,'development-Web')).value.statusApplied,false);fail=false;await completeDevelopment(f.config,f.api);assert.equal(f.row.properties['Web Dev Status'].select.name,'Done');assert.equal((await readState(normal,wi,'development-Web')).value.statusApplied,true);assert.ok(f.patches.every(p=>Object.keys(p).every(k=>k==='Web Dev Status')))});

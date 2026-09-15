@@ -2,6 +2,7 @@
 
 const crypto = require("node:crypto");
 const fs = require("node:fs");
+const {writeState}=require("../release-ledger/automation-state");
 
 const NOTION_API_URL = "https://api.notion.com/v1";
 const NOTION_VERSION = "2026-03-11";
@@ -234,7 +235,6 @@ function extractWorkItem(page) {
   return {
     id: page.id,
     title: textFromRichText(props.Name),
-    supportsRemoteConfigEvidence: Boolean(props['Remote Config Evidence']),
     productIds: relationIds(props.Product),
     iosRcKey: textFromRichText(props["iOS RC Key"]).trim(),
     webRcKey: textFromRichText(props["Web RC Key"]).trim(),
@@ -287,17 +287,19 @@ function buildPageProperties({ item, template, config, syncedAt }) {
     properties["iOS Prod RC Value"] = productionRcValue(template, item.iosRcKey);
     properties["Web Prod RC Value"] = productionRcValue(template, item.webRcKey);
     properties["Android Prod RC Value"] = productionRcValue(template, item.androidRcKey);
-    if(item.supportsRemoteConfigEvidence) {
-      const flags={};
-      for(const key of [item.iosRcKey,item.webRcKey,item.androidRcKey].filter(Boolean)) {
-        const parameter=remoteConfigParameter(template,key);
-        flags[key]={default:remoteConfigValue(template,key),conditions:Object.entries(parameter?.conditionalValues||{}).map(([name,value])=>({name,expression:(template.conditions||[]).find(c=>c.name===name)?.expression??'',value:value.value??'useInAppDefault'})).sort((a,b)=>a.name.localeCompare(b.name))};
-      }
-      properties['Remote Config Evidence']=JSON.stringify({version:1,project:config.firebaseProjectId,checkedAt:syncedAt,source:`https://console.firebase.google.com/project/${config.firebaseProjectId}/config`,flags});
-    }
+
   }
 
   return properties;
+}
+
+function remoteConfigEvidence(item,template,config,syncedAt) {
+  const flags={};
+  for(const key of [item.iosRcKey,item.webRcKey,item.androidRcKey].filter(Boolean)) {
+    const parameter=remoteConfigParameter(template,key);
+    flags[key]={default:remoteConfigValue(template,key),conditions:Object.entries(parameter?.conditionalValues||{}).map(([name,value])=>({name,expression:(template.conditions||[]).find(c=>c.name===name)?.expression??'',value:value.value??'useInAppDefault'})).sort((a,b)=>a.name.localeCompare(b.name))};
+  }
+  return {version:1,project:config.firebaseProjectId,checkedAt:syncedAt,source:`https://console.firebase.google.com/project/${config.firebaseProjectId}/config`,flags};
 }
 
 function toNotionProperties(rawProperties) {
@@ -308,7 +310,7 @@ function toNotionProperties(rawProperties) {
     } else if (REMOTE_CONFIG_VALUE_PROPERTIES.has(key)) {
       properties[key] = notionSelect(value);
     } else {
-      properties[key] = key === 'Remote Config Evidence' ? {rich_text:(String(value).match(/[\s\S]{1,1800}/g)||[]).map(content=>({type:'text',text:{content}}))} : notionRichText(value);
+      properties[key] = notionRichText(value);
     }
   }
   return properties;
@@ -394,6 +396,7 @@ async function runSync(config, clients) {
 
     if (!config.dryRun && Object.keys(properties).length > 0) {
       try {
+        await writeState((path,method='GET',body)=>clients.notion.request(path,{method,body}),item.id,'remote-config',remoteConfigEvidence(item,template,config,syncedAt),item.title);
         await clients.notion.updatePage(item.id, toNotionProperties(properties));
         summary.updatedPages += 1;
       } catch (error) {
@@ -523,6 +526,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  remoteConfigEvidence,
   FirebaseRemoteConfigClient,
   NotionClient,
   buildPageProperties,
