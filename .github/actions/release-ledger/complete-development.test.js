@@ -98,3 +98,15 @@ test('explicit committed incomplete declaration holds Done without waiting for a
   const result = await completeDevelopment(f.config, f.api); assert.match(result.skipped, /incomplete/); assert.equal(f.patches.length, 0);
   assert.throws(() => validateNote({ ...note, developmentComplete: 'false' }, [wi]), /boolean/);
 });
+
+test('Product Ops skips platform completion even when it spans products', async () => {
+  const f = fixture(); f.row.properties.Type = select('Product Ops');
+  f.row.properties.Product.relation.push({ id: REPOSITORIES['VeamStudios/ChecklistInspectorPro-Web'].product });
+  const result = await completeDevelopment(f.config, f.api);
+  assert.equal(f.patches.length, 0); assert.match(result.skipped[0].reason, /Product Ops/);
+});
+test('unknown Work Item types still enforce product identity', async () => {
+  const f = fixture(); f.row.properties.Type = select('Unknown'); f.row.properties.Product.relation = [];
+  await assert.rejects(completeDevelopment(f.config, f.api), /product does not match/);
+  assert.equal(f.patches.length, 0);
+});
