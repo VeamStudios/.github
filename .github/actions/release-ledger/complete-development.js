@@ -56,6 +56,8 @@ async function completeDevelopment(config, api) {
     if (normalize(row.parent?.data_source_id) !== normalize(config.workItemsId)) throw new Error('Linked page is outside Work Items');
     if (row.archived || row.in_trash) { skipped.push({ id, reason: 'Work Item is archived' }); continue; }
     const props = row.properties;
+    // Operational projects span products and do not complete a client platform.
+    if (props.Type?.select?.name === 'Product Ops') { skipped.push({ id, reason: 'Product Ops has no customer platform completion' }); continue; }
     const products = props.Product?.relation || [];
     if (props.Product?.has_more || products.length !== 1 || normalize(products[0].id) !== mapping.product) throw new Error('Work Item product does not match repository');
     if (['Rejected', 'Deferred', 'Duplicate'].includes(props['Work Item Status']?.status?.name)) { skipped.push({ id, reason: 'Work Item is inactive' }); continue; }
