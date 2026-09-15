@@ -112,8 +112,6 @@ jobs:
     with:
       product: cip
       platform: web
-      production_state: Deployed
-      production_evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       firebase_project_id: checklistinspectorpro
       github_environment: prod
     secrets: inherit
@@ -124,7 +122,7 @@ jobs:
 - `platform` — one of `ios`, `web`, `android`, `backend`, or `all`; deployment/release status writes only apply to `ios`, `web`, and `android`. `backend` and `all` refresh Remote Config values only.
 - `firebase_project_id` — optional production Firebase project ID. When set with `SERVICE_ACCOUNT_BASE64`, the workflow reads the production Remote Config template and writes exact values to the `iOS Prod RC Value`, `Web Prod RC Value`, and `Android Prod RC Value` select fields. A configured key absent from Firebase is written as `missing`; a blank platform key is written as `no platform key`.
 - `github_environment` — optional GitHub environment name, such as `prod`, used when `SERVICE_ACCOUNT_BASE64` is scoped to a deployment environment.
-- `production_state` and `production_evidence` — optional deployment/release mirror inputs. `production_state` writes to `iOS Release Status`, `Web Deploy Status`, or `Android Release Status` based on `platform`; `production_evidence` is written only when one of those status fields is written.
+- Platform Dev Status is owned by the release ledger: merged PR → Done, verified deployment/live build → Released. This action only refreshes Remote Config values and evidence. The reusable workflow accepts legacy production inputs as ignored compatibility fields for older callers.
 - `production_version` — deprecated and ignored. Work Items do not store a shared production version.
 - `dry_run` — prints the planned updates without changing Notion.
 

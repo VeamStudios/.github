@@ -166,9 +166,9 @@ async function testProductionStatusTargetsPlatform() {
     }),
   });
 
-  assert.equal(properties["iOS Release Status"], "Uploaded to App Store Connect");
+  assert.equal(properties["iOS Release Status"], undefined);
   assert.equal(properties["Web Deploy Status"], undefined);
-  assert.equal(properties["Production Evidence"], "https://github.com/run");
+  assert.equal(properties["Production Evidence"], undefined);
   assert.equal(properties["Last Production Sync"], undefined);
 }
 
@@ -184,7 +184,7 @@ async function testAndroidReleaseStatusTargetsPlatform() {
     }),
   });
 
-  assert.equal(properties["Android Release Status"], "In rollout");
+  assert.equal(properties["Android Release Status"], undefined);
   assert.equal(properties["iOS Release Status"], undefined);
   assert.equal(properties["Web Deploy Status"], undefined);
 }
@@ -214,14 +214,14 @@ async function testPlatformFilteringUsesRelevantRcKeys() {
 
   const summary = await runSync(
     baseConfig({ platform: "ios", productionState: "Uploaded to App Store Connect" }),
-    { notion, firebase: null }
+    { notion, firebase: new FakeFirebase({parameters:{ios_feature:{defaultValue:{value:"true"}}}}) }
   );
 
   assert.equal(summary.matchedPages, 1);
   assert.equal(notion.updates.length, 1);
   assert.equal(notion.updates[0].id, "ios-item");
-  assert.equal(notion.updates[0].properties["iOS Release Status"].select.name, "Uploaded to App Store Connect");
-  assert.equal(notion.updates[0].properties["Last Production Sync"], undefined);
+  assert.equal(notion.updates[0].properties["iOS Release Status"], undefined);
+  assert.ok(notion.updates[0].properties["Last Production Sync"]);
 }
 
 function oneItem() {
@@ -316,10 +316,9 @@ async function testCommandExitStatusAndOutputs() {
       });
       return { ...result, outputs: fs.readFileSync(output, "utf8") };
     };
-    const failed = invoke();
-    assert.equal(failed.status, 1);
-    assert.match(failed.stderr, /::error::Work Items read failed: simulated Notion outage/);
-    assert.match(failed.outputs, /updated_pages=0/);
+    const ignoredLegacyStatus = invoke();
+    assert.equal(ignoredLegacyStatus.status, 0);
+    assert.match(ignoredLegacyStatus.outputs, /updated_pages=0/);
     const missing = invoke({ INPUT_FIREBASE_PROJECT_ID: "test-project" });
     assert.equal(missing.status, 1);
     assert.match(missing.stderr, /credentials are not configured/);
