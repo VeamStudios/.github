@@ -1,3 +1,4 @@
+const {readState}=require('./automation-state');
 const crypto = require('node:crypto');
 const { parseWorkItemLinks } = require('./work-item-links');
 const { WEBSITES, verifiedSync, websiteChanges } = require('./website-changelog');
@@ -77,20 +78,17 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
     prs.push({number,url:pr.html_url,mergeCommit:pr.merge_commit_sha,headCommit:pr.head.sha,workItems:links.ids,approved,noteHash:''});
     contexts.push({pr,links:links.ids,added,approved,warnings,files,commits:[...commitPrs].filter(([,number])=>number===pr.number).map(([commit])=>commit)});
   }
-  const ids=[...new Set(prs.flatMap(p=>p.workItems))],workItemSnapshots=[],workItemPages=new Map(),availability=[];
+  const ids=[...new Set(prs.flatMap(p=>p.workItems))],workItemSnapshots=[],workItemPages=new Map();
   if(notion) {
     for(const id of ids)try{
       const row=await notion(`/pages/${id}`),expected=config.workItemsId||'20aeddfe-a3f7-41e9-b440-c9eb6b26887f';
       if((row.parent?.data_source_id||'').replace(/-/g,'')!==expected.replace(/-/g,'') || row.in_trash || row.archived)throw new Error('not an active canonical Work Item');
-      const title=text(row.properties.Name),description=text(row.properties['Feature Changelog Text'])||title;
-      const relation=row.properties['Required Availability'];
-      if(relation?.has_more){const all=[];let cursor;do{const page=await notion(`/pages/${row.id}/properties/${encodeURIComponent(relation.id)}?${new URLSearchParams({page_size:'100',...(cursor?{start_cursor:cursor}:{})})}`);all.push(...page.results.map(x=>({id:x.relation.id})));cursor=page.has_more?page.next_cursor:undefined}while(cursor);row.properties['Required Availability']={...relation,relation:all,has_more:false}}
+      const title=text(row.properties.Name),description=title;
+      const scope=(await readState(notion,id,'scope')).value||{targets:[],restrictions:''};
       const platform=config.target.startsWith('ios-')?'iOS':config.target.startsWith('android-')?'Android':config.target==='web'?'Web':'';
-      const labels=require('./presentation').TARGETS;
-      const delivery={targets:(row.properties['Release Targets']?.multi_select||[]).map(x=>Object.keys(labels).find(k=>k===x.name||labels[k]===x.name)||'').sort(),restrictions:text(row.properties['Release Restrictions']).trim(),rcKey:platform?text(row.properties[`${platform} RC Key`]).trim():''};
+      const delivery={targets:(scope.targets||[]).slice().sort(),restrictions:(scope.restrictions||'').trim(),rcKey:platform?text(row.properties[`${platform} RC Key`]).trim():''};
       workItemSnapshots.push({id,delivery,url:`https://www.notion.so/${id}`,title,description});workItemPages.set(id,row);
     }catch(error){issues.push(`Work Item ${id}: ${error.message}`)}
-    if(ids.length)try{availability.push(...await allPages(notion,`/data_sources/${config.availabilityId||'b21439db-b5b5-433d-9b53-6e3cabf430b3'}/query`,{}))}catch(error){issues.push(`Availability lookup: ${error.message}`)}
   } else if(ids.length)issues.push('Work Item snapshots require Notion access before publication.');
   const historicalVersions=new Set(parseChangelog(before).map(e=>e.version).filter(v=>v.toLowerCase()!=='unreleased'));
   const candidates=validBaseline?newEntries(before,raw):[];
@@ -114,10 +112,7 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
     if(kind==='feature'&&!linked.length)blocked.push('Feature changelog entry needs a linked Work Item.');
     if(linked.some(id=>!workItemPages.has(id)))blocked.push('A linked Work Item is unavailable or outside the canonical database.');
     const flagKeys=[...new Set([...entry.flagKeys,...linked.flatMap(id=>{const p=workItemPages.get(id)?.properties;const platform=config.target.startsWith('ios')?'iOS':config.target.startsWith('android')?'Android':'Web';return p&&text(p[`${platform} RC Key`])?[text(p[`${platform} RC Key`])]:[]})])];
-    const gates=availability.filter(p=>p.properties['Scope Approved']?.checkbox && text(p.properties.Target)===config.target && (p.properties['Work Item']?.relation||[]).some(r=>linked.includes(r.id.replace(/-/g,''))));
-    // Only scopes explicitly selected by the Work Item can constrain this change.
-    const selected=new Set(linked.flatMap(id=>(workItemPages.get(id)?.properties['Required Availability']?.relation||[]).map(r=>r.id)));
-    const gateKeys=gates.filter(g=>selected.has(g.id)).map(g=>text(g.properties['Availability Key']));
+    const gateKeys=[];
     const sourcePrs=sources.map(x=>x.pr.number).sort((a,b)=>a-b);
     const id=digest({repository:config.repo,sources:sourcePrs,entry:identity(entry)});
     if(seen.has(id))continue;seen.add(id);

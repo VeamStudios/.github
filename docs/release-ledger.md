@@ -15,3 +15,9 @@ It covers the everyday flow, platform statuses, PR checklist and operator action
 [Implementation Work Item](https://www.notion.so/3d4069083a038174982cc98d9c3b20cd)
 
 Keep team-facing process instructions in the Notion runbook. Keep code contracts and technical validation evidence alongside the implementation here.
+
+### Internal Work Item state
+
+Machine evidence lives in Feature Availability records with `Scope = automation-state` and `Target = automation`. Keys are `automation/<work-item-id>/<kind>`: development per platform, Remote Config observations, or preserved release scope exceptions. Shared actions write these records and the Notion worker reads them. Keep these rows out of human availability views with `Scope != automation-state`. They do not generate Slack messages. Work Items only need the existing Dev Status and RC fields. Release wording comes from repository changelogs.
+
+Before removing the eight retired Work Item fields, migrate populated values, preserve a verbatim page history copy, deploy both writers and readers, and verify live processing. A completed merge receipt prevents retries from resetting a new development cycle.

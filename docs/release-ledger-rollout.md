@@ -24,7 +24,7 @@ Complete these in order across all products.
 
 - [ ] Give the hosted worker access to Releases, Feature Availability and Work Items; verify Console access.
 - [ ] Inspect hosted Work Item Drift and Manager Product. Agree who owns each status transition.
-- [ ] Verify the Work Items `Platform Development` field and the merge workflow's access.
+- [ ] Verify internal `automation-state` records in Feature Availability and the merge workflow's access.
 - [ ] Configure bot permissions, release/operations channels and production verification endpoints. [Settings reference](release-ledger-reference.md).
 - [ ] Configure independent hosted-run failure monitoring for a total Notion outage.
 

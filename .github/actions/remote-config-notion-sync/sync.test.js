@@ -5,6 +5,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const {
   buildPageProperties,
+  remoteConfigEvidence,
   remoteConfigValue,
   resolveProductPageId,
   runSync,
@@ -36,9 +37,12 @@ function page({ id, title, productId, iosKey = "", webKey = "", androidKey = "" 
 class FakeNotion {
   constructor(pages) {
     this.pages = pages;
+    this.state = require('../release-ledger/automation-state.test-helper').fakeState();
     this.updates = [];
     this.queries = 0;
   }
+
+  async request(path,{method='GET',body}={}) {return this.state.notion(path,method,body)}
 
   async queryDataSource() {
     this.queries += 1;
@@ -103,7 +107,7 @@ async function testProductSlugResolvesPageId() {
 async function testSyncWritesExactRcValues() {
   const notion = new FakeNotion([
     page({
-      id: "work-item-1",
+      id: "2b736a3fd60dd02e82a775f8e15329fe",
       title: "Floorplans",
       productId: cipProductId,
       iosKey: "floor_plans_ios",
@@ -132,7 +136,7 @@ async function testSyncWritesExactRcValues() {
 async function testSyncWritesNoPlatformKeyForBlankRcKeys() {
   const notion = new FakeNotion([
     page({
-      id: "work-item-1",
+      id: "2b736a3fd60dd02e82a775f8e15329fe",
       title: "iOS-only feature",
       productId: cipProductId,
       iosKey: "ios_only_feature",
@@ -207,9 +211,9 @@ async function testBackendDoesNotWriteStatusOrEvidence() {
 
 async function testPlatformFilteringUsesRelevantRcKeys() {
   const notion = new FakeNotion([
-    page({ id: "ios-item", title: "iOS feature", productId: cipProductId, iosKey: "ios_feature" }),
-    page({ id: "web-item", title: "Web feature", productId: cipProductId, webKey: "web_feature" }),
-    page({ id: "android-item", title: "Android feature", productId: cipProductId, androidKey: "android_feature" }),
+    page({ id: "4779ade87de0d0bc384dba99e650012d", title: "iOS feature", productId: cipProductId, iosKey: "ios_feature" }),
+    page({ id: "7a0f1eabbab9e38f60c24e58c9624213", title: "Web feature", productId: cipProductId, webKey: "web_feature" }),
+    page({ id: "feb50b51ff7ea7a5a963b60dc48eb95f", title: "Android feature", productId: cipProductId, androidKey: "android_feature" }),
   ]);
 
   const summary = await runSync(
@@ -219,13 +223,13 @@ async function testPlatformFilteringUsesRelevantRcKeys() {
 
   assert.equal(summary.matchedPages, 1);
   assert.equal(notion.updates.length, 1);
-  assert.equal(notion.updates[0].id, "ios-item");
+  assert.equal(notion.updates[0].id, "4779ade87de0d0bc384dba99e650012d");
   assert.equal(notion.updates[0].properties["iOS Release Status"], undefined);
   assert.ok(notion.updates[0].properties["Last Production Sync"]);
 }
 
 function oneItem() {
-  return page({ id: "work-item-1", title: "Feature", productId: cipProductId, iosKey: "flag" });
+  return page({ id: "2b736a3fd60dd02e82a775f8e15329fe", title: "Feature", productId: cipProductId, iosKey: "flag" });
 }
 
 async function testFailedReadsNeverClaimFreshness() {
@@ -276,20 +280,20 @@ async function testNotionReadFailureIsReported() {
 async function testPageFailureDoesNotDiscardOtherUpdates() {
   const notion = new FakeNotion([
     oneItem(),
-    page({ id: "work-item-2", title: "Other feature", productId: cipProductId, iosKey: "flag" }),
+    page({ id: "87dd7afbfdcedc163f2c2b82f02e0a4e", title: "Other feature", productId: cipProductId, iosKey: "flag" }),
   ]);
   const update = notion.updatePage.bind(notion);
   notion.updatePage = async (id, properties) => {
-    if (id === "work-item-1") throw new Error("Notion 502");
+    if (id === "2b736a3fd60dd02e82a775f8e15329fe") throw new Error("Notion 502");
     return update(id, properties);
   };
   const summary = await runSync(baseConfig(), { notion, firebase: new FakeFirebase({}) });
   assert.equal(summary.matchedPages, 2);
   assert.equal(summary.updatedPages, 1);
   assert.equal(summary.remoteConfigChecked, 2);
-  assert.deepEqual(summary.errors, ["Work Item work-item-1 update failed: Notion 502"]);
+  assert.deepEqual(summary.errors, ["Work Item 2b736a3fd60dd02e82a775f8e15329fe update failed: Notion 502"]);
   assert.deepEqual(summary.items.map(item => item.updated), [false, true]);
-  assert.equal(notion.updates[0].id, "work-item-2");
+  assert.equal(notion.updates[0].id, "87dd7afbfdcedc163f2c2b82f02e0a4e");
 }
 
 async function testCommandExitStatusAndOutputs() {
@@ -335,7 +339,7 @@ async function testCommandExitStatusAndOutputs() {
 
 async function testDryRunDoesNotUpdate() {
   const notion = new FakeNotion([
-    page({ id: "work-item-1", title: "Floorplans", productId: cipProductId, iosKey: "floor_plans_ios" }),
+    page({ id: "2b736a3fd60dd02e82a775f8e15329fe", title: "Floorplans", productId: cipProductId, iosKey: "floor_plans_ios" }),
   ]);
   const firebase = new FakeFirebase({
     parameters: {
@@ -377,8 +381,8 @@ run().catch((error) => {
 {
  const template={parameterGroups:{features:{parameters:{export:{defaultValue:{value:'false'},conditionalValues:{enterprise:{value:'true'}}}}}},conditions:[{name:'enterprise',expression:"app.id == 'enterprise'"}]};
  assert.equal(remoteConfigValue(template,'export'),'false');
- const item={iosRcKey:'',webRcKey:'export',androidRcKey:'',supportsRemoteConfigEvidence:true};
+ const item={iosRcKey:'',webRcKey:'export',androidRcKey:'',};
  const properties=buildPageProperties({item,template,config:{firebaseProjectId:'site-audit-pro',platform:'all'},syncedAt:'2026-09-11T12:00:00Z'});
- const evidence=JSON.parse(properties['Remote Config Evidence']);assert.equal(evidence.flags.export.conditions[0].expression,"app.id == 'enterprise'");assert.equal(evidence.project,'site-audit-pro');
- assert.equal(buildPageProperties({item:{...item,supportsRemoteConfigEvidence:false},template,config:{platform:'all'},syncedAt:''})['Remote Config Evidence'],undefined);
+ const evidence=remoteConfigEvidence(item,template,{firebaseProjectId:'site-audit-pro',platform:'all'},'2026-09-11T12:00:00Z');assert.equal(evidence.flags.export.conditions[0].expression,"app.id == 'enterprise'");assert.equal(evidence.project,'site-audit-pro');
+ assert.equal(buildPageProperties({item:{...item},template,config:{platform:'all'},syncedAt:''})['Remote Config Evidence'],undefined);
 }
