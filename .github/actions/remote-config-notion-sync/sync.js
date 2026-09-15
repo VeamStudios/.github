@@ -19,11 +19,7 @@ const REMOTE_CONFIG_VALUE_PROPERTIES = new Set([
   "Web Prod RC Value",
   "Android Prod RC Value",
 ]);
-const PRODUCTION_STATUS_PROPERTIES = new Set([
-  "iOS Release Status",
-  "Web Deploy Status",
-  "Android Release Status",
-]);
+
 
 class HttpError extends Error {
   constructor(message, statusCode, body) {
@@ -301,26 +297,6 @@ function buildPageProperties({ item, template, config, syncedAt }) {
     }
   }
 
-  const platform = normalizePlatform(config.platform);
-  let wroteProductionStatus = false;
-  if (config.productionState) {
-    if (platform === "ios") {
-      properties["iOS Release Status"] = config.productionState;
-      wroteProductionStatus = true;
-    }
-    if (platform === "web") {
-      properties["Web Deploy Status"] = config.productionState;
-      wroteProductionStatus = true;
-    }
-    if (platform === "android") {
-      properties["Android Release Status"] = config.productionState;
-      wroteProductionStatus = true;
-    }
-  }
-  if (wroteProductionStatus && config.productionEvidence) {
-    properties["Production Evidence"] = config.productionEvidence;
-  }
-
   return properties;
 }
 
@@ -329,7 +305,7 @@ function toNotionProperties(rawProperties) {
   for (const [key, value] of Object.entries(rawProperties)) {
     if (key === "Last Production Sync") {
       properties[key] = notionDate(value);
-    } else if (PRODUCTION_STATUS_PROPERTIES.has(key) || REMOTE_CONFIG_VALUE_PROPERTIES.has(key)) {
+    } else if (REMOTE_CONFIG_VALUE_PROPERTIES.has(key)) {
       properties[key] = notionSelect(value);
     } else {
       properties[key] = key === 'Remote Config Evidence' ? {rich_text:(String(value).match(/[\s\S]{1,1800}/g)||[]).map(content=>({type:'text',text:{content}}))} : notionRichText(value);
@@ -348,9 +324,8 @@ async function runSync(config, clients) {
     items: [],
   };
 
-  // Live-mode iOS upload callers have no RC project and their legacy status is
-  // suppressed. They have nothing to observe or write, including a timestamp.
-  if (!clients.firebase && !config.firebaseProjectId && !config.productionState) return summary;
+  // Without Remote Config there is nothing to observe or write.
+  if (!clients.firebase && !config.firebaseProjectId) return summary;
 
   if (!clients.notion) {
     summary.errors.push("Notion token is not configured; skipped Remote Config → Notion sync.");
@@ -438,7 +413,6 @@ function buildSummaryMarkdown(config, summary) {
     `- Product: ${config.product || "(not set)"}`,
     `- Product page: ${config.productPageId}`,
     `- Platform: ${config.platform}`,
-    `- Release/deploy status: ${config.productionState || "(not set)"}`,
     `- Dry run: ${summary.dryRun ? "true" : "false"}`,
     `- Matched Work Items: ${summary.matchedPages}`,
     `- Updated Work Items: ${summary.updatedPages}`,
@@ -484,8 +458,6 @@ async function main() {
     }),
     workItemsDataSourceId: process.env.INPUT_WORK_ITEMS_DATA_SOURCE_ID || "",
     platform: normalizePlatform(process.env.INPUT_PLATFORM),
-    productionState: process.env.INPUT_PRODUCTION_STATE || "",
-    productionEvidence: process.env.INPUT_PRODUCTION_EVIDENCE || "",
     firebaseProjectId: process.env.INPUT_FIREBASE_PROJECT_ID || "",
     dryRun: parseBoolean(process.env.INPUT_DRY_RUN),
     now: () => new Date(),

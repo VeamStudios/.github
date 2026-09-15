@@ -1,5 +1,5 @@
 name: Remote Config → Notion Sync
-description: Syncs production Firebase Remote Config defaults and optional legacy release/deploy status to Notion Work Items.
+description: Syncs production Firebase Remote Config values and evidence to Notion Work Items.
 
 inputs:
   product:
@@ -15,21 +15,9 @@ inputs:
     required: false
     default: "20aeddfe-a3f7-41e9-b440-c9eb6b26887f"
   platform:
-    description: "Release/deploy status target: ios, web, android, backend, or all."
+    description: "Remote Config platform filter: ios, web, android, backend, or all."
     required: false
     default: "all"
-  production_state:
-    description: "Optional release/deploy status value to write for the platform."
-    required: false
-    default: ""
-  production_version:
-    description: "Deprecated; ignored. Work Items no longer store a shared production version."
-    required: false
-    default: ""
-  production_evidence:
-    description: "Optional URL or text evidence for the production sync."
-    required: false
-    default: ""
   firebase_project_id:
     description: "Optional Firebase project ID for production Remote Config reads."
     required: false
@@ -69,9 +57,6 @@ runs:
         INPUT_PRODUCT: ${{ inputs.product }}
         INPUT_WORK_ITEMS_DATA_SOURCE_ID: ${{ inputs.work_items_data_source_id }}
         INPUT_PLATFORM: ${{ inputs.platform }}
-        # Workflow callers apply the release-ledger gate; composite actions cannot read vars.
-        INPUT_PRODUCTION_STATE: ${{ inputs.production_state }}
-        INPUT_PRODUCTION_EVIDENCE: ${{ inputs.production_evidence }}
         INPUT_FIREBASE_PROJECT_ID: ${{ inputs.firebase_project_id }}
         INPUT_FIREBASE_SERVICE_ACCOUNT: ${{ inputs.firebase_service_account }}
         INPUT_NOTION_TOKEN: ${{ inputs.notion_token }}
