@@ -4,14 +4,12 @@ on:
     paths:
       - '.github/actions/remote-config-notion-sync/**'
       - '.github/workflows/remote-config-notion-sync.yml'
-      - '.github/workflows/ios-app-store-live-monitor.yml'
       - '.github/workflows/test-remote-config-notion-sync.yml'
   push:
     branches: [main]
     paths:
       - '.github/actions/remote-config-notion-sync/**'
       - '.github/workflows/remote-config-notion-sync.yml'
-      - '.github/workflows/ios-app-store-live-monitor.yml'
       - '.github/workflows/test-remote-config-notion-sync.yml'
 permissions:
   contents: read

@@ -1,4 +1,4 @@
-name: Refresh reviewed release notes
+name: Recheck release announcement evidence
 on:
   workflow_dispatch:
     inputs:
@@ -9,13 +9,17 @@ on:
         description: 'Existing Notion release page ID'
         required: true
       wording_pr:
-        description: 'Merged PR with reviewed CHANGELOG.md wording and links to shipped source PRs'
-        required: true
+        description: 'Optional merged PR with reviewed wording; omit to recheck the original shipped sources'
+        required: false
+      dry_run:
+        description: 'Preview evidence and holds without changing Notion or Slack'
+        type: boolean
+        default: true
 permissions:
   contents: read
 concurrency:
   group: refresh-release-notes-${{ inputs.release_page }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   refresh:
     runs-on: ubuntu-latest
@@ -40,12 +44,13 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
-      - name: Supplement the frozen release with reviewed notes
+      - name: Preview or save an evidence-backed release supplement
         working-directory: release-source
         run: node "$GITHUB_WORKSPACE/ledger-tooling/.github/actions/release-ledger/amend.js"
         env:
           RELEASE_REPOSITORY: ${{ inputs.repository }}
           RELEASE_PAGE_ID: ${{ inputs.release_page }}
+          RELEASE_DRY_RUN: ${{ inputs.dry_run }}
           RELEASE_WORDING_PR: ${{ inputs.wording_pr }}
           RELEASES_DATA_SOURCE_ID: ${{ vars.RELEASES_DATA_SOURCE_ID }}
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}

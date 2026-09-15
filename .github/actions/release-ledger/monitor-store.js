@@ -1,5 +1,5 @@
 const { releaseSchema, targetFilter } = require('./presentation');
-const { AppStoreConnectClient, normalizeVersion } = require('../ios-app-store-live-monitor/monitor.js');
+const { AppStoreConnectClient, normalizeVersion } = require('./app-store-client.js');
 const { clients, allPages, withLock, text, rich, hash } = require('./record.js');
 
 async function observeStore(manifest, bundleId, apple, now = () => new Date().toISOString()) {

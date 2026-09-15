@@ -89,52 +89,21 @@ jobs:
 
 **Outputs:** `release_url`, `tag_name`
 
-### `notify-release.yml`
+### Release recording and announcements
 
-Sends a Slack notification to the releases channel. Optionally checks out `changelog_git_ref` and excerpts the matching section from `CHANGELOG.md` (same repo as the caller) so Slack shows per-release notes plus links to the repository and GitHub release.
+Production callers use `record-release.yml` to save exact shipped evidence in Notion. `reconcile-app-store.yml` verifies the exact iOS build and distribution state. NotionWorkers publishes eligible release entries to Slack and saves a receipt before retries can send again. There is one release publisher.
 
-```yaml
-jobs:
-  notify:
-    uses: VeamStudios/.github/.github/workflows/notify-release.yml@main
-    with:
-      version: v${{ inputs.version }}
-      environment: production
-      changelog_git_ref: ${{ needs.deploy.outputs.commit_sha }}
-    secrets:
-      SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
-```
+`complete-work-item-development.yml` records merged PR/head evidence. The team completes QA through the existing platform Dev Status field; verified production availability then allows the worker to mark that platform Released.
 
-- `changelog_git_ref` — set to the deployed commit (or other ref) so `CHANGELOG.md` at that SHA is used. When empty, only the generic `slack_footer_mrkdwn` line is sent.
-- `slack_footer_mrkdwn` — used when the changelog is missing or has no `##` section for the version.
-
-### `ios-app-store-live-monitor.yml`
-
-Polls App Store Connect for GitHub releases marked with `<!-- veamstudios:app-store-live-monitor:pending ... -->` and sends a short Slack notification once the matching App Store version is live.
-
-```yaml
-jobs:
-  monitor:
-    uses: VeamStudios/.github/.github/workflows/ios-app-store-live-monitor.yml@main
-    with:
-      bundle_id: com.veamstudios.example
-    secrets: inherit
-```
-
-- `release_tag` — optional; when empty, recent releases are scanned for pending monitor markers.
-- `release_limit` — number of recent releases to scan when `release_tag` is empty. Defaults to `20`.
-- `live_states` — App Store Connect states treated as live. Defaults to `READY_FOR_DISTRIBUTION,READY_FOR_SALE`.
-- `dry_run` — checks state without sending Slack or replacing the release marker.
-- `launch_hub_product` — optional product slug, `cip` or `sap`. When set, a newly notified live App Store release also writes `iOS Release Status`, `Last Production Sync`, and `Production Evidence` to Work Items.
-- `launch_hub_product_page_id` — optional Notion Product page ID override for unusual cases.
+See [the release system reference](docs/release-ledger-reference.md) for website changelog paths, held entries and recovery previews.
 
 ### `remote-config-notion-sync.yml`
 
 For sync retries, use the current standalone workflow. An old run may contain a retired workflow reference; rerunning that historical caller can no longer resolve the removed path.
 
-Mirrors production observations into Work Items, the source of truth for feature scope, ownership and status. Feature Status is a view of those same records. The shared workflow/action and product schedule files use `remote-config-notion-sync`; they do not depend on a dashboard page. The legacy monitor inputs and the `launch-hub-sync-prod` GitHub environment keep their existing names for compatibility with callers and configured credentials. It copies production Remote Config defaults such as `missing`, `false`, `research-preview`, `true`, or any other Firebase default string, plus `no platform key` when a Work Item has no Remote Config key for that platform. It also mirrors production deployment/release evidence. It does not establish intended-audience availability or decide whether a feature should be enabled. Legacy platform status writes remain suppressed in live release-ledger mode.
+Mirrors production observations into Work Items, the source of truth for feature scope, ownership and status. Feature Status is a view of those same records. The shared workflow/action and product schedule files use `remote-config-notion-sync`; they do not depend on a dashboard page. The `launch-hub-sync-prod` GitHub environment retains its configured credentials. It copies production Remote Config defaults such as `missing`, `false`, `research-preview`, `true`, or any other Firebase default string, plus `no platform key` when a Work Item has no Remote Config key for that platform. It also mirrors production deployment/release evidence. It does not establish intended-audience availability or decide whether a feature should be enabled. Platform lifecycle writes belong to the release ledger; this mirror does not set release status.
 
-`Last Production Sync` changes only alongside values from a successful Firebase read. A failed read leaves the previous observation intact. Live-mode upload calls with no Firebase project and no legacy status are a no-op. Missing required configuration, API read failures and failed Notion updates fail the sync job with an error summary; one failed Work Item update does not stop the others. A failed sync after deployment does not mean the deployment failed. Correct the reported problem and retry the sync job or the standalone sync workflow, not the deployment. Dry runs perform the same reads and report errors but never write to Notion.
+`Last Production Sync` changes only alongside values from a successful Firebase read. A failed read leaves the previous observation intact. Calls with no Firebase project are a no-op. Missing required configuration, API read failures and failed Notion updates fail the sync job with an error summary; one failed Work Item update does not stop the others. A failed sync after deployment does not mean the deployment failed. Correct the reported problem and retry the sync job or the standalone sync workflow, not the deployment. Dry runs perform the same reads and report errors but never write to Notion.
 
 ```yaml
 jobs:
@@ -246,7 +215,6 @@ jobs:
 |---|---|
 | `deploy-ios-testflight.yml` | Build and upload an iOS app to TestFlight |
 | `hotfix-prepare.yml` / `hotfix-deploy.yml` | iOS hotfix branch and deploy flow |
-| `ios-app-store-live-monitor.yml` | Poll App Store Connect and notify Slack once a marked iOS release is live |
 | `remote-config-notion-sync.yml` | Mirror production Remote Config values and deployment/release state into Work Items |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
