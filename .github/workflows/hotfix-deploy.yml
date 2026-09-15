@@ -54,21 +54,6 @@ on:
         required: false
         default: ""
         type: string
-      changelog_source_file:
-        description: "Source changelog file to copy after release creation"
-        required: false
-        default: "CHANGELOG.md"
-        type: string
-      changelog_destination_repo:
-        description: "Optional repository to receive the changelog copy"
-        required: false
-        default: ""
-        type: string
-      changelog_destination_folder:
-        description: "Optional destination folder in the changelog repository"
-        required: false
-        default: ""
-        type: string
       confirm_deploy_from_pr_head:
         description: "Confirm that this workflow should deploy the current hotfix PR head"
         required: false
@@ -418,24 +403,11 @@ jobs:
           draft: false
           prerelease: false
 
-  update-changelog-website:
-    name: Update Changelog Website
-    needs: [resolve-hotfix, create-release]
-    if: ${{ inputs.changelog_destination_repo != '' && inputs.changelog_destination_folder != '' }}
-    uses: VeamStudios/.github/.github/workflows/update-changelog-website.yml@main
-    with:
-      source_file: ${{ inputs.changelog_source_file }}
-      deployed_ref: ${{ needs.resolve-hotfix.outputs.hotfix_sha }}
-      destination_repo: ${{ inputs.changelog_destination_repo }}
-      destination_folder: ${{ inputs.changelog_destination_folder }}
-      version: v${{ inputs.expected_version }}
-    secrets: inherit
-
   comment-on-hotfix-pr:
     name: Comment On Hotfix PR
     runs-on: ubuntu-latest
-    needs: [resolve-hotfix, create-release, update-changelog-website]
-    if: ${{ needs.create-release.result == 'success' && (needs.update-changelog-website.result == 'success' || needs.update-changelog-website.result == 'skipped') }}
+    needs: [resolve-hotfix, create-release]
+    if: ${{ needs.create-release.result == 'success' }}
     steps:
       - name: Mint GitHub App token
         id: app_token
@@ -477,7 +449,7 @@ jobs:
     name: Deployment Summary
     runs-on: ubuntu-latest
     needs:
-      [resolve-hotfix, build-cloud, validate-release, create-release, update-changelog-website, comment-on-hotfix-pr]
+      [resolve-hotfix, build-cloud, validate-release, create-release, comment-on-hotfix-pr]
     if: always()
     steps:
       - name: Display summary
@@ -506,12 +478,6 @@ jobs:
             echo "1. Review the create-release job output above."
             echo "2. Fix the tagging or release creation failure."
             echo "3. Rerun the workflow."
-          elif [ "${{ needs.update-changelog-website.result }}" != "success" ] && [ "${{ needs.update-changelog-website.result }}" != "skipped" ]; then
-            echo "Hotfix deploy stopped while syncing the changelog website."
-            echo "Next steps:"
-            echo "1. Review the update-changelog-website job output above."
-            echo "2. Fix the changelog sync configuration or destination repository access."
-            echo "3. Rerun the workflow."
           elif [ "${{ needs.comment-on-hotfix-pr.result }}" != "success" ] && [ "${{ needs.comment-on-hotfix-pr.result }}" != "skipped" ]; then
             echo "Hotfix deploy stopped while commenting on the hotfix PR."
             echo "Next steps:"
@@ -535,7 +501,6 @@ jobs:
 
   record-release-ledger:
     needs: [resolve-hotfix, build-cloud, validate-release, create-release]
-    if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
     uses: VeamStudios/.github/.github/workflows/record-release.yml@main
     with:
       product: ${{ github.repository == 'VeamStudios/SiteAuditPro-iOS' && 'Site Audit Pro' || 'Checklist Inspector Pro' }}

@@ -26,7 +26,6 @@ permissions:
   contents: read
 jobs:
   reconcile:
-    if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
     runs-on: ubuntu-latest
     environment: prod
     steps:

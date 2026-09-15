@@ -11,9 +11,8 @@ jobs:
       - name: Report release note enforcement
         run: echo "Release ledger mode is $LEDGER_MODE"
         env:
-          LEDGER_MODE: ${{ vars.RELEASE_LEDGER_MODE || 'off' }}
+          LEDGER_MODE: live
       - uses: actions/checkout@v6
-        if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
@@ -21,7 +20,6 @@ jobs:
       - name: Check reviewed release note contract
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
         uses: VeamStudios/.github/.github/actions/check-release-note@main
         with:
           body: ${{ github.event.pull_request.body }}

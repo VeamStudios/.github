@@ -75,12 +75,17 @@ test('malformed links on the completing PR still fail before any mutation', asyn
   assert.equal(f.patches.length, 0);
   assert.ok(!f.reads.some(path => path.includes('?state=open')));
 });
-test('off performs no reads; shadow and disabled lifecycle writes produce a proposal only', async () => {
+test('off performs no reads; shadow previews; live cannot silently disable writes', async () => {
   const off = fixture(); off.config.mode = 'off'; await completeDevelopment(off.config, off.api); assert.equal(off.reads.length, 0);
-  for (const config of [{ mode: 'shadow' }, { lifecycleWrites: false }]) {
+  for (const config of [{ mode: 'shadow' }]) {
     const f = fixture(); Object.assign(f.config, config); const result = await completeDevelopment(f.config, f.api);
     assert.equal(f.patches.length, 0); assert.equal(result.changes[0].written, false);
   }
+});
+test('live disabled writes fail before reading or mutating', async () => {
+  const f=fixture();f.config.lifecycleWrites=false;
+  await assert.rejects(completeDevelopment(f.config,f.api), /requires lifecycle writes/);
+  assert.equal(f.reads.length,0);assert.equal(f.patches.length,0);
 });
 test('older merge delivered after a newer completion cannot reset status', async () => {
   const f = fixture(); f.row.properties['Platform Development'] = rich(JSON.stringify({ Web: { repository: repo, pr: 8, mergedAt: '2026-09-08T11:00:00Z' } }));

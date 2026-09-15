@@ -32,3 +32,19 @@ test('a repeated fix is new only when an additional version occurrence was added
 test('adding a source link while moving a section does not duplicate the entry',()=>{assert.deepEqual(newEntries('## Unreleased\n### Fixed\n- Fix exports.\n','## 1.1.0\n### Fixed\n- Fix exports. [PR](https://github.com/VeamStudios/Test/pull/2)\n'),[])});
 
 test('audited historical baseline remains usable without changing its frozen manifest or availability',()=>{const m={repository:'VeamStudios/App',target:'ios-consumer',commit:'a'.repeat(40),build:''},digest=hash(m),baseline={kind:'audited-production-baseline',repository:m.repository,target:m.target,commit:m.commit,build:'5',manifestHash:digest,checkedAt:new Date().toISOString(),evidence:['https://appstoreconnect.apple.com/apps/1','https://github.com/VeamStudios/App/releases/tag/v1']};const row={properties:{Manifest:rich(JSON.stringify(m)),'Manifest Hash':rich(digest),Build:rich('5'),Historical:{checkbox:true},Observation:rich(JSON.stringify({baseline}))}};assert.equal(deployedBaseline(row),true);for(const change of [{commit:'b'.repeat(40)},{build:'6'},{manifestHash:'changed'},{evidence:[]}]){row.properties.Observation=rich(JSON.stringify({baseline:{...baseline,...change}}));assert.equal(deployedBaseline(row),false)}});
+
+test('explicit Work Item links select shipped implementation PRs instead of an unrelated wording PR',async()=>{
+ const cwd=process.cwd(),dir=fs.mkdtempSync(path.join(os.tmpdir(),'changelog-sources-'));
+ try{
+  process.chdir(dir);const git=(...args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();git('init');git('config','user.name','Test');git('config','user.email','test@example.com');
+  const commit=message=>{git('add','.');git('commit','-m',message);return git('rev-parse','HEAD')};fs.writeFileSync('CHANGELOG.md','## 1.0.0\n### Fixed\n- Old fix\n');const baseline=commit('base');
+  fs.writeFileSync('feature.js','implemented');const implementation=commit('feature');const wi='a'.repeat(32),other='b'.repeat(32),third='c'.repeat(32),repo='VeamStudios/Test';
+  fs.writeFileSync('CHANGELOG.md',`## 1.1.0\n### New\n- Attach reports. [Work Item](https://www.notion.so/${wi})\n- Ambiguous sorting feature.\n`);const shipped=commit('release wording');
+  const prs=[{number:1,merge_commit_sha:implementation,body:`Work Items:\n- https://www.notion.so/${wi}`},{number:2,merge_commit_sha:shipped,body:`Work Items:\n- https://www.notion.so/${other}\n- https://www.notion.so/${third}`}].map(pr=>({...pr,title:'feat: changes',merged_at:'2026-09-15',base:{repo:{full_name:repo}},head:{sha:pr.merge_commit_sha},user:{login:'author'},html_url:`https://github.com/${repo}/pull/${pr.number}`}));
+  const gh=async url=>{if(url.includes('/commits/'))return [url.includes(implementation)?prs[0]:prs[1]];const pr=url.includes('/pulls/1')?prs[0]:prs[1];if(url.includes('/reviews'))return [{user:{type:'User',login:'reviewer'},state:'APPROVED',commit_id:pr.head.sha}];if(url.includes('/files'))return [{filename:pr.number===1?'feature.js':'CHANGELOG.md'}];return pr};
+  const notion=async url=>url.startsWith('/pages/')?{parent:{data_source_id:'20aeddfe-a3f7-41e9-b440-c9eb6b26887f'},properties:{Name:rich('Feature')}}:{results:[],has_more:false};
+  const m=await buildManifest({repo,product:'Site Audit Pro',target:'web',version:'v1.1.0',commit:shipped,event:'release',source:'https://github.com/run'},gh,baseline,notion);
+  assert.deepEqual(m.changes[0].sourcePrs,[1]);assert.deepEqual(m.changes[0].workItems,[wi]);assert.equal(m.changes[0].pr,2);assert.equal(m.changes[0].approved,true);assert.deepEqual(m.changes[0].blocked,[]);
+  assert.deepEqual(m.changes[1].workItems,[]);assert.match(m.changes[1].blocked.join(' '),/Several Work Items/);
+ }finally{process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
+});

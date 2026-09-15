@@ -54,7 +54,7 @@ on:
       BOT_RELEASE_PRIVATE_KEY:
         required: true
       NOTION_TOKEN:
-        required: false
+        required: true
 permissions:
   contents: read
   pull-requests: read
@@ -66,29 +66,25 @@ jobs:
     continue-on-error: ${{ inputs.phase == 'prepare' }}
     environment: ${{ inputs.github_environment }}
     steps:
-      - name: Report release ledger mode
+      - name: Report release recording mode
         run: echo "Release ledger mode is $LEDGER_MODE"
         env:
-          LEDGER_MODE: ${{ vars.RELEASE_LEDGER_MODE || 'off' }}
-      - if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
-        uses: actions/checkout@v6
+          LEDGER_MODE: live
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.commit }}
           fetch-depth: 0
           persist-credentials: false
-      - if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
-        uses: actions/setup-node@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '24'
-      - if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
-        uses: actions/create-github-app-token@v3
+      - uses: actions/create-github-app-token@v3
         id: token
         with:
           app-id: ${{ vars.BOT_RELEASE_APP_ID }}
           private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-      - if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
-        uses: VeamStudios/.github/.github/actions/release-ledger@main
+      - uses: VeamStudios/.github/.github/actions/release-ledger@main
         with:
           product: ${{ inputs.product }}
           target: ${{ inputs.target }}
@@ -105,11 +101,11 @@ jobs:
           distribution_confirmed: ${{ inputs.distribution_confirmed }}
           distribution_evidence: ${{ inputs.distribution_evidence }}
           historical: ${{ inputs.historical }}
-          dry_run: ${{ vars.RELEASE_LEDGER_MODE != 'shadow' && vars.RELEASE_LEDGER_MODE != 'live' }}
+          dry_run: 'false'
           github_token: ${{ steps.token.outputs.token }}
           notion_token: ${{ secrets.NOTION_TOKEN }}
       - uses: actions/upload-artifact@v4
-        if: ${{ always() && (vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live') }}
+        if: always()
         with:
           name: release-ledger-${{ inputs.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: release-manifest.json

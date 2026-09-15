@@ -71,6 +71,8 @@ on:
         default: ""
         type: string
     secrets:
+      BOT_RELEASE_PRIVATE_KEY:
+        required: true
       APP_STORE_CONNECT_API_KEY_CONTENT:
         required: true
       APP_STORE_CONNECT_API_KEY_ID:

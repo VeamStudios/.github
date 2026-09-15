@@ -9,13 +9,12 @@ on:
       BOT_RELEASE_PRIVATE_KEY:
         required: true
       NOTION_TOKEN:
-        required: false
+        required: true
 permissions:
   contents: read
   pull-requests: read
 jobs:
   complete:
-    if: ${{ vars.RELEASE_LEDGER_MODE == 'shadow' || vars.RELEASE_LEDGER_MODE == 'live' }}
     runs-on: ubuntu-latest
     steps:
       # No caller checkout or PR code runs in this privileged workflow.
@@ -33,8 +32,8 @@ jobs:
           pr_number: ${{ inputs.pr_number }}
           github_token: ${{ steps.token.outputs.token }}
           notion_token: ${{ secrets.NOTION_TOKEN }}
-          mode: ${{ vars.RELEASE_LEDGER_MODE || 'off' }}
-          lifecycle_writes: ${{ vars.RELEASE_LIFECYCLE_WRITES || 'false' }}
+          mode: live
+          lifecycle_writes: 'true'
       - uses: actions/upload-artifact@v4
         if: always()
         with:

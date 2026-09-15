@@ -26,6 +26,7 @@ async function completionNote(pr, repo, gh, ids) {
 async function completeDevelopment(config, api) {
   if (config.mode === 'off') return { skipped: 'off', changes: [] };
   if (!['shadow', 'live'].includes(config.mode)) throw new Error('Invalid release ledger mode');
+  if (config.mode === 'live' && config.lifecycleWrites !== true) throw new Error('Live Work Item evidence recording requires lifecycle writes; use shadow explicitly for a read-only preview.');
   const mapping = REPOSITORIES[config.repo];
   if (!mapping) throw new Error('Repository has no client platform mapping');
   if (!Number.isSafeInteger(config.number) || config.number < 1) throw new Error('Invalid PR number');

@@ -52,8 +52,13 @@ jobs:
       - name: Resolve commit message
         id: commit_message
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          MESSAGE="Update changelog for ${{ inputs.version }}"
+          set -euo pipefail
+          [[ "$RELEASE_VERSION" =~ ^v?[0-9]+(\.[0-9]+)+$ ]] || { echo "Invalid release version"; exit 1; }
+          echo "source_commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          MESSAGE="Update changelog for $RELEASE_VERSION"
           echo "value=$MESSAGE" >> "$GITHUB_OUTPUT"
 
       - name: Stage source changelog
@@ -85,6 +90,7 @@ jobs:
           SOURCE_FILE: ${{ inputs.source_file }}
           DESTINATION_FOLDER: ${{ inputs.destination_folder }}
           COMMIT_MESSAGE: ${{ steps.commit_message.outputs.value }}
+          SOURCE_COMMIT: ${{ steps.commit_message.outputs.source_commit }}
         run: |
           set -euo pipefail
 
@@ -109,5 +115,7 @@ jobs:
             exit 0
           fi
 
-          git commit -m "$COMMIT_MESSAGE"
+          git commit -m "$COMMIT_MESSAGE" -m "Release-Source-Repository: $GITHUB_REPOSITORY
+          Release-Source-Commit: $SOURCE_COMMIT
+          Release-Source-Path: $SOURCE_FILE"
           git push origin HEAD:main

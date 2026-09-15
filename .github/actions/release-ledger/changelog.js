@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const { parseWorkItemLinks } = require('./work-item-links');
+const { WEBSITES, verifiedSync, websiteChanges } = require('./website-changelog');
 const digest = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const normalized = value => value.replace(/\s+/g,' ').trim();
 const identity = e => normalized(e.summary.replace(/\s*\[(?:Work Item|PR|source)\]\(https?:\/\/[^)]+\)/gi,'').replace(/\[([^\]]+)\]\((?:https:\/\/(?:www\.)?notion\.so\/|https:\/\/app\.notion\.com\/p\/|https:\/\/github\.com\/)[^)]+\)/g,'$1'));
@@ -43,7 +44,7 @@ function newEntries(before,after){
   }
   return next.filter((_,i)=>!matched.has(i));
 }
-function internalFiles(files){return files.length>0 && files.every(f=> /^(?:\.github\/|docs\/|README(?:\.|$)|LICENSE|.*\.md$)/.test(f.filename) && f.filename!=='CHANGELOG.md')}
+function internalFiles(files){return files.length>0 && files.every(f=> /^(?:\.github\/|\.release-notes\/|docs\/|README(?:\.|$)|LICENSE|.*\.md$)/.test(f.filename) && f.filename!=='CHANGELOG.md')}
 
 async function buildChangelogManifest(config,gh,baseline,notion) {
   const {git,ancestor,reviewed,hash,releaseKey,provenanceMapping,text,allPages}=require('./record');
@@ -52,8 +53,8 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   const validBaseline=Boolean(baseline&&/^[a-f0-9]{40}$/.test(baseline)&&(ancestor(baseline,sha)||mapping));
   if(!validBaseline)issues.push('Missing verified production baseline. Record the previous deployed commit; no announcement is inferred.');
   const commits=validBaseline?git('rev-list','--reverse',`${baseline}..${sha}`).split('\n').filter(Boolean):[];
-  const numbers=new Set(),unmapped=[];
-  for(const commit of commits){const associated=[];for(let page=1;;page++){const rows=await gh(`/repos/${config.repo}/commits/${commit}/pulls?per_page=100&page=${page}`);associated.push(...rows);if(rows.length<100)break};const included=associated.filter(p=>p.base?.repo?.full_name===config.repo && p.merged_at && p.merge_commit_sha && ancestor(p.merge_commit_sha,sha));if(mapping?.commits[commit])numbers.add(mapping.commits[commit]);else if(included.length===1)numbers.add(included[0].number);else unmapped.push(commit)}
+  const numbers=new Set(),unmapped=[],syncs=[],commitPrs=new Map();
+  for(const commit of commits){const associated=[];for(let page=1;;page++){const rows=await gh(`/repos/${config.repo}/commits/${commit}/pulls?per_page=100&page=${page}`);associated.push(...rows);if(rows.length<100)break};const included=associated.filter(p=>p.base?.repo?.full_name===config.repo && p.merged_at && p.merge_commit_sha && ancestor(p.merge_commit_sha,sha));const number=mapping?.commits[commit]||(included.length===1?included[0].number:undefined);if(number){numbers.add(number);commitPrs.set(commit,number)}else{const sync=config.target==='website'?await verifiedSync(config.repo,commit,gh,git):null;if(sync)syncs.push(sync);else unmapped.push(commit)}}
   if(unmapped.length)issues.push(`Unmapped shipped commits: ${unmapped.join(', ')}. Confirm their source PRs before announcing this release.`);
   const read=ref=>{try{return git('show',`${ref}:CHANGELOG.md`)}catch{return ''}};
   let wordingPr;
@@ -64,7 +65,7 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   const supplement=wordingPr?await gh(`/repos/${config.repo}/contents/CHANGELOG.md?ref=${wordingPr.head.sha}`):null;
   if(supplement&&supplement.encoding!=='base64')throw new Error('Supplemental changelog content is unavailable');
   const raw=supplement?Buffer.from(supplement.content,'base64').toString('utf8'):read(sha),before=validBaseline?read(baseline):'';
-  if(!raw)issues.push('CHANGELOG.md is missing at the shipped commit. Add reviewed release notes before publication.');
+  if(!raw && !(config.target==='website'&&WEBSITES[config.repo]))issues.push('CHANGELOG.md is missing at the shipped commit. Add reviewed release notes before publication.');
   const contexts=[];
   for(const number of [...numbers].sort((a,b)=>a-b)) {
     const pr=await gh(`/repos/${config.repo}/pulls/${number}`),links=parseWorkItemLinks(pr.body),files=[];
@@ -74,7 +75,7 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
     const warnings=links.invalidEntries.length?[`PR #${number}: fix the invalid Work Items link in the PR description.`]:[];
     if(!added.length&&!internalFiles(files))issues.push(`PR #${number} has no new changelog entry; a release PR may supply it.`);
     prs.push({number,url:pr.html_url,mergeCommit:pr.merge_commit_sha,headCommit:pr.head.sha,workItems:links.ids,approved,noteHash:''});
-    contexts.push({pr,links:links.ids,added,approved,warnings});
+    contexts.push({pr,links:links.ids,added,approved,warnings,files,commits:[...commitPrs].filter(([,number])=>number===pr.number).map(([commit])=>commit)});
   }
   const ids=[...new Set(prs.flatMap(p=>p.workItems))],workItemSnapshots=[],workItemPages=new Map(),availability=[];
   if(notion) {
@@ -98,15 +99,16 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   for(const entry of candidates) {
     const origins=contexts.filter(x=>x.added.some(e=>identity(e)===identity(entry)));
     const explicit=entry.prRefs.filter(p=>p.repository===config.repo);
-    const sources=explicit.length?contexts.filter(x=>explicit.some(p=>p.number===x.pr.number)):origins;
+    const sources=explicit.length?contexts.filter(x=>explicit.some(p=>p.number===x.pr.number)):entry.workItems.length?contexts.filter(x=>x.links.some(id=>entry.workItems.includes(id))):origins;
     const wording=wordingPr?{pr:wordingPr,approved:true}:origins.at(-1),blocked=[...new Set(sources.flatMap(x=>x.warnings))];
     if(entry.outsideSupplement)continue;
     if(historicalVersions.has(entry.version))blocked.push('This edits a previously deployed changelog section. Use a reviewed correction instead of announcing it as new.');
-    const linked=entry.workItems.length?entry.workItems:[...new Set(sources.flatMap(x=>x.links))];
+    const inferred=[...new Set(sources.flatMap(x=>x.links))];
+    const linked=entry.workItems.length?entry.workItems:inferred.length<=1?inferred:[];
     if(wordingPr&&!sources.length)blocked.push('Link the shipped source PR beside this supplemental changelog entry.');
     if(!wording)blocked.push('Changelog entry has no identifiable wording PR. Link the source PR beside this entry.');
     if(explicit.some(p=>!contexts.some(x=>x.pr.number===p.number)))blocked.push('Referenced PR is outside the verified shipped range.');
-    if(!entry.workItems.length&&linked.length>1)blocked.push('Several Work Items match this entry. Link its Work Item beside the changelog entry.');
+    if(!entry.workItems.length&&inferred.length>1)blocked.push('Several Work Items match this entry. Link its Work Item beside the changelog entry.');
     const fixes=sources.length&&sources.every(x=>/^fix(?:\([^)]*\))?!?:/i.test(x.pr.title||''));
     const kind=/^internal$/i.test(entry.heading)?'internal':/^(?:fix|fixed|fixes|bug fixes|security)$/i.test(entry.heading)?'fix':fixes?'fix':'feature';
     if(kind==='feature'&&!linked.length)blocked.push('Feature changelog entry needs a linked Work Item.');
@@ -123,8 +125,9 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
     const c={id,kind,summary,heading:entry.heading,sourceVersion:entry.version,audience:'Users of this production target',limitations:entry.previewTag?`Preview: ${entry.previewTag}`:'',scope:`changelog-${id.slice(0,24)}`,targets:[config.target],availabilityMode:'work-item',audienceGate:kind==='feature'||flagKeys.length>0,requiredReleaseKeys:[],workItems:linked,pr:wording?.pr.number||sources[0]?.pr.number||0,noteHash:hash({summary,heading:entry.heading,sourcePrs}),approved:Boolean(wording?.approved),reviewEvidence:wording?.approved?wording.pr.html_url:'',blocked,flagKeys,gateKeys,sourcePrs};
     changes.push(c);
   }
+  if(validBaseline && config.target==='website')changes.push(...websiteChanges(config,baseline,sha,contexts,syncs,git));
   const covered=new Set(changes.filter(c=>!c.blocked.length).flatMap(c=>c.sourcePrs));
   const warnings=issues.filter(message=>{const missing=message.match(/^PR #(\d+) has no new changelog entry/);return !missing||!covered.has(Number(missing[1]))});
-  return {schemaVersion:2,deliveryVersion:1,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs,changes,workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url}:null,issues:warnings,provenanceComplete:validBaseline&&unmapped.length===0,source:config.source};
+  return {schemaVersion:2,deliveryVersion:1,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs,changes,workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url}:null,issues:warnings,provenanceComplete:validBaseline&&unmapped.length===0,websiteSyncs:syncs,source:config.source};
 }
 module.exports={parseChangelog,newEntries,renderChangelog,identity,buildChangelogManifest,internalFiles};

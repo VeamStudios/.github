@@ -1,10 +1,10 @@
-# Deploy Production with Release + Notification - Caller Workflow Template
+# Deploy Production with Release Evidence - Caller Workflow Template
 #
 # Copy this file into your repo's .github/workflows/ directory and
 # customise the deploy job to call your repo's _deploy.yml.
 #
-# Creates a GitHub release after deploy and sends a Slack notification.
-# Both the release and notification use shared workflows from VeamStudios/.github.
+# Creates a GitHub release and records exact deployment evidence in Notion.
+# NotionWorkers publishes eligible entries to Slack and saves delivery receipts.
 
 name: Deploy Production
 
@@ -44,13 +44,15 @@ jobs:
     secrets:
       BOT_RELEASE_PRIVATE_KEY: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
 
-  notify:
-    name: Notify Release
-    needs: [deploy, create-release]
-    uses: VeamStudios/.github/.github/workflows/notify-release.yml@main
+  record-release-ledger:
+    name: Record release evidence
+    needs: deploy
+    uses: VeamStudios/.github/.github/workflows/record-release.yml@main
     with:
+      product: Site Audit Pro # Set the product and target for this repository.
+      target: web
       version: v${{ inputs.version }}
-      environment: production
-      changelog_git_ref: ${{ needs.deploy.outputs.commit_sha }}
-    secrets:
-      SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+      commit: ${{ needs.deploy.outputs.commit_sha }}
+      phase: deployed
+      verification_url: https://your-production-host.example/release-info.json
+    secrets: inherit

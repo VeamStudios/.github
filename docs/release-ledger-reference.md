@@ -28,7 +28,7 @@ PR inclusion comes from GitHub commit associations, paginated directly rather th
 
 For ambiguous changelog-to-feature mapping, add a normal Markdown Work Item or shipped PR link beside the entry. Raw rcValue and previewTag metadata is retained as gating information and excluded from the changelog text. Preview restrictions remain visible.
 
-Missing wording or evidence produces a precise warning; merging and deployment remain possible. To supply notes after a release was recorded, merge a reviewed CHANGELOG.md PR with links to the shipped source PRs. Run **Refresh reviewed release notes** in VeamStudios/.github with repository, Notion release page ID and wording PR number. The supplement is stored separately from the immutable original Manifest. Already posted entries cannot be rewritten by this workflow; use a message correction instead.
+Missing wording or evidence produces a precise warning; merging and deployment remain possible. To supply notes after a release was recorded, merge a reviewed CHANGELOG.md PR with links to the shipped source PRs. Run **Recheck release announcement evidence** in VeamStudios/.github with repository and Notion release page ID. Supply the wording PR number only when adding reviewed wording; otherwise the original shipped sources are rechecked. The default is a read-only preview. Inspect its exact changes and holds before applying the supplement. The supplement is stored separately from the immutable original Manifest. Already posted entries cannot be rewritten by this workflow; use a message correction instead.
 
 </details>
 
@@ -40,7 +40,7 @@ Feature availability is scoped to Work Item, release, target and edition. A rele
 
 Available fixes can post while a feature waits. Once verified, only the newly available entries appear in a separate activation message, with a distinct stable identity and receipt. Backend and CloudServices never post to the release channel. Historical records remain suppressed.
 
-Work Item lifecycle writes remain separately controlled by RELEASE_LIFECYCLE_WRITES in GitHub and the hosted worker. This change does not enable them. Package publication is dependency evidence, never proof that a consuming feature is available.
+GitHub producers always record merged PR and production evidence. The hosted worker uses RELEASE_LEDGER_MODE=live and RELEASE_LIFECYCLE_WRITES=true; the live readiness check rejects disabled values. Package publication is dependency evidence, never proof that a consuming feature is available.
 
 </details>
 
@@ -56,11 +56,11 @@ Needs attention includes actual unresolved errors, including historical records.
 
 Concurrent writers wait for the existing lock for up to 30 acquisition attempts (two seconds between attempts), then return an actionable retry error. A lost creation or deletion response is reconciled by the unique owner tag before proceeding. Normal consumer/Enterprise overlap does not require manual recovery.
 
-A cancelled job can leave `refs/tags/veam-release-ledger-lock`. Verify no holder is active, reconcile Sending receipts, then remove only that exact lock ref. Preserve cancel-in-progress: true. Never remove software version tags. The lock is never stolen merely because it is old.
+A cancelled job can leave `refs/tags/veam-release-ledger-lock`. Verify no holder is active, reconcile Sending receipts, then remove only that exact lock ref. Recovery workflows use cancel-in-progress: false so a newer retry does not interrupt a lock holder. Never remove software version tags. The lock is never stolen merely because it is old.
 
 </details>
 
-Checked: 2026-09-09 against shared recorder, NotionWorkers and focused regression tests. Live deployment and evidence checks are recorded in the rollout record. API references: [Notion status codes](https://developers.notion.com/reference/status-codes), [Slack corrections](https://docs.slack.dev/reference/methods/chat.update/).
+Checked: 2026-09-15 against shared recorder, NotionWorkers and focused regression tests. Live deployment and evidence checks are recorded in the rollout record. API references: [Notion status codes](https://developers.notion.com/reference/status-codes), [Slack corrections](https://docs.slack.dev/reference/methods/chat.update/).
 
 ## Work Item delivery contract (version 1)
 
@@ -71,3 +71,19 @@ NotionWorkers generates supporting availability rows per Work Item, target, chan
 HTTP verification requires a JSON endpoint reporting the shipped repository and commit, not merely HTTP 200. Hosting deploys embed release-info.json through a post-build Firebase predeploy hook; backends return it from version. CloudServices verifies Ready state, immutable revision commit labels and 100% traffic for email/exporter/main/pdf. Android Mark Production Release supplies exact-build distribution evidence once. Recording failures can be retried via Re-run failed jobs without rerunning successful deployment jobs.
 
 An audited historical production baseline may be stored in Observation.baseline with the immutable manifest hash, repository/target/commit/build and source evidence links. It is used only to choose the next comparison baseline. Historical announcement suppression and unverified historical feature availability remain unchanged. The baseline commit is read from the verified frozen manifest, never a mutable display property.
+
+## Marketing website changelogs
+
+Website deployment compares these paths with its previous verified production commit:
+
+| Website | App | Path |
+| --- | --- | --- |
+| siteauditpro.com | Web | `src/app/content/changelogs/web/CHANGELOG.md` |
+| siteauditpro.com | iOS | `src/app/content/changelogs/ios/CHANGELOG.md` |
+| siteauditpro.com | Android | `src/app/content/changelogs/android/changelog.md` |
+| checklistinspectorpro.com | Web | `src/assets/changelog-web/CHANGELOG.md` |
+| checklistinspectorpro.com | iOS | `src/assets/changelog-ios/CHANGELOG.md` |
+
+Each changed version produces website wording such as **Updated changelog for Web App Release 5.11.0**. App feature notes and Work Item associations are not copied into the website release. Reviewed manual changes are supported for every path. Automated copies require the registered Release Bot, a single allowed destination path and content matching the exact source commit/version. New sync commits include source repository/commit/path trailers. Unrelated bot edits require normal provenance.
+
+A failed recording job is retried after successful deployment with **Re-run failed jobs**. Missing notes, unreviewed wording or ambiguous associations remain visible in Notion and produce a deduplicated operations alert. Routine QA and audience waits remain normal waiting states. Use the worker admin `inspect` action to preview eligible text, holds and existing receipts without writes; do not reset a Sending receipt to bypass reconciliation.
