@@ -2,6 +2,7 @@ name: Test Release Ledger
 on:
   pull_request:
     paths:
+      - '.github/workflows/**'
       - '.github/actions/release-ledger/**'
       - '.github/actions/remote-config-notion-sync/**'
       - '.github/workflows/reconcile-google-play.yml'
@@ -16,6 +17,7 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/**'
       - '.github/actions/release-ledger/**'
       - '.github/actions/remote-config-notion-sync/**'
       - '.github/workflows/reconcile-google-play.yml'

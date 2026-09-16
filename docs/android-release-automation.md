@@ -90,7 +90,31 @@ for later Android releases. Future canonical manifests include only the selected
 marketing-version section. The one-time snapshot exception cannot be used for
 another version, build, commit or baseline.
 
-## Rollback
+## Workflow compatibility
+
+Shared `actions/create-github-app-token@v3` steps use `client-id` with
+`vars.BOT_RELEASE_CLIENT_ID`. The `app-id` input is deprecated in v3. Android's
+existing v1 uploader/test workflows still require `app-id`; do not rename their
+inputs without upgrading and validating the action and its callers together.
+
+The new Firebase credential preflight is opt-in through
+`validate_android_credentials: true`. Android's configuration preflight and
+monitor enable it. Existing Remote Config callers retain their inputs, defaults
+and behaviour until they opt in. New changelog/recovery inputs are optional, and
+non-Android changelog sync retains the source basename by default.
+
+The website publication caller grants `packages: read`, as required by the
+existing reusable deploy workflow. The shared release recorder only requests
+`contents: read` from `GITHUB_TOKEN`; its PR/API operations use the release-bot
+token, so it does not elevate permissions in iOS callers.
+
+Actionlint 1.7.12 has stale metadata for this v3 action: it incorrectly requires
+`app-id` and rejects `client-id`. When using that version, filter only those two
+specific diagnostics for `actions/create-github-app-token@v3` after checking the
+upstream action metadata. Do not change valid workflows to satisfy stale lint
+metadata. The shared Node suite also checks every v3 token step for this regression.
+
+## Rollback controls
 
 Set `PLAY_MONITOR_MODE=off` and `ANDROID_WEBSITE_PUBLICATION=false`; disable the
 website automatic workflow if necessary. Preserve frozen records and receipts.

@@ -57,7 +57,6 @@ on:
         required: true
 permissions:
   contents: read
-  pull-requests: read
 jobs:
   record:
     runs-on: ubuntu-latest
@@ -81,7 +80,7 @@ jobs:
       - uses: actions/create-github-app-token@v3
         id: token
         with:
-          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          client-id: ${{ vars.BOT_RELEASE_CLIENT_ID }}
           private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
       - uses: VeamStudios/.github/.github/actions/release-ledger@main
