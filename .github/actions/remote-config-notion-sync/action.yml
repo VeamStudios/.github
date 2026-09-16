@@ -53,6 +53,7 @@ runs:
       id: sync
       shell: bash
       env:
+        PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL: ${{ vars.PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL }}
         INPUT_PRODUCT_PAGE_ID: ${{ inputs.product_page_id }}
         INPUT_PRODUCT: ${{ inputs.product }}
         INPUT_WORK_ITEMS_DATA_SOURCE_ID: ${{ inputs.work_items_data_source_id }}

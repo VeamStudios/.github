@@ -19,11 +19,21 @@ on:
         description: "Destination folder in the changelog repository"
         required: true
         type: string
+      destination_file:
+        description: 'Optional explicit destination basename (defaults to source basename)'
+        type: string
+        default: ''
+      release_page:
+        description: 'Required verified Notion release for Android publication'
+        type: string
+        default: ''
       version:
         description: "Version string used in the changelog sync commit message"
         required: true
         type: string
     secrets:
+      NOTION_TOKEN:
+        required: false
       BOT_RELEASE_PRIVATE_KEY:
         required: true
 
@@ -31,7 +41,37 @@ permissions:
   contents: read
 
 jobs:
+  android:
+    if: ${{ github.repository == 'VeamStudios/SiteAuditPro-AndroidNew' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: token
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: VeamStudios
+      - uses: actions/checkout@v6
+        with:
+          repository: VeamStudios/.github
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - name: Publish only reviewed and verified Android notes
+        run: node .github/actions/release-ledger/publish-play-website.js
+        env:
+          RELEASE_PAGE_ID: ${{ inputs.release_page }}
+          SOURCE_FILE: ${{ inputs.source_file }}
+          SOURCE_COMMIT: ${{ inputs.deployed_ref }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          DESTINATION_REPO: ${{ inputs.destination_repo }}
+          DESTINATION_FOLDER: ${{ inputs.destination_folder }}
+          DESTINATION_FILE: ${{ inputs.destination_file }}
+          GITHUB_TOKEN: ${{ steps.token.outputs.token }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
   update:
+    if: ${{ github.repository != 'VeamStudios/SiteAuditPro-AndroidNew' }}
     name: Copy changelog to destination repo
     runs-on: ubuntu-latest
     steps:
@@ -39,7 +79,7 @@ jobs:
         id: app_token
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ vars.BOT_RELEASE_CLIENT_ID }}
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
           private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
@@ -89,6 +129,7 @@ jobs:
         env:
           SOURCE_FILE: ${{ inputs.source_file }}
           DESTINATION_FOLDER: ${{ inputs.destination_folder }}
+          DESTINATION_FILE: ${{ inputs.destination_file }}
           COMMIT_MESSAGE: ${{ steps.commit_message.outputs.value }}
           SOURCE_COMMIT: ${{ steps.commit_message.outputs.source_commit }}
         run: |
@@ -101,14 +142,16 @@ jobs:
               ;;
           esac
 
-          destination_file="changelog-destination/${DESTINATION_FOLDER}/$(basename "$SOURCE_FILE")"
+          basename="${DESTINATION_FILE:-$(basename "$SOURCE_FILE")}"
+          [[ "$basename" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo "Invalid destination filename"; exit 1; }
+          destination_file="changelog-destination/${DESTINATION_FOLDER}/${basename}"
           mkdir -p "$(dirname "$destination_file")"
           cp "$RUNNER_TEMP/changelog-sync/source-file" "$destination_file"
 
           cd changelog-destination
           git config user.email "180547681+veamstudios-release-bot[bot]@users.noreply.github.com"
           git config user.name "Release Bot"
-          git add "${DESTINATION_FOLDER}/$(basename "$SOURCE_FILE")"
+          git add "${DESTINATION_FOLDER}/${basename}"
 
           if git diff --cached --quiet; then
             echo "No changelog changes to commit."

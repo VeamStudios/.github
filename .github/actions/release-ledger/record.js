@@ -149,6 +149,7 @@ function deployedBaseline(row) {
   try {
     const m=JSON.parse(text(row.properties.Manifest)),o=JSON.parse(text(row.properties.Observation)||'null');
     if(hash(m)!==text(row.properties['Manifest Hash'])||!o)return false;
+    if(m.repository==='VeamStudios/SiteAuditPro-AndroidNew'&&m.target==='android-consumer')return o.phase==='live'&&require('./google-play').validGooglePlay(o.verification,m);
     const b=o.baseline;
     if(b?.kind==='audited-production-baseline'&&b.manifestHash===hash(m)&&b.commit===m.commit&&b.repository===m.repository&&b.target===m.target&&Number.isFinite(Date.parse(b.checkedAt))&&Array.isArray(b.evidence)&&b.evidence.length>=2&&b.evidence.every(url=>typeof url==='string'&&url.startsWith('https://'))&&(!m.target.match(/^(ios|android)-/)||Boolean(b.build&&b.build===(m.build||text(row.properties.Build)))))return true;
     if(m.target.includes('ios')||m.target.includes('android'))return Boolean(o.phase==='live'&&m.build&&((o.verification?.kind==='app-store'&&o.verification.build===m.build)||(o.verification?.kind==='manual'&&o.verification.build===m.build&&row.properties['Audience Verified']?.checkbox&&row.properties['Availability Evidence']?.url)));
@@ -158,7 +159,7 @@ function deployedBaseline(row) {
 function verificationProperties(config, previous, oldProperties, observedAt) {
   // A failed recheck is a new diagnostic, not evidence that the original deployment never happened.
   const retain = Boolean(config.verificationError && previous?.phase === config.phase && previous.verification);
-  const observation = { ...(previous?.baseline ? {baseline:previous.baseline} : {}), phase:config.phase, source:retain ? previous.source : config.source, releasedAt:config.releasedAt || previous?.releasedAt || observedAt, verification:config.verification || (retain ? previous.verification : null), ...(config.verificationError ? {verificationError:config.verificationError,verificationAttempt:{source:config.source,at:observedAt}} : {}) };
+  const observation = { ...(previous?.website ? {website:previous.website} : {}), ...(previous?.baseline ? {baseline:previous.baseline} : {}), phase:config.phase, source:retain ? previous.source : config.source, releasedAt:config.releasedAt || previous?.releasedAt || observedAt, verification:config.verification || (retain ? previous.verification : null), ...(config.verificationError ? {verificationError:config.verificationError,verificationAttempt:{source:config.source,at:observedAt}} : {}) };
   const properties = {Observation:rich(JSON.stringify(observation))};
   if (config.verification && !config.verificationError && previous?.verificationError && text(oldProperties?.Error) === previous.verificationError) {
     const receipt = JSON.parse(text(oldProperties?.['Operations Receipt']) || '{}');
@@ -191,12 +192,12 @@ async function record(config, api) {
   const readyNotes = manifest.schemaVersion===1 && manifest.provenanceComplete && manifest.prs.length > 0 && manifest.prs.every(pr => pr.approved && pr.noteHash);
   const ids = [...new Set(manifest.prs.flatMap(pr => pr.workItems))];
   if (ids.length > 100) console.warn('Work Item relation exceeds Notion API capacity; complete contents remain in Manifest.');
-  const states = { prepare: 'Waiting', deployed: 'Waiting', uploaded: 'Waiting', live: 'Waiting', rollout: 'Limited rollout', withdrawn: 'Withdrawn' };
+  const states = { prepare: 'Waiting', deployed: 'Waiting', uploaded: 'Waiting', live: 'Waiting', rollout: 'Limited rollout', withdrawn: 'Withdrawn', halted: 'Waiting' };
   if (!states[config.phase]) throw new Error('Unknown release phase.');
   const observedAt = new Date().toISOString();
   const previousObservation = text(existing[0]?.properties.Observation) ? JSON.parse(text(existing[0].properties.Observation)) : null;
   const rank = { prepare: 0, uploaded: 1, deployed: 2, rollout: 3, live: 4, withdrawn: 5 };
-  const acceptObservation = !previousObservation || rank[config.phase] >= (rank[previousObservation.phase] ?? -1);
+  const acceptObservation = config.verification?.kind==='google-play' || !previousObservation || rank[config.phase] >= (rank[previousObservation.phase] ?? -1);
   const oldState = existing[0]?.properties.State?.select?.name;
   const properties = { ...presentation(manifest, schema, existing[0]), 'Release Key': rich(manifest.key), Repository: rich(config.repo), Version: rich(config.version), Commit: rich(manifest.commit), Build: rich(manifest.build), Event: select(manifest.event), Manifest: rich(JSON.stringify(manifest)), 'Manifest Hash': rich(digest), Changelog: rich(manifest.schemaVersion===2?manifest.completeChangelog:manifest.changes.filter(c => c.kind !== 'internal').map(c => `- ${c.summary}`).join('\n')), 'Work Items': { relation: ids.map(id => ({ id })) }, Source: { url: config.source }, 'Observed At': { date: { start: observedAt } } };
   const relation = workItemRelation(ids, existing[0]?.properties['Work Items']);
@@ -210,7 +211,7 @@ async function record(config, api) {
     Object.assign(properties,verificationProperties(config,previousObservation,existing[0]?.properties,observedAt));
     if (oldState !== 'Available' && oldState !== 'Withdrawn') properties.State = select(states[config.phase]);
   }
-  if(config.verification?.kind==='manual')properties['Audience Verified']={checkbox:true};
+  if(config.verification?.kind==='manual' && !(config.repo==='VeamStudios/SiteAuditPro-AndroidNew'&&config.target==='android-consumer'))properties['Audience Verified']={checkbox:true};
   if(config.verificationError)properties.Error=rich(config.verificationError);
   if (config.phase === 'withdrawn') properties.State = select('Withdrawn');
   if (existing[0]) {

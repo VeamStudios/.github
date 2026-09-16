@@ -452,6 +452,12 @@ function setOutput(name, value) {
   fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${String(value).replace(/\n/g, " ")}\n`, "utf8");
 }
 
+function validateAndroidFirebaseAccount(config, account, monitorEmail) {
+  if(config.product!=='sap'||config.platform!=='android')return;
+  if(config.firebaseProjectId!=='site-audit-pro'||account?.type!=='service_account'||account.project_id!=='site-audit-pro'||!account.client_email||!account.private_key)throw new Error('Configure SERVICE_ACCOUNT_BASE64 in launch-hub-sync-prod using a site-audit-pro Firebase service account');
+  if(!monitorEmail||account.client_email===monitorEmail)throw new Error('Firebase and Play monitoring require separate service accounts and PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL');
+}
+
 async function main() {
   const config = {
     product: process.env.INPUT_PRODUCT || "",
@@ -474,6 +480,7 @@ async function main() {
   } catch (error) {
     serviceAccountError = error.message;
   }
+  validateAndroidFirebaseAccount(config, serviceAccount, process.env.PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL);
   const clients = {
     notion: notionToken ? new NotionClient({ token: notionToken }) : null,
     firebase:
@@ -526,6 +533,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  validateAndroidFirebaseAccount,
   remoteConfigEvidence,
   FirebaseRemoteConfigClient,
   NotionClient,

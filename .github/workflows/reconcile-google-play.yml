@@ -1,0 +1,69 @@
+name: Reconcile Google Play releases
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        type: boolean
+        default: true
+      version_code:
+        type: string
+        default: ''
+      publish_website:
+        type: boolean
+        default: false
+      retry_website:
+        type: boolean
+        default: false
+    secrets:
+      PLAY_MONITOR_SERVICE_ACCOUNT_JSON:
+        required: true
+      BOT_RELEASE_PRIVATE_KEY:
+        required: true
+      NOTION_TOKEN:
+        required: true
+permissions:
+  contents: read
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: token
+        with:
+          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
+          owner: VeamStudios
+      - uses: actions/checkout@v6
+        with:
+          repository: VeamStudios/.github
+          ref: main
+          path: ledger-tooling
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ steps.token.outputs.token }}
+          fetch-depth: 0
+          path: release-source
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - name: Observe exact production builds and reconcile unfinished stages
+        working-directory: release-source
+        run: node "$GITHUB_WORKSPACE/ledger-tooling/.github/actions/release-ledger/monitor-play.js"
+        env:
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_VERSION_CODE: ${{ inputs.version_code }}
+          INPUT_PUBLISH_WEBSITE: ${{ inputs.publish_website }}
+          INPUT_RETRY_WEBSITE: ${{ inputs.retry_website }}
+          INPUT_GITHUB_TOKEN: ${{ steps.token.outputs.token }}
+          INPUT_NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          PLAY_MONITOR_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_MONITOR_SERVICE_ACCOUNT_JSON }}
+          PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL: ${{ vars.PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL }}
+          PLAY_UPLOADER_SERVICE_ACCOUNT_EMAIL: ${{ vars.PLAY_UPLOADER_SERVICE_ACCOUNT_EMAIL }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: google-play-observation
+          path: release-source/play-observation.json
