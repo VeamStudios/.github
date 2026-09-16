@@ -14,6 +14,14 @@ on:
         description: 'Optional merged PR with reviewed wording; omit to recheck the original shipped sources'
         type: string
         required: false
+      initial_snapshot:
+        description: 'Reviewed Android 4.0.0 shipped-asset recovery only'
+        type: boolean
+        default: false
+      expected_manifest_hash:
+        description: 'Exact original hash reviewed in the preview'
+        type: string
+        default: ''
       dry_run:
         description: 'Preview evidence and holds without changing Notion or Slack'
         type: boolean
@@ -35,7 +43,7 @@ jobs:
       - uses: actions/create-github-app-token@v3
         id: token
         with:
-          app-id: ${{ vars.BOT_RELEASE_APP_ID }}
+          client-id: ${{ vars.BOT_RELEASE_CLIENT_ID }}
           private-key: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
           owner: VeamStudios
       - uses: actions/checkout@v6
@@ -61,6 +69,8 @@ jobs:
           RELEASE_REPOSITORY: ${{ inputs.repository }}
           RELEASE_PAGE_ID: ${{ inputs.release_page }}
           RELEASE_DRY_RUN: ${{ inputs.dry_run }}
+          RELEASE_INITIAL_SNAPSHOT: ${{ inputs.initial_snapshot }}
+          RELEASE_EXPECTED_HASH: ${{ inputs.expected_manifest_hash }}
           RELEASE_WORDING_PR: ${{ inputs.wording_pr }}
           RELEASES_DATA_SOURCE_ID: ${{ vars.RELEASES_DATA_SOURCE_ID }}
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}

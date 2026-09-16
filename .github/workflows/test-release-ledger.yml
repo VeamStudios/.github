@@ -2,7 +2,11 @@ name: Test Release Ledger
 on:
   pull_request:
     paths:
+      - '.github/workflows/**'
       - '.github/actions/release-ledger/**'
+      - '.github/actions/remote-config-notion-sync/**'
+      - '.github/workflows/reconcile-google-play.yml'
+      - '.github/workflows/update-changelog-website.yml'
       - '.github/actions/release-marker/**'
       - '.github/actions/verify-cloud-run/**'
       - '.github/actions/verify-functions/**'
@@ -13,7 +17,11 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/**'
       - '.github/actions/release-ledger/**'
+      - '.github/actions/remote-config-notion-sync/**'
+      - '.github/workflows/reconcile-google-play.yml'
+      - '.github/workflows/update-changelog-website.yml'
       - '.github/actions/release-marker/**'
       - '.github/actions/verify-cloud-run/**'
       - '.github/actions/verify-functions/**'
@@ -30,5 +38,5 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
-      - run: node --test .github/actions/release-ledger/*.test.js
+      - run: node --test .github/actions/release-ledger/*.test.js .github/actions/remote-config-notion-sync/*.test.js
       - run: python3 -m unittest discover -s .github/actions/verify-functions -p 'test_*.py'

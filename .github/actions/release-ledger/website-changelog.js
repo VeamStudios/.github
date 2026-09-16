@@ -5,7 +5,7 @@ const WEBSITES = {
   'VeamStudios/siteauditpro.com': [
     { path: 'src/app/content/changelogs/web/CHANGELOG.md', label: 'Web App', repository: 'VeamStudios/SiteAuditPro-Web', sourcePath: 'CHANGELOG.md' },
     { path: 'src/app/content/changelogs/ios/CHANGELOG.md', label: 'iOS App', repository: 'VeamStudios/SiteAuditPro-iOS', sourcePath: 'CHANGELOG.md' },
-    { path: 'src/app/content/changelogs/android/changelog.md', label: 'Android App' },
+    { path: 'src/app/content/changelogs/android/changelog.md', label: 'Android App', repository: 'VeamStudios/SiteAuditPro-AndroidNew', sourcePath: 'CHANGELOG.md' },
   ],
   'VeamStudios/checklistinspectorpro.com': [
     { path: 'src/assets/changelog-web/CHANGELOG.md', label: 'Web App', repository: 'VeamStudios/ChecklistInspectorPro-Web', sourcePath: 'CHANGELOG.md' },
@@ -54,7 +54,16 @@ async function verifiedSync(repo, commit, gh, git) {
   if (!/^[a-f0-9]{40}$/.test(source.sha)) return null;
   const remote = await gh(`/repos/${file.repository}/contents/${file.sourcePath}?ref=${source.sha}`);
   if (remote.encoding !== 'base64' || typeof remote.content !== 'string') return null;
-  if (Buffer.from(remote.content, 'base64').toString('utf8').trim() !== content(git, commit, file.path).trim()) return null;
+  if(file.repository==='VeamStudios/SiteAuditPro-AndroidNew') {
+    const {websiteSection}=require('./customer-notes');
+    const {hash}=require('./record');
+    const {mergeSection}=require('./play-website');
+    if(!sourceCommit||!trailer('Release-Ledger-Page')||!trailer('Release-Manifest-Hash')||!trailer('Release-Shipped-Commit')||!trailer('Release-Version-Code'))return null;
+    const section=websiteSection(Buffer.from(remote.content,'base64').toString('utf8'),version);
+    if(hash(section)!==trailer('Release-Notes-Hash'))return null;
+    const before=content(git,`${commit}^`,file.path),after=content(git,commit,file.path);
+    if(mergeSection(before,section,version).trim()!==after.trim()||before.trim()===after.trim())return null;
+  } else if (Buffer.from(remote.content, 'base64').toString('utf8').trim() !== content(git, commit, file.path).trim()) return null;
   return { commit, path: file.path, repository: file.repository, sourceCommit: source.sha, version, evidence: `https://github.com/${repo}/commit/${commit}` };
 }
 

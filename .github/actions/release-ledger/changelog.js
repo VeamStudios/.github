@@ -95,6 +95,7 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   if(wordingPr)for(const entry of candidates)if(entry.version!==config.version.replace(/^v/,''))entry.outsideSupplement=true;
   const seen=new Set();
   for(const entry of candidates) {
+    if(config.repo==='VeamStudios/SiteAuditPro-AndroidNew' && (entry.version!==config.version.replace(/^v/,'') || !['New','Changed','Fixed','Internal'].includes(entry.heading)))continue;
     const origins=contexts.filter(x=>x.added.some(e=>identity(e)===identity(entry)));
     const explicit=entry.prRefs.filter(p=>p.repository===config.repo);
     const sources=explicit.length?contexts.filter(x=>explicit.some(p=>p.number===x.pr.number)):entry.workItems.length?contexts.filter(x=>x.links.some(id=>entry.workItems.includes(id))):origins;
