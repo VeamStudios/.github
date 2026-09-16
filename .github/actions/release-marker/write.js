@@ -12,7 +12,9 @@ function writeMarker({ root = process.cwd(), repository, commit, config, output,
       outputs.push(target);
       h.headers = [...(h.headers || []).filter(x => x.source !== '/release-info.json'), { source: '/release-info.json', headers: [{ key: 'Cache-Control', value: 'no-store, max-age=0' }] }];
       if (predeploy) {
-        const payload = Buffer.from(JSON.stringify({ root: path.resolve(root), repository, commit, output: target })).toString('base64');
+        // Firebase's cross-env-shell wrapper mistakes Base64 padding for an
+        // environment assignment. Node's Base64 decoder also accepts no padding.
+        const payload = Buffer.from(JSON.stringify({ root: path.resolve(root), repository, commit, output: target })).toString('base64').replace(/=+$/, '');
         const command = `node ${shellQuote(__filename)} --write-payload ${payload}`;
         h.predeploy = [...(Array.isArray(h.predeploy) ? h.predeploy : h.predeploy ? [h.predeploy] : []).filter(x => !x.includes(`${__filename}`)), command];
       }
