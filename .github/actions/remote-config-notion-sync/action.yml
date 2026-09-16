@@ -26,6 +26,10 @@ inputs:
     description: "Optional Firebase service account JSON or base64 JSON."
     required: false
     default: ""
+  play_monitor_service_account_email:
+    description: "Dedicated Play identity, used to reject reuse as Firebase credentials."
+    required: false
+    default: ""
   notion_token:
     description: "Notion API token with access to Work Items, Products and Feature Availability."
     required: false
@@ -53,7 +57,7 @@ runs:
       id: sync
       shell: bash
       env:
-        PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL: ${{ vars.PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL }}
+        PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL: ${{ inputs.play_monitor_service_account_email }}
         INPUT_PRODUCT_PAGE_ID: ${{ inputs.product_page_id }}
         INPUT_PRODUCT: ${{ inputs.product }}
         INPUT_WORK_ITEMS_DATA_SOURCE_ID: ${{ inputs.work_items_data_source_id }}

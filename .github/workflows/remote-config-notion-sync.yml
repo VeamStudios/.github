@@ -74,6 +74,7 @@ jobs:
           platform: ${{ inputs.platform }}
           firebase_project_id: ${{ inputs.firebase_project_id }}
           firebase_service_account: ${{ secrets.SERVICE_ACCOUNT_BASE64 }}
+          play_monitor_service_account_email: ${{ vars.PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL }}
           notion_token: ${{ secrets.NOTION_TOKEN }}
           dry_run: ${{ inputs.dry_run }}
 
@@ -92,5 +93,6 @@ jobs:
           platform: ${{ inputs.platform }}
           firebase_project_id: ${{ inputs.firebase_project_id }}
           firebase_service_account: ${{ secrets.SERVICE_ACCOUNT_BASE64 }}
+          play_monitor_service_account_email: ${{ vars.PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL }}
           notion_token: ${{ secrets.NOTION_TOKEN }}
           dry_run: ${{ inputs.dry_run }}
