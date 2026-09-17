@@ -6,12 +6,18 @@ Shared GitHub Actions workflows, composite actions, and organisation defaults fo
 
 ### `select-xcode`
 
-Selects either an exact Xcode release or `latest-stable`, verifies the resolved Xcode and Swift versions, and publishes them in the job summary.
+Selects either an exact stable Xcode release or `latest-stable` (the action default), verifies the resolved Xcode and Swift versions, and publishes them in the job summary. Beta installations are excluded even when a numeric application symlink exists.
+
+Shared workflows default to Xcode `27.0`; direct callers pin `27.0` explicitly. The action default remains runner-relative so existing direct callers can migrate independently.
+
+Xcode 27 jobs use `xcode-27` or `xcode-27-xlarge`; `macos-26` images contain Xcode 26 only. Shared build, test, and deployment workflows retain the macOS 26 runner when a caller explicitly requests `26.x`, allowing caller PRs to land after the shared update. `latest-stable` selects from the Xcode 27 image.
+
+The [20260912.0186 runner image](https://github.com/actions/runner-images/releases/tag/xcode-27-arm64/20260912.0186), published on 2026-09-17, includes Xcode 27.0 build `27A266a`, matching [Apple's September 14 release](https://developer.apple.com/news/releases/), despite retaining a `Release_Candidate` application directory. The image is still rolling out, so require the Xcode toolchain checks on both runner sizes before merging. Merge the shared change before the SAP, CIP, Annotator, and ImageCaching caller updates.
 
 ```yaml
 - uses: VeamStudios/.github/.github/actions/select-xcode@main
   with:
-    xcode-version: latest-stable
+    xcode-version: "27.0"
     minimum-swift-version: "6.3"
 ```
 

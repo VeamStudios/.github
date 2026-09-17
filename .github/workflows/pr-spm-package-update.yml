@@ -44,11 +44,16 @@ on:
 
 jobs:
   update:
-    runs-on: macos-26
+    runs-on: xcode-27
     permissions:
       contents: write
       pull-requests: write
     steps:
+      - name: Select Xcode
+        uses: VeamStudios/.github/.github/actions/select-xcode@main
+        with:
+          xcode-version: "27.0"
+
       - name: Mint GitHub App token
         id: app_token
         uses: actions/create-github-app-token@v3
