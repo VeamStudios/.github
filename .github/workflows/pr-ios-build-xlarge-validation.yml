@@ -1,4 +1,4 @@
-name: PR iOS Build
+name: PR iOS Build XLarge Validation
 
 on:
   workflow_call:
@@ -25,7 +25,7 @@ on:
 jobs:
   build:
     name: Build iOS app
-    runs-on: ${{ startsWith(inputs.xcode_version, '26.') && 'macos-26' || 'xcode-27' }}
+    runs-on: xcode-27-xlarge
     steps:
       - name: Mint GitHub App token
         id: app_token
