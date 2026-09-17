@@ -16,7 +16,7 @@ jobs:
       scheme: "ChecklistInspectorPro"
       project: "ChecklistInspectorPro.xcodeproj"
       # workspace: "ChecklistInspectorPro.xcworkspace"
-      destination: "platform=iOS Simulator,name=iPhone 16 Pro,OS=latest"
+      destination: "platform=iOS Simulator,name=iPhone 17,OS=latest"
       configuration: "Debug"
       # test_plan: "ChecklistInspectorProTests"
       result_bundle_path: "build/TestResults.xcresult"

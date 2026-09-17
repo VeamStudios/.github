@@ -5,7 +5,7 @@ inputs:
   xcode-version:
     description: "Exact Xcode version or latest-stable"
     required: false
-    default: "26.3"
+    default: latest-stable
   minimum-swift-version:
     description: "Minimum accepted Swift compiler version (for example: 6.3)"
     required: false
@@ -29,29 +29,12 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Select latest stable Xcode
-      if: inputs.xcode-version == 'latest-stable'
+    # setup-xcode filters out beta installations for release version requests.
+    # A numeric Xcode_27.0.app symlink can otherwise point to a beta bundle.
+    - name: Select stable Xcode
       uses: maxim-lobanov/setup-xcode@v1
       with:
-        xcode-version: latest-stable
-
-    - name: Select exact Xcode version
-      if: inputs.xcode-version != 'latest-stable'
-      shell: bash
-      run: |
-        set -euo pipefail
-
-        requested_xcode_version="${{ inputs.xcode-version }}"
-        selected_path="/Applications/Xcode_${requested_xcode_version}.app/Contents/Developer"
-
-        if [[ ! -d "${selected_path}" ]]; then
-          echo "Xcode Developer directory not found: ${selected_path}" >&2
-          echo "Installed Xcode apps:" >&2
-          ls -1 /Applications | grep -E '^Xcode.*\.app$' || true
-          exit 1
-        fi
-
-        sudo xcode-select -s "${selected_path}"
+        xcode-version: ${{ inputs.xcode-version }}
 
     - id: select
       name: Verify selected Apple toolchain

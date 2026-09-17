@@ -6,7 +6,7 @@ on:
       xcode_version:
         description: "Xcode version passed to select-xcode"
         required: false
-        default: "26.2"
+        default: "27.0"
         type: string
       minimum_swift_version:
         description: "Minimum accepted Swift compiler version"
@@ -25,7 +25,7 @@ on:
 jobs:
   build:
     name: Build iOS app
-    runs-on: macos-26
+    runs-on: ${{ startsWith(inputs.xcode_version, '26.') && 'macos-26' || 'xcode-27' }}
     steps:
       - name: Mint GitHub App token
         id: app_token
