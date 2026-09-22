@@ -19,7 +19,7 @@ for (const [name, body, expected] of cases) test(`release inclusion preserves Wo
 for (const entry of ['https://example.com/'+a, 'https://notion.so.evil.test/'+a, 'https://app.notion.com/p/no-page-id?v='+a, 'https://user:pass@notion.so/'+a, 'https://www.notion.so/'+a+' trailing prose', 'not a link']) {
   test(`invalid explicit entry fails release inclusion: ${entry}`, () => {
     const body = `Work Items:\n- https://www.notion.so/${b}\n- ${entry}`;
-      assert.equal(parseWorkItemLinks(body).invalidEntries.length, 1);
+    assert.equal(parseWorkItemLinks(body).invalidEntries.length, 1);
     assert.throws(() => workItems(body), /Invalid Work Items/);
   });
 }
