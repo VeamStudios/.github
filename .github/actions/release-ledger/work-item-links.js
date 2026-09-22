@@ -1,4 +1,5 @@
-// Keep the inline governance parser aligned; work-item-links.test.js compares both.
+// Release inclusion accepts the canonical and legacy Work Item field formats.
+// The required PR gate is owned by the NotionWorkers native Work Item app.
 function parseWorkItemLinks(input) {
   const body = String(input ?? '').replace(/\r\n?/g, '\n');
   const listedUrls = [];

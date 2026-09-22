@@ -222,7 +222,7 @@ jobs:
 | `remote-config-notion-sync.yml` | Mirror production Remote Config values and deployment/release state into Work Items |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
-| `qa-pipeline.yml` | PR governance: `Has Linked Notion Work Item` on PR open/update (`Work Items:` list with one or more Notion WI URLs required for `feat` titles, including scoped or breaking forms; singular `Work Item:` remains supported), `bot: qa needed` routing to QA Project 26 as `Not Started`, and label-gated QA auto-merge |
+| `qa-pipeline.yml` | QA governance: `bot: qa needed` routing to QA Project 26 as `Not Started`, and label-gated QA auto-merge |
 | `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
 
 ## Caller Templates
@@ -257,3 +257,9 @@ The new templates rely on secrets already configured at the org or repo level:
 ## Versioning
 
 All references use `@main` so repos pick up updates automatically. If you need stability, pin to a specific commit SHA.
+
+### Native Work Item gate
+
+The required **Notion Work Item** check is published by VeamStudios Notion Bot, using the separately hosted PR Work Items worker in [NotionWorkers](https://github.com/VeamStudios/NotionWorkers). Feature PRs still require a valid `Work Items:` URL list (legacy `Work Item:` remains accepted). Existing links produce a green check without buttons; missing links show **Missing · Open check to create** and a **Create work item** action inside the check. Existing items are linked by editing the PR description. Creation requires a reviewed draft and explicit confirmation.
+
+The shared QA workflow no longer emits the old `Has Linked Notion Work Item` check or its duplicate failing job. Before upgrading other callers, enable and backfill the worker, require the bot-owned `Notion Work Item` check, and remove the old requirement. See the [deployment and recovery runbook](https://github.com/VeamStudios/NotionWorkers/blob/main/docs/native-pr-work-items.md).

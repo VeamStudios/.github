@@ -8,12 +8,13 @@
 # QA GitHub App permission: Organization Projects (write)
 #
 # Behaviour:
-# - PR opened / updated → "Has Linked Notion Work Item" check (`Work Item:` field required when PR title starts with feat:)
+# - Work Item validation and creation are handled by the separate Notion bot webhook.
 # - `bot: qa needed` → add the PR to QA Project 26 and set its status to Not Started
 # - bot: qa approved + bot: qa automerge (+ bot: qa needed) → optional automerge
 # - `bot: qa needed` → QA Brief is provided by the Cursor Automation, not GitHub Actions
 #
-# Branch protection: require status check "Has Linked Notion Work Item" on main when ready.
+# Branch protection: require "Notion Work Item" from VeamStudios Notion Bot.
+# Enable the repository in the hosted PR Work Items worker before requiring it.
 
 name: PR Governance
 
@@ -25,7 +26,6 @@ jobs:
   pr-governance:
     uses: VeamStudios/.github/.github/workflows/qa-pipeline.yml@main
     permissions:
-      checks: write
       contents: write
       pull-requests: write
     secrets:
