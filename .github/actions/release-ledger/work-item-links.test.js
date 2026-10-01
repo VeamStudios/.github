@@ -29,3 +29,13 @@ test('legacy singular feature note matches the same Work Item IDs as the Work It
   assert.deepEqual(validateNote(note, ids).workItems, [a]);
   assert.doesNotThrow(() => validateNote({ ...note, kind: 'fix', workItems: [] }, []));
 });
+const { workItemGate } = require('./work-item-gate');
+for (const [title, body, ok] of [
+  ['chore: align environment versions', '', true],
+  ['fix(auth): retry token refresh', '', true],
+  ['feat: Billing', '', false],
+  ['feat(api)!: Billing', `Work Items:\n- https://www.notion.so/${a}`, true],
+  ['  feat: Billing', 'Work Items:\n- not a link', false],
+]) test(`PR gate requires Work Items only for feat titles: ${title.trim()}`, () => {
+  assert.equal(workItemGate({ title, body }).ok, ok);
+});

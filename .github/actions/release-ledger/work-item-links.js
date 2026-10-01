@@ -1,5 +1,5 @@
 // Release inclusion accepts the canonical and legacy Work Item field formats.
-// The required PR gate is owned by the NotionWorkers native Work Item app.
+// The required PR gate (work-item-gate.js) and the Notion bot check share this parser.
 function parseWorkItemLinks(input) {
   const body = String(input ?? '').replace(/\r\n?/g, '\n');
   const listedUrls = [];
