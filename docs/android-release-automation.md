@@ -86,7 +86,9 @@ delivery claims. Concurrent receipt/manifest edits and outstanding uncertain
 Slack attempts abort recovery. Nothing rebuilds or retags the app.
 
 After completed Play verification, this exact shipped commit becomes the baseline
-for later Android releases. Future canonical manifests include only the selected
+for later Android releases. An audited historical baseline in `Observation.baseline`
+can also select the comparison commit when no completed Play observation exists;
+it never establishes consumer availability. Future canonical manifests include only the selected
 marketing-version section. The one-time snapshot exception cannot be used for
 another version, build, commit or baseline.
 

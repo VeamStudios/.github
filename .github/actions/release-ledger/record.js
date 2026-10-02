@@ -149,9 +149,10 @@ function deployedBaseline(row) {
   try {
     const m=JSON.parse(text(row.properties.Manifest)),o=JSON.parse(text(row.properties.Observation)||'null');
     if(hash(m)!==text(row.properties['Manifest Hash'])||!o)return false;
-    if(m.repository==='VeamStudios/SiteAuditPro-AndroidNew'&&m.target==='android-consumer')return o.phase==='live'&&require('./google-play').validGooglePlay(o.verification,m);
     const b=o.baseline;
+    // An audited baseline only chooses the comparison commit; it never establishes Play availability.
     if(b?.kind==='audited-production-baseline'&&b.manifestHash===hash(m)&&b.commit===m.commit&&b.repository===m.repository&&b.target===m.target&&Number.isFinite(Date.parse(b.checkedAt))&&Array.isArray(b.evidence)&&b.evidence.length>=2&&b.evidence.every(url=>typeof url==='string'&&url.startsWith('https://'))&&(!m.target.match(/^(ios|android)-/)||Boolean(b.build&&b.build===(m.build||text(row.properties.Build)))))return true;
+    if(m.repository==='VeamStudios/SiteAuditPro-AndroidNew'&&m.target==='android-consumer')return o.phase==='live'&&require('./google-play').validGooglePlay(o.verification,m);
     if(m.target.includes('ios')||m.target.includes('android'))return Boolean(o.phase==='live'&&m.build&&((o.verification?.kind==='app-store'&&o.verification.build===m.build)||(o.verification?.kind==='manual'&&o.verification.build===m.build&&row.properties['Audience Verified']?.checkbox&&row.properties['Availability Evidence']?.url)));
     return Boolean(o.phase==='deployed'&&((o.verification?.kind==='http'&&o.verification.commit===m.commit&&o.verification.reportedCommit===m.commit&&o.verification.repository===m.repository&&o.verification.evidence)||(o.verification?.kind==='cloud-run'&&validCloudRun(o.verification,m.commit,m.repository))||(o.verification?.kind==='manual'&&o.verification.commit===m.commit&&o.verification.evidence&&row.properties['Audience Verified']?.checkbox&&row.properties['Availability Evidence']?.url)));
   }catch{return false}
