@@ -8,13 +8,14 @@
 # QA GitHub App permission: Organization Projects (write)
 #
 # Behaviour:
-# - Work Item validation and creation are handled by the separate Notion bot webhook.
+# - PR opened / updated → required "Work Item gate" (`Work Items:` link required for feat titles)
+# - Work Item creation is offered by the separate Notion bot check.
 # - `bot: qa needed` → add the PR to QA Project 26 and set its status to Not Started
 # - bot: qa approved + bot: qa automerge (+ bot: qa needed) → optional automerge
 # - `bot: qa needed` → QA Brief is provided by the Cursor Automation, not GitHub Actions
 #
-# Branch protection: require "Notion Work Item" from VeamStudios Notion Bot.
-# Enable the repository in the hosted PR Work Items worker before requiring it.
+# Branch protection: require "pr-governance / Work Item gate" from GitHub Actions.
+# Enable the repository in the hosted PR Work Items worker for the Create button.
 
 name: PR Governance
 

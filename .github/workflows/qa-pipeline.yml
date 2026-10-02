@@ -23,6 +23,38 @@ on:
         required: true
 
 jobs:
+  work-item-gate:
+    name: Work Item gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: work-item-gate-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the shared Work Item parser
+        uses: actions/checkout@v6
+        with:
+          repository: VeamStudios/.github
+          ref: ${{ github.job_workflow_sha }}
+          path: .veam-shared
+          sparse-checkout: |
+            .github/actions/release-ledger/work-item-gate.js
+            .github/actions/release-ledger/work-item-links.js
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Require a Work Items link on feat PRs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { workItemGate } = require(`${process.env.GITHUB_WORKSPACE}/.veam-shared/.github/actions/release-ledger/work-item-gate.js`);
+            const pr = context.payload.pull_request;
+            const result = workItemGate({ title: pr.title, body: pr.body });
+            await core.summary.addRaw(result.summary).write();
+            if (!result.ok) core.setFailed(result.summary);
+            else core.info(result.summary);
+
   qa-project-status:
     if: "github.event.action == 'labeled' && github.event.label.name == 'bot: qa needed'"
     runs-on: ubuntu-latest
