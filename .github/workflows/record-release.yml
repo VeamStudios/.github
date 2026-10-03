@@ -2,6 +2,10 @@ name: Record Release Evidence
 on:
   workflow_call:
     inputs:
+      lock_wait_ms:
+        description: Lock acquisition wait budget in milliseconds; 0 tries once without waiting.
+        type: number
+        default: 300000
       product:
         required: true
         type: string
@@ -85,6 +89,7 @@ jobs:
           owner: ${{ github.repository_owner }}
       - uses: VeamStudios/.github/.github/actions/release-ledger@main
         with:
+          lock_wait_ms: ${{ inputs.lock_wait_ms }}
           product: ${{ inputs.product }}
           target: ${{ inputs.target }}
           version: ${{ inputs.version }}
