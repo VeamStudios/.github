@@ -49,3 +49,33 @@ test('stale or future positive proof is not public authority', async () => {
 test('an ASC failure cannot fall back to cached proof or an older release', async () => {
   await assert.rejects(selectSource(config, api([row()]), { findAppByBundleId: async () => { throw Error('ASC unavailable'); } }, () => now), /ASC unavailable/);
 });
+
+function sapRecovery() {
+ const manifest={schemaVersion:2,repository:'VeamStudios/SiteAuditPro-iOS',target:'ios-consumer',event:'release',version:'v10.7.3',build:'1',commit:'131138291db97d6e42e2d6deb03b00efb834f490',baseline:'d15b0dcd727a6ce4c7e3bdaf0c1f9e1d61c681ea',key:'VeamStudios/SiteAuditPro-iOS/ios-consumer/release/v10.7.3',provenanceComplete:true,recovery:{kind:'audited-historical-release-recovery',buildSourceAttestation:{operator:'harrygt',sourcePr:2586,version:'v10.7.3',build:'1',commit:'131138291db97d6e42e2d6deb03b00efb834f490',buildId:'a4fc9694-2155-4bed-b5e7-dcc7499e7cb6',appStoreVersionId:'db645b65-b744-4e45-bc2f-5f5e7f661b6f'},baselineEquivalence:{recordedCommit:'5a940d890e4d3dc7ca753efcb6e76ec911f294ad',comparisonCommit:'d15b0dcd727a6ce4c7e3bdaf0c1f9e1d61c681ea',identicalTree:'05ad1c53c442054b7a1762807401db147274ae05',recordedManifestHash:'fa33210fe37de3668716c971005dc8f15750e36c4c82390c07c9633202db9abd'},originalAnnouncement:{permalink:'https://veamstudios.slack.com/archives/C2CK0TA0K/p1790237712608319'}}};
+ return {id:'recovery',properties:{Historical:{checkbox:true},Manifest:rich(JSON.stringify(manifest)),'Manifest Hash':rich(hash(manifest))}};
+}
+const sapConfig={repo:'VeamStudios/SiteAuditPro-iOS',bundleId:'com.veamstudios.iaudit',releasesId:'db'};
+function sapApple({phase='COMPLETE',buildId='a4fc9694-2155-4bed-b5e7-dcc7499e7cb6'}={}) {
+ const base=apple({phase,build:'1'});
+ return {findAppByBundleId:async()=>({id:'430234732',attributes:{bundleId:sapConfig.bundleId}}),get:async(path,params)=>{
+  if(path.endsWith('/build'))return {data:{id:buildId,type:'builds',attributes:{version:'1'}}};
+  const result=await base.get(path,params);
+  if(params)result.data[0].id='db645b65-b744-4e45-bc2f-5f5e7f661b6f';
+  return result;
+ }};
+}
+test('attested SAP10.7.3 historical recovery supplies exact fresh source without changing suppression',async()=>{
+ const saved=sapRecovery(),before=JSON.stringify(saved);
+ const result=await selectSource(sapConfig,api([saved]),sapApple(),()=>now);
+ assert.equal(result.live_version,'10.7.3');assert.equal(result.source_commit,'131138291db97d6e42e2d6deb03b00efb834f490');assert.equal(JSON.stringify(saved),before);
+});
+test('historical recovery needs the complete exact attestation and audited baseline',async()=>{
+ for(const mutate of [m=>delete m.recovery,m=>m.provenanceComplete=false,m=>m.recovery.buildSourceAttestation.commit='b'.repeat(40),m=>m.recovery.baselineEquivalence.identicalTree='c'.repeat(40),m=>m.recovery.originalAnnouncement.permalink='https://example.com']) {
+  const saved=sapRecovery(),m=JSON.parse(saved.properties.Manifest.rich_text[0].text.content);mutate(m);saved.properties.Manifest=rich(JSON.stringify(m));saved.properties['Manifest Hash']=rich(hash(m));
+  await assert.rejects(selectSource(sapConfig,api([saved]),sapApple(),()=>now),/No exact publicly/);
+ }
+});
+test('recovered history cannot override fresh rollout holds or related build mismatch',async()=>{
+ await assert.rejects(selectSource(sapConfig,api([sapRecovery()]),sapApple({phase:'PAUSED'}),()=>now),/No exact publicly/);
+ await assert.rejects(selectSource(sapConfig,api([sapRecovery()]),sapApple({buildId:'different'}),()=>now),/build identity differs/);
+});
