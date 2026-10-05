@@ -9,12 +9,15 @@ function evaluate(part, evidence) {
   if (!evidence?.run) return { state: 'failure', detail: 'Required workflow has not run for this commit.' };
   const { run, jobs } = evidence;
   if (run.status !== 'completed') return { state: 'pending', detail: 'CI is running.' };
-  if (run.conclusion !== 'success') return { state: 'failure', detail: `Workflow ${run.conclusion || 'has no conclusion'}.` };
+  // A failed sibling must not label a successful test job as failed. Every
+  // mandatory job is mapped separately; cancelled/incomplete runs still block.
+  if (!['success', 'failure'].includes(run.conclusion)) return { state: 'failure', detail: `Workflow ${run.conclusion || 'has no conclusion'}.`, url: run.html_url };
   const matches = jobs.filter(job => job.name === part.job);
   if (matches.length !== 1) return { state: 'failure', detail: `Expected exactly one job named ${part.job}; found ${matches.length}.` };
   const job = matches[0];
   if (job.status !== 'completed' || job.conclusion !== 'success') {
-    return { state: 'failure', detail: `Required job ${job.conclusion || job.status || 'missing'}.` };
+    const failedStep = (job.steps || []).find(step => step.conclusion === 'failure');
+    return { state: 'failure', detail: `Required job ${job.conclusion || job.status || 'missing'}${failedStep ? `: ${failedStep.name}` : ''}.`, url: job.html_url || run.html_url };
   }
   for (const name of part.steps || []) {
     const steps = job.steps.filter(step => step.name === name);

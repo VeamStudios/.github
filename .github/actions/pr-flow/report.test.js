@@ -25,6 +25,12 @@ test('queued evidence stays pending and failures win over pending', () => {
   assert.equal(groupState([{ state: 'success' }, { state: 'pending' }]), 'pending');
   assert.equal(groupState([{ state: 'failure' }, { state: 'pending' }]), 'failure');
 });
+test('a failing sibling does not misreport successful tests; cancelled runs block', () => {
+  const evidence = passing(); evidence.run.conclusion = 'failure';
+  assert.equal(evaluate(part, evidence).state, 'success');
+  evidence.run.conclusion = 'cancelled';
+  assert.equal(evaluate(part, evidence).state, 'failure');
+});
 test('head, base, PR body and title races invalidate evidence', () => {
   const pr = { state: 'open', head: { sha: 'head' }, base: { sha: 'base' }, title: 'ci: checks', body: '' };
   assert.ok(samePull(pr, pr));
