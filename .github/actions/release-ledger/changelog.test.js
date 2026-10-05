@@ -59,3 +59,19 @@ test('absent historical changelog is distinct from unreadable Git history',()=>{
  assert.throws(()=>readChangelog('invalid',()=>{throw new Error('invalid object name')}),/invalid object name/);
  assert.equal(readChangelog('baseline',command=>command==='ls-tree'?'100644 blob abc\tCHANGELOG.md':'## 1.0.0\n- Old note'), '## 1.0.0\n- Old note');
 });
+
+
+test('a missing historical blob aborts comparison instead of announcing old notes again',()=>{
+ const cwd=process.cwd(),dir=fs.mkdtempSync(path.join(os.tmpdir(),'changelog-unreadable-'));
+ try{
+  process.chdir(dir);
+  const git=(...args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+  git('init');git('config','user.name','Test');git('config','user.email','test@example.com');
+  fs.writeFileSync('CHANGELOG.md','## 1.0.0\n### Fixed\n- Old fix.\n');git('add','.');git('commit','-m','baseline');
+  const baseline=git('rev-parse','HEAD'),blob=git('rev-parse',`${baseline}:CHANGELOG.md`);
+  fs.writeFileSync('CHANGELOG.md','## 1.1.0\n### Fixed\n- New fix.\n## 1.0.0\n### Fixed\n- Old fix.\n');git('add','.');git('commit','-m','shipped');
+  fs.unlinkSync(path.join('.git','objects',blob.slice(0,2),blob.slice(2)));
+  assert.match(git('ls-tree',baseline,'--','CHANGELOG.md'),/CHANGELOG.md/);
+  assert.throws(()=>newEntries(readChangelog(baseline,git),readChangelog('HEAD',git)),/Command failed/);
+ }finally{process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
+});
