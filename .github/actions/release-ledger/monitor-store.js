@@ -1,6 +1,12 @@
 const { releaseSchema, targetFilter } = require('./presentation');
 const { AppStoreConnectClient, normalizeVersion } = require('./app-store-client.js');
-const { clients, allPages, withLock, text, rich, hash } = require('./record.js');
+const { clients, allPages, withLock, text, rich, hash, verificationProperties } = require('./record.js');
+
+const DISTRIBUTION_STATES = ['READY_FOR_DISTRIBUTION', 'READY_FOR_SALE'];
+const WITHDRAWN_STATES = ['DEVELOPER_REMOVED_FROM_SALE', 'REMOVED_FROM_SALE'];
+function presentFields(attributes, fields) {
+  return Object.fromEntries(fields.filter(key => Object.hasOwn(attributes, key)).map(key => [key, attributes[key]]));
+}
 
 async function observeStore(manifest, bundleId, apple, now = () => new Date().toISOString()) {
   const app = await apple.findAppByBundleId(bundleId);
@@ -16,16 +22,36 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
   if (!versions.length && !result.data.length) return null;
   if (!versions.length) throw new Error('App Store version evidence does not match the requested version/platform');
   const version = versions[0];
-  const state = version.attributes.appStoreState || version.attributes.appVersionState;
+  if (typeof version.id !== 'string' || !version.id.trim()) throw new Error('App Store version identity is missing');
+  // Prefer Apple's current state field; retain both raw fields for auditing.
+  const state = version.attributes.appVersionState ?? version.attributes.appStoreState;
   if (typeof state !== 'string' || !state) throw new Error('App Store version state is missing');
-  if (!['READY_FOR_DISTRIBUTION', 'READY_FOR_SALE'].includes(state)) return null;
+  if (!DISTRIBUTION_STATES.includes(state) && !WITHDRAWN_STATES.includes(state)) return null;
   const build = await apple.get(`/appStoreVersions/${version.id}/build`);
   if (String(build.data?.attributes?.version) !== manifest.build) throw new Error('App Store build differs from recorded shipped build');
+  const verification = {
+    kind: 'app-store', version: versionString, platform: 'IOS', build: manifest.build, commit: manifest.commit,
+    bundleId, appId: app.id, appStoreVersionId: version.id, state,
+    ...presentFields(version.attributes, ['appStoreState', 'appVersionState', 'downloadable']),
+    evidence: `https://api.appstoreconnect.apple.com/v1/appStoreVersions/${version.id}/build`,
+  };
+  const source = `https://appstoreconnect.apple.com/apps/${app.id}/distribution/ios/version/inflight`;
+  // A confirmed withdrawal/non-downloadable version is fresh negative evidence,
+  // not a failed lookup or an invented completed phased release.
+  if (WITHDRAWN_STATES.includes(state) || version.attributes.downloadable === false) {
+    const observedAt = now();
+    return { phase: 'withdrawn', source, releasedAt: observedAt, timeBasis: 'first-observed', verification: { ...verification, checkedAt: observedAt } };
+  }
   // The related resource can return 404 when no phased release exists. Only an
   // explicit null relationship proves absence; failed lookups remain errors.
   const relationship = await apple.get(`/appStoreVersions/${version.id}/relationships/appStoreVersionPhasedRelease`);
   let limited = false;
-  if (relationship?.data !== null) {
+  if (relationship?.data === null) {
+    // NONE is our explicit absence marker, never an Apple phased state inferred from HTTP 404.
+    verification.phasedReleaseState = 'NONE';
+    verification.phasedReleaseId = null;
+    verification.phasedReleaseEvidence = `https://api.appstoreconnect.apple.com/v1/appStoreVersions/${version.id}/relationships/appStoreVersionPhasedRelease`;
+  } else {
     const linked = relationship?.data;
     if (linked?.type !== 'appStoreVersionPhasedReleases' || typeof linked.id !== 'string' || !linked.id.trim()) {
       throw new Error('App Store phased-release relationship is missing or malformed');
@@ -36,16 +62,21 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
       throw new Error('App Store phased-release evidence is missing or inconsistent');
     }
     limited = phasedState !== 'COMPLETE';
+    Object.assign(verification, presentFields(phased.data.attributes, ['phasedReleaseState', 'currentDayNumber', 'totalPauseDuration', 'startDate']), {
+      phasedReleaseId: linked.id,
+      phasedReleaseEvidence: `https://api.appstoreconnect.apple.com/v1/appStoreVersions/${version.id}/appStoreVersionPhasedRelease`,
+    });
   }
   const observedAt = now();
   // ASC createdDate is not the actual release time. Record first observed live time explicitly.
-  return { phase: limited ? 'rollout' : 'live', source: `https://appstoreconnect.apple.com/apps/${app.id}/distribution/ios/version/inflight`, releasedAt: observedAt, timeBasis: 'first-observed', verification: { kind: 'app-store', build: manifest.build, commit: manifest.commit, bundleId, appId: app.id, appStoreVersionId: version.id, state, checkedAt: observedAt, evidence: `https://api.appstoreconnect.apple.com/v1/appStoreVersions/${version.id}/build` } };
+  return { phase: limited ? 'rollout' : 'live', source, releasedAt: observedAt, timeBasis: 'first-observed', verification: { ...verification, checkedAt: observedAt } };
 }
-async function monitor(config, api, apple) {
+async function monitor(config, api, apple, now = () => new Date().toISOString()) {
   const schema = await releaseSchema(api.notion, config.releasesId);
   const rows = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter: { and: [{ property: 'Repository', rich_text: { equals: config.repo } }, targetFilter(schema, config.target)] } });
   const errors = []; let observed = 0; let skippedHistorical = 0;
   for (const row of rows) {
+    let previous; let validRecord = false;
     try {
       const m = JSON.parse(text(row.properties.Manifest));
       if (m.target !== config.target || m.repository !== config.repo || hash(m) !== text(row.properties['Manifest Hash'])) { errors.push(`${row.id}: invalid manifest`); continue; }
@@ -54,13 +85,38 @@ async function monitor(config, api, apple) {
       // Keep integrity checks above this exception and validate current releases.
       if (!m.build && m.event === 'baseline' && row.properties.Historical?.checkbox === true) { skippedHistorical++; continue; }
       if (!m.build) { errors.push(`${row.id}: invalid manifest`); continue; }
-      const previous = text(row.properties.Observation) ? JSON.parse(text(row.properties.Observation)) : null;
-      if (previous?.phase === 'withdrawn' || previous?.phase === 'live') continue;
-      const observation = await observeStore(m, config.bundleId, apple);
-      if (!observation) continue;
+      previous = text(row.properties.Observation) ? JSON.parse(text(row.properties.Observation)) : null;
+      validRecord = true;
+      if (previous?.phase === 'withdrawn') continue;
+      // Refresh released rows too: live is an observation, not a permanent exemption.
+      const observation = await observeStore(m, config.bundleId, apple, now);
+      if (!observation) {
+        if (['live', 'rollout'].includes(previous?.phase)) throw new Error('App Store no longer confirms distribution for the recorded version/build');
+        continue;
+      }
+      const observedAt = observation.verification.checkedAt;
+      if (['live', 'rollout', 'withdrawn'].includes(previous?.phase)) observation.releasedAt = previous.releasedAt || row.properties['Released At']?.date?.start || observation.releasedAt;
       observed++;
-      if (!config.dryRun) await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { Observation: rich(JSON.stringify(observation)), 'Observed At': { date: { start: observation.releasedAt } }, 'Released At': { date: { start: previous?.phase === observation.phase && row.properties['Released At']?.date?.start || observation.releasedAt } }, 'Availability Evidence': { url: observation.verification.evidence }, Error: rich('') } });
-    } catch (e) { errors.push(`${row.id}: ${e.message}`); }
+      if (!config.dryRun) {
+        const properties = verificationProperties(observation, previous, row.properties, observedAt);
+        properties.Observation = rich(JSON.stringify({ ...previous, ...observation, verificationError: undefined, verificationAttempt: undefined }));
+        Object.assign(properties, { 'Observed At': { date: { start: observedAt } }, 'Released At': { date: { start: observation.releasedAt } }, 'Availability Evidence': { url: observation.verification.evidence } });
+        await api.notion(`/pages/${row.id}`, 'PATCH', { properties });
+      }
+    } catch (e) {
+      errors.push(`${row.id}: ${e.message}`);
+      // Retain the last raw proof and its old checkedAt for diagnostics. A failed
+      // current check must explicitly block eligibility, even before it goes stale.
+      if (validRecord && !config.dryRun) {
+        const attemptedAt = now();
+        const observation = { ...previous, phase: previous?.phase || 'uploaded', verificationError: e.message, verificationAttempt: { source: previous?.source || '', at: attemptedAt } };
+        try {
+          const properties = { Observation: rich(JSON.stringify(observation)), 'Observed At': { date: { start: attemptedAt } } };
+          if (!text(row.properties.Error) || text(row.properties.Error) === previous?.verificationError) properties.Error = rich(e.message);
+          await api.notion(`/pages/${row.id}`, 'PATCH', { properties });
+        } catch (writeError) { errors.push(`${row.id}: could not persist verification error: ${writeError.message}`); }
+      }
+    }
   }
   return { checked: rows.length, observed, skippedHistorical, errors };
 }
