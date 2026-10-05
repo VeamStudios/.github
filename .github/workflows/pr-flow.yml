@@ -1,0 +1,36 @@
+name: PR Flow
+
+on:
+  workflow_call:
+
+permissions:
+  actions: read
+  checks: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  report:
+    name: Report PR checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Only trusted shared code runs with check-writing permissions. No PR checkout,
+      # dependency installation, artifacts, secrets or arbitrary source scripts.
+      - uses: actions/checkout@v6
+        with:
+          repository: VeamStudios/.github
+          ref: ${{ job.workflow_sha }}
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .github/actions/pr-flow
+            .github/actions/release-ledger/work-item-gate.js
+            .github/actions/release-ledger/work-item-links.js
+          persist-credentials: false
+      - name: Report Build, Run and Verify
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { report } = require('./.github/actions/pr-flow/report');
+            const profiles = require('./.github/actions/pr-flow/profiles.json');
+            await report({ github, context, core, profiles });
