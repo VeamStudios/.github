@@ -271,6 +271,7 @@ for (const phase of ['live', 'rollout']) {
       assert.equal(failed.phase, previous.phase);
       assert.equal(failed.releasedAt, firstSeen);
       assert.ok(failed.verificationError);
+      assert.equal(failed.verificationStatus, 'error');
       assert.equal(text(properties.Error), failed.verificationError);
       assert.equal(failed.verificationAttempt.at, now());
       assert.equal(properties['Released At'], undefined);
@@ -345,6 +346,8 @@ test('ordinary supersession holds new publication and preserves frozen delivery 
   assert.equal(terminal.releasedAt, firstSeen);
   assert.deepEqual(terminal.verification, previous.verification);
   assert.match(terminal.verificationError, /replaced by a newer version/);
+  assert.equal(terminal.verificationStatus, 'superseded');
+  assert.equal(terminal.verificationAttempt.at, terminal.superseded.checkedAt);
   assert.equal(terminal.superseded.state, 'REPLACED_WITH_NEW_VERSION');
   assert.equal(terminal.superseded.checkedAt, now());
   assert.equal(terminal.superseded.manifestHash, hash(current));
@@ -413,4 +416,33 @@ test('superseded build mismatches remain actual errors and do not establish a te
   const failed = JSON.parse(text(writes[0].body.properties.Observation));
   assert.equal(failed.superseded, undefined);
   assert.match(failed.verificationError, /build differs/);
+});
+
+test('legacy, error-status and attempt-mismatched supersession markers recheck rather than silence verification', async () => {
+  const initial = monitorFixture([{ m: current, observation: await releasedObservation() }]);
+  await monitor(monitorConfig, initial.api, fixture({ attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } }), now);
+  const terminal = JSON.parse(text(initial.writes[0].body.properties.Observation));
+  for (const change of [{ verificationStatus: undefined }, { verificationStatus: 'error' }, { verificationAttempt: { at: firstSeen } }]) {
+    const { api, writes } = monitorFixture([{ m: current, observation: { ...terminal, ...change } }]);
+    const result = await monitor(monitorConfig, api, fixture(), now);
+    assert.equal(result.observed, 1);
+    assert.equal(result.errors.length, 0);
+    const fresh = JSON.parse(text(writes[0].body.properties.Observation));
+    assert.equal(fresh.superseded, undefined);
+    assert.equal(fresh.verificationStatus, undefined);
+    assert.equal(fresh.verificationError, undefined);
+  }
+});
+
+test('a genuine lookup failure with retained supersession proof is typed as error', async () => {
+  const initial = monitorFixture([{ m: current, observation: await releasedObservation() }]);
+  await monitor(monitorConfig, initial.api, fixture({ attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } }), now);
+  const terminal = JSON.parse(text(initial.writes[0].body.properties.Observation));
+  const { api, writes } = monitorFixture([{ m: current, observation: { ...terminal, verificationStatus: 'error' } }]);
+  const result = await monitor(monitorConfig, api, fixture({ relationship: new Error('HTTP 503') }), now);
+  assert.equal(result.errors.length, 1);
+  const failed = JSON.parse(text(writes[0].body.properties.Observation));
+  assert.deepEqual(failed.superseded, terminal.superseded);
+  assert.equal(failed.verificationStatus, 'error');
+  assert.equal(failed.verificationError, 'HTTP 503');
 });

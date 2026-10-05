@@ -11,11 +11,11 @@ function presentFields(attributes, fields) {
 }
 function matchingSupersession(previous, manifest, bundleId) {
   const s = previous?.superseded;
-  return s?.state === SUPERSEDED_STATE && s.manifestHash === hash(manifest) &&
+  return previous?.verificationStatus === 'superseded' && s?.state === SUPERSEDED_STATE && s.manifestHash === hash(manifest) &&
     s.version === normalizeVersion(manifest.version).split('-')[0] && s.build === manifest.build && s.commit === manifest.commit &&
     s.bundleId === bundleId && typeof s.appStoreVersionId === 'string' && Boolean(s.appStoreVersionId.trim()) &&
     (!previous.verification?.appStoreVersionId || s.appStoreVersionId === previous.verification.appStoreVersionId) &&
-    Number.isFinite(Date.parse(s.checkedAt)) && previous.verificationError === SUPERSEDED_HOLD;
+    Number.isFinite(Date.parse(s.checkedAt)) && previous.verificationAttempt?.at === s.checkedAt && Boolean(previous.verificationError);
 }
 
 async function observeStore(manifest, bundleId, apple, now = () => new Date().toISOString()) {
@@ -113,7 +113,7 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
         // Supersession is expected terminal negative evidence, not an API error
         // or a withdrawal of the frozen historical delivery/baseline proof.
         observed++;
-        const terminal = { ...previous, phase: previous?.phase || 'uploaded', superseded: { ...observation.verification, manifestHash: hash(m) }, verificationError: SUPERSEDED_HOLD, verificationAttempt: { source: observation.source, at: observedAt } };
+        const terminal = { ...previous, phase: previous?.phase || 'uploaded', superseded: { ...observation.verification, manifestHash: hash(m) }, verificationStatus: 'superseded', verificationError: SUPERSEDED_HOLD, verificationAttempt: { source: observation.source, at: observedAt } };
         if (!config.dryRun) {
           const properties = verificationProperties({ phase: terminal.phase, source: observation.source, verification: observation.verification }, previous, row.properties, observedAt);
           Object.assign(properties, { Observation: rich(JSON.stringify(terminal)), 'Observed At': { date: { start: observedAt } } });
@@ -125,7 +125,7 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
       observed++;
       if (!config.dryRun) {
         const properties = verificationProperties(observation, previous, row.properties, observedAt);
-        properties.Observation = rich(JSON.stringify({ ...previous, ...observation, releasedAt: observation.releasedAt, superseded: undefined, verificationError: undefined, verificationAttempt: undefined }));
+        properties.Observation = rich(JSON.stringify({ ...previous, ...observation, releasedAt: observation.releasedAt, superseded: undefined, verificationStatus: undefined, verificationError: undefined, verificationAttempt: undefined }));
         Object.assign(properties, { 'Observed At': { date: { start: observedAt } }, 'Availability Evidence': { url: observation.verification.evidence } });
         if (observation.releasedAt) properties['Released At'] = { date: { start: observation.releasedAt } };
         await api.notion(`/pages/${row.id}`, 'PATCH', { properties });
@@ -136,7 +136,7 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
       // current check must explicitly block eligibility, even before it goes stale.
       if (validRecord && !config.dryRun) {
         const attemptedAt = now();
-        const observation = { ...previous, phase: previous?.phase || 'uploaded', verificationError: e.message, verificationAttempt: { source: previous?.source || '', at: attemptedAt } };
+        const observation = { ...previous, phase: previous?.phase || 'uploaded', verificationStatus: 'error', verificationError: e.message, verificationAttempt: { source: previous?.source || '', at: attemptedAt } };
         try {
           const properties = { Observation: rich(JSON.stringify(observation)), 'Observed At': { date: { start: attemptedAt } } };
           if (!text(row.properties.Error) || text(row.properties.Error) === previous?.verificationError) properties.Error = rich(e.message);
