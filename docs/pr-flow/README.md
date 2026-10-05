@@ -31,11 +31,14 @@ callers after review in `.github`; no downstream version-pin PR chain.
 3. Run `python3 .github/actions/pr-flow/preflight.py REPO` for current ownership,
    authorship and rule evidence. Confirm CODEOWNERS has no GitHub errors and includes an independent reviewer.
    Harry-only repos need a different author or an additional real owner for Harry's PRs.
-4. Apply `ruleset.json` to the default branch of each proven repo. Enable repository
-   auto-merge. Retain stronger existing rules and old required checks during migration.
+4. Generate the additive ruleset with `node .github/actions/pr-flow/policy.js REPO`.
+   Apply that output to each proven repo; enable repository auto-merge. The generator
+   requires all three summaries **and their native source checks**, bound to Actions.
+   Retain stronger existing rules. `ruleset.json` is a template, not an activation file.
 5. Replace the old three-label merge habit with native Auto-merge. Disable the old
    label merge job for opted-in repos only after proving the native path.
-6. Remove obsolete required check aliases only after the new checks are observed.
+6. Keep native source checks required: summaries can briefly lag behind reruns.
+   The shared config generates them, so there is no second manually maintained list.
 
 Several existing team slugs are invalid in GitHub; replacement leads require
 confirmation. Keep Harry as backup, not a substitute for an unknown lead.

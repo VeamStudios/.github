@@ -78,3 +78,13 @@ test('a moving PR cannot receive a successful stale verdict', async () => {
   assert.equal(writes.length, 3);
   assert.ok(writes.every(w => w.status === 'in_progress'));
 });
+const { policy } = require('./policy');
+test('activation retains native guards alongside summaries and refuses missing coverage', () => {
+  const rules = policy('SiteAuditPro-Backend').rules;
+  const checks = rules.find(rule => rule.type === 'required_status_checks').parameters;
+  assert.deepEqual(checks.required_status_checks.map(c => c.context), ['Build', 'Run', 'Verify', 'check / validate', 'check / test']);
+  assert.ok(checks.required_status_checks.every(c => c.integration_id === 15368));
+  assert.equal(checks.strict_required_status_checks_policy, true);
+  assert.throws(() => policy('SiteAuditPro-Web'), /Cannot activate/);
+  assert.throws(() => policy('unknown'), /Unknown repository/);
+});
