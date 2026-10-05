@@ -62,7 +62,7 @@ A cancelled job can leave `refs/tags/veam-release-ledger-lock`. Verify no holder
 
 </details>
 
-Checked: 2026-09-15 against shared recorder, NotionWorkers and focused regression tests. Live deployment and evidence checks are recorded in the rollout record. API references: [Notion status codes](https://developers.notion.com/reference/status-codes), [Slack corrections](https://docs.slack.dev/reference/methods/chat.update/).
+Checked: 2026-10-05 for the shared source contract and local regression tests. The draft iOS writer/worker integration is not deployed or runtime-verified. Prior live deployment and evidence checks are recorded separately in the rollout record. API references: [Notion status codes](https://developers.notion.com/reference/status-codes), [Slack corrections](https://docs.slack.dev/reference/methods/chat.update/).
 
 ## Work Item delivery contract (version 1)
 
