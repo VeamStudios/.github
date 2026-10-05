@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { observeStore, monitor } = require('./monitor-store');
-const { hash, rich, text } = require('./record');
+const { hash, rich, text, deployedBaseline } = require('./record');
 
 const manifest = { version: 'v1.2.3', build: '123', commit: 'a'.repeat(40) };
 const relationshipPath = '/appStoreVersions/version/relationships/appStoreVersionPhasedRelease';
@@ -162,7 +162,10 @@ test('current Apple state wins over deprecated state; both raw fields remain ava
   assert.equal(result.verification.appStoreState, 'READY_FOR_SALE');
   assert.equal(result.verification.appVersionState, 'READY_FOR_DISTRIBUTION');
   assert.equal(result.verification.downloadable, true);
-  assert.equal(await observeStore(manifest, 'com.test.app', fixture({ attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } })), null);
+  const replaced = await observeStore(manifest, 'com.test.app', fixture({ attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } }), now);
+  assert.equal(replaced.phase, 'superseded');
+  assert.equal(replaced.verification.state, 'REPLACED_WITH_NEW_VERSION');
+  assert.equal(replaced.verification.checkedAt, now());
 });
 
 for (const options of [{ state: 'REMOVED_FROM_SALE' }, { state: 'DEVELOPER_REMOVED_FROM_SALE' }, { attributes: { downloadable: false } }]) {
@@ -309,4 +312,86 @@ test('failure to persist the blocking diagnostic remains visible alongside the o
   assert.equal(result.errors.length, 2);
   assert.match(result.errors[0], /HTTP 403/);
   assert.match(result.errors[1], /could not persist verification error: Notion unavailable/);
+});
+
+test('ordinary supersession holds new publication and preserves frozen delivery history and comparison baseline', async () => {
+  const previous = await releasedObservation();
+  const { api, writes } = monitorFixture([{ m: current, observation: previous, properties: { Error: rich('Uncertain Slack delivery'), 'Released At': { date: { start: firstSeen } } } }]);
+  const apple = fixture({ attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } });
+  const result = await monitor(monitorConfig, api, apple, now);
+  assert.deepEqual(result, { checked: 1, observed: 1, skippedHistorical: 0, errors: [] });
+  const properties = writes[0].body.properties;
+  const terminal = JSON.parse(text(properties.Observation));
+  assert.equal(terminal.phase, previous.phase);
+  assert.equal(terminal.releasedAt, firstSeen);
+  assert.deepEqual(terminal.verification, previous.verification);
+  assert.match(terminal.verificationError, /replaced by a newer version/);
+  assert.equal(terminal.superseded.state, 'REPLACED_WITH_NEW_VERSION');
+  assert.equal(terminal.superseded.checkedAt, now());
+  assert.equal(terminal.superseded.manifestHash, hash(current));
+  assert.equal(terminal.superseded.appStoreVersionId, 'version');
+  assert.equal(terminal.superseded.version, '1.2.3');
+  assert.equal(terminal.superseded.build, current.build);
+  assert.equal(terminal.superseded.commit, current.commit);
+  assert.equal(properties['Released At'], undefined);
+  assert.equal(properties.Error, undefined);
+  assert.equal(deployedBaseline({ properties: { Manifest: rich(JSON.stringify(current)), 'Manifest Hash': rich(hash(current)), Observation: properties.Observation } }), true);
+
+  const repeated = monitorFixture([{ m: current, observation: terminal }]);
+  const noRequests = { findAppByBundleId: async () => { throw new Error('Terminal supersession must not be queried again'); } };
+  const retry = await monitor(monitorConfig, repeated.api, noRequests, now);
+  assert.deepEqual(retry, { checked: 1, observed: 0, skippedHistorical: 0, errors: [] });
+  assert.deepEqual(repeated.writes, []);
+});
+
+test('supersession before any successful distribution proof cannot manufacture historical live evidence', async () => {
+  const { api, writes } = monitorFixture([{ m: current }]);
+  const result = await monitor(monitorConfig, api, fixture({ attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } }), now);
+  assert.equal(result.errors.length, 0);
+  const terminal = JSON.parse(text(writes[0].body.properties.Observation));
+  assert.equal(terminal.phase, 'uploaded');
+  assert.equal(terminal.verification, undefined);
+  assert.ok(terminal.verificationError);
+  assert.equal(terminal.superseded.state, 'REPLACED_WITH_NEW_VERSION');
+});
+
+test('only exact identity-bound supersession is terminal; mismatches recheck and clear a resolved hold', async () => {
+  const initial = monitorFixture([{ m: current, observation: await releasedObservation() }]);
+  await monitor(monitorConfig, initial.api, fixture({ attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } }), now);
+  const terminal = JSON.parse(text(initial.writes[0].body.properties.Observation));
+  for (const change of [{ manifestHash: 'different' }, { commit: 'b'.repeat(40) }, { build: '124' }, { version: '1.2.4' }, { bundleId: 'other' }, { appStoreVersionId: '' }, { appStoreVersionId: 'different' }, { checkedAt: 'invalid' }]) {
+    const previous = { ...terminal, superseded: { ...terminal.superseded, ...change } };
+    const { api, writes } = monitorFixture([{ m: current, observation: previous, properties: { Error: rich('Uncertain Slack delivery') } }]);
+    const result = await monitor(monitorConfig, api, fixture(), now);
+    assert.equal(result.observed, 1);
+    assert.equal(result.errors.length, 0);
+    const fresh = JSON.parse(text(writes[0].body.properties.Observation));
+    assert.equal(fresh.superseded, undefined);
+    assert.equal(fresh.verificationError, undefined);
+    assert.equal(fresh.verification.checkedAt, now());
+    assert.equal(fresh.releasedAt, firstSeen);
+    assert.equal(writes[0].body.properties.Error, undefined);
+  }
+});
+
+test('successful supersession check resolves a prior lookup failure while retaining its recovery receipt', async () => {
+  const previous = { ...await releasedObservation(), verificationError: 'HTTP 403' };
+  const { api, writes } = monitorFixture([{ m: current, observation: previous, properties: { Error: rich('HTTP 403') } }]);
+  const result = await monitor(monitorConfig, api, fixture({ attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } }), now);
+  assert.equal(result.errors.length, 0);
+  const properties = writes[0].body.properties;
+  const terminal = JSON.parse(text(properties.Observation));
+  assert.equal(text(properties.Error), '');
+  assert.match(terminal.verificationError, /replaced by a newer version/);
+  assert.deepEqual(terminal.verification, previous.verification);
+  assert.equal(JSON.parse(text(properties['Operations Receipt'])).resolutions[0].error, 'HTTP 403');
+});
+
+test('superseded build mismatches remain actual errors and do not establish a terminal marker', async () => {
+  const { api, writes } = monitorFixture([{ m: current, observation: await releasedObservation() }]);
+  const result = await monitor(monitorConfig, api, fixture({ build: '124', attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } }), now);
+  assert.equal(result.errors.length, 1);
+  const failed = JSON.parse(text(writes[0].body.properties.Observation));
+  assert.equal(failed.superseded, undefined);
+  assert.match(failed.verificationError, /build differs/);
 });

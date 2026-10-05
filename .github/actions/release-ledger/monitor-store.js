@@ -4,8 +4,18 @@ const { clients, allPages, withLock, text, rich, hash, verificationProperties } 
 
 const DISTRIBUTION_STATES = ['READY_FOR_DISTRIBUTION', 'READY_FOR_SALE'];
 const WITHDRAWN_STATES = ['DEVELOPER_REMOVED_FROM_SALE', 'REMOVED_FROM_SALE'];
+const SUPERSEDED_STATE = 'REPLACED_WITH_NEW_VERSION';
+const SUPERSEDED_HOLD = 'App Store version was replaced by a newer version; historical delivery evidence is retained';
 function presentFields(attributes, fields) {
   return Object.fromEntries(fields.filter(key => Object.hasOwn(attributes, key)).map(key => [key, attributes[key]]));
+}
+function matchingSupersession(previous, manifest, bundleId) {
+  const s = previous?.superseded;
+  return s?.state === SUPERSEDED_STATE && s.manifestHash === hash(manifest) &&
+    s.version === normalizeVersion(manifest.version).split('-')[0] && s.build === manifest.build && s.commit === manifest.commit &&
+    s.bundleId === bundleId && typeof s.appStoreVersionId === 'string' && Boolean(s.appStoreVersionId.trim()) &&
+    (!previous.verification?.appStoreVersionId || s.appStoreVersionId === previous.verification.appStoreVersionId) &&
+    Number.isFinite(Date.parse(s.checkedAt)) && previous.verificationError === SUPERSEDED_HOLD;
 }
 
 async function observeStore(manifest, bundleId, apple, now = () => new Date().toISOString()) {
@@ -26,7 +36,7 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
   // Prefer Apple's current state field; retain both raw fields for auditing.
   const state = version.attributes.appVersionState ?? version.attributes.appStoreState;
   if (typeof state !== 'string' || !state) throw new Error('App Store version state is missing');
-  if (!DISTRIBUTION_STATES.includes(state) && !WITHDRAWN_STATES.includes(state)) return null;
+  if (!DISTRIBUTION_STATES.includes(state) && !WITHDRAWN_STATES.includes(state) && state !== SUPERSEDED_STATE) return null;
   const build = await apple.get(`/appStoreVersions/${version.id}/build`);
   if (String(build.data?.attributes?.version) !== manifest.build) throw new Error('App Store build differs from recorded shipped build');
   const verification = {
@@ -36,6 +46,10 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
     evidence: `https://api.appstoreconnect.apple.com/v1/appStoreVersions/${version.id}/build`,
   };
   const source = `https://appstoreconnect.apple.com/apps/${app.id}/distribution/ios/version/inflight`;
+  if (state === SUPERSEDED_STATE) {
+    const observedAt = now();
+    return { phase: 'superseded', source, verification: { ...verification, checkedAt: observedAt } };
+  }
   // A confirmed withdrawal/non-downloadable version is fresh negative evidence,
   // not a failed lookup or an invented completed phased release.
   if (WITHDRAWN_STATES.includes(state) || version.attributes.downloadable === false) {
@@ -87,7 +101,7 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
       if (!m.build) { errors.push(`${row.id}: invalid manifest`); continue; }
       previous = text(row.properties.Observation) ? JSON.parse(text(row.properties.Observation)) : null;
       validRecord = true;
-      if (previous?.phase === 'withdrawn') continue;
+      if (previous?.phase === 'withdrawn' || matchingSupersession(previous, m, config.bundleId)) continue;
       // Refresh released rows too: live is an observation, not a permanent exemption.
       const observation = await observeStore(m, config.bundleId, apple, now);
       if (!observation) {
@@ -95,11 +109,23 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
         continue;
       }
       const observedAt = observation.verification.checkedAt;
+      if (observation.phase === 'superseded') {
+        // Supersession is expected terminal negative evidence, not an API error
+        // or a withdrawal of the frozen historical delivery/baseline proof.
+        observed++;
+        const terminal = { ...previous, phase: previous?.phase || 'uploaded', superseded: { ...observation.verification, manifestHash: hash(m) }, verificationError: SUPERSEDED_HOLD, verificationAttempt: { source: observation.source, at: observedAt } };
+        if (!config.dryRun) {
+          const properties = verificationProperties({ phase: terminal.phase, source: observation.source, verification: observation.verification }, previous, row.properties, observedAt);
+          Object.assign(properties, { Observation: rich(JSON.stringify(terminal)), 'Observed At': { date: { start: observedAt } } });
+          await api.notion(`/pages/${row.id}`, 'PATCH', { properties });
+        }
+        continue;
+      }
       if (['live', 'rollout', 'withdrawn'].includes(previous?.phase)) observation.releasedAt = previous.releasedAt || row.properties['Released At']?.date?.start || observation.releasedAt;
       observed++;
       if (!config.dryRun) {
         const properties = verificationProperties(observation, previous, row.properties, observedAt);
-        properties.Observation = rich(JSON.stringify({ ...previous, ...observation, verificationError: undefined, verificationAttempt: undefined }));
+        properties.Observation = rich(JSON.stringify({ ...previous, ...observation, superseded: undefined, verificationError: undefined, verificationAttempt: undefined }));
         Object.assign(properties, { 'Observed At': { date: { start: observedAt } }, 'Released At': { date: { start: observation.releasedAt } }, 'Availability Evidence': { url: observation.verification.evidence } });
         await api.notion(`/pages/${row.id}`, 'PATCH', { properties });
       }
