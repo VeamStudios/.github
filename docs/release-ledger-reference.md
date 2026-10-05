@@ -2,7 +2,7 @@
 
 [Team runbook](https://www.notion.so/3d5069083a0381b191e6fe4daa0899f5) · [Worker setup](https://github.com/VeamStudios/NotionWorkers/blob/main/docs/release-setup.md)
 
-Generate announcements from the reviewed changelog and shipped PR links, with a permanent Notion record of what became available.
+Generate one deployment announcement from the complete frozen deployed changelog and shipped PR links, with a permanent Notion record of what shipped. Feature readiness remains a separate Notion projection.
 
 ## Developer checklist
 
@@ -10,11 +10,11 @@ Generate announcements from the reviewed changelog and shipped PR links, with a 
 2. Link feature PRs using the existing `Work Items:` list. Bug fixes can have no Work Item.
 3. Review the changelog with the code, complete QA and use the normal deployment workflow.
 
-**Expected result:** automation records the exact shipped release. Available changelog entries post to Slack with a Notion link and linked Work Item descriptions. Backend and CloudServices stay in Notion. There is no required release-note JSON file or `Release note:` PR field.
+**Expected result:** automation records the exact shipped release. Its complete frozen deployed changelog posts to Slack with a Notion link and linked Work Item descriptions once deployment publication checks pass. Backend and CloudServices stay in Notion. There is no required release-note JSON file or `Release note:` PR field.
 
 <details><summary>What the announcement contains</summary>
 
-Release heading → available changelog headings/bullets → full Notion release record → Includes these Work Items.
+Release heading → complete frozen deployed changelog headings/bullets → full Notion release record → Includes these Work Items.
 
 Work Item labels use their titles; release wording comes from the shipped repository changelog. Both wording and descriptions are frozen. Notion retains the complete changelog, all shipped Work Item links, waiting reasons, source evidence and an expandable Posted to Slack section with exact message text, timestamp and link. Corrections retain the original text and update the same Slack message.
 
@@ -28,17 +28,17 @@ PR inclusion comes from GitHub commit associations, paginated directly rather th
 
 For ambiguous changelog-to-feature mapping, add a normal Markdown Work Item or shipped PR link beside the entry. Raw rcValue and previewTag metadata is retained as gating information and excluded from the changelog text. Preview restrictions remain visible.
 
-Missing wording or evidence produces a precise warning; merging and deployment remain possible. To supply notes after a release was recorded, merge a reviewed CHANGELOG.md PR with links to the shipped source PRs. Run **Recheck release announcement evidence** in VeamStudios/NotionWorkers with repository and Notion release page ID. Supply the wording PR number only when adding reviewed wording; otherwise the original shipped sources are rechecked. The default is a read-only preview. Inspect its exact changes and holds before applying the supplement. The supplement is stored separately from the immutable original Manifest. Already posted entries cannot be rewritten by this workflow; use a message correction instead.
+Missing changelog wording or deployment verification holds publication; merging and deployment remain possible. Feature mapping warnings remain visible without removing shipped changelog entries from the deployment announcement. Consumer Android also retains its reviewed wording gate and uncertain Slack delivery always requires receipt reconciliation. To supply notes after a release was recorded, merge a reviewed CHANGELOG.md PR with links to the shipped source PRs. Run **Recheck release announcement evidence** in VeamStudios/NotionWorkers with repository and Notion release page ID. Supply the wording PR number only when adding reviewed wording; otherwise the original shipped sources are rechecked. The default is a read-only preview. Inspect its exact changes and holds before applying the supplement. The supplement is stored separately from the immutable original Manifest. Already posted entries cannot be rewritten by this workflow; use a message correction instead.
 
 </details>
 
 <details><summary>Availability and later activation</summary>
 
-Deployment evidence and announcement readiness are separate. Websites, Web, Console, Backend and CloudServices require successful required deployments plus verification. iOS requires exact bundle/version/platform/build and confirmed distribution; upload alone waits. Phased rollout stays Limited rollout. Android/managed distribution retains exact-build manual confirmation.
+Deployment evidence and feature readiness are separate. Websites, Web, Console, Backend and CloudServices require successful required deployments plus verification. iOS requires exact bundle/version/platform/build and confirmed distribution; upload alone waits. The App Store writer preserves raw phased release state and progress, while its existing phase mapping remains `rollout` until Apple returns `COMPLETE` or explicitly no phased release. Consumer Android requires hourly exact-build Play verification of published production lifecycle and completed rollout, with manual workflow retry. Enterprise distribution remains separate and requires its own exact-build confirmation.
 
 Feature availability is scoped to Work Item, release, target and edition. A release-wide checkbox, an older Available Work Item, or a boolean Remote Config default cannot unlock a new feature. Existing approved Feature Availability scopes can supply the dependencies and audience evidence. Missing scope evidence stays Waiting. An operator can use `confirm-change` in the worker admin tool with an exact manifest hash, scope, evidence URL and actual availability time. This records evidence for that scope and this release; it does not change agreed overall Work Item scope.
 
-Available fixes can post while a feature waits. Once verified, only the newly available entries appear in a separate activation message, with a distinct stable identity and receipt. Backend and CloudServices never post to the release channel. Historical records remain suppressed.
+The deployment announcement contains the complete frozen deployed changelog, including features whose readiness is still waiting in Notion. Later feature readiness changes update Notion projections without repeating deployment changelog entries in Slack. Independently recorded explicit activation events have their own distinct event identity and receipt. Releases `State = Waiting` can coexist with `Notification State = Sent`. Backend and CloudServices never post to the release channel. Historical records remain suppressed.
 
 GitHub producers always record merged PR and production evidence. The hosted worker uses RELEASE_LEDGER_MODE=live and RELEASE_LIFECYCLE_WRITES=true; the live readiness check rejects disabled values. Package publication is dependency evidence, never proof that a consuming feature is available.
 
@@ -62,7 +62,7 @@ A cancelled job can leave `refs/tags/veam-release-ledger-lock`. Verify no holder
 
 </details>
 
-Checked: 2026-09-15 against shared recorder, NotionWorkers and focused regression tests. Live deployment and evidence checks are recorded in the rollout record. API references: [Notion status codes](https://developers.notion.com/reference/status-codes), [Slack corrections](https://docs.slack.dev/reference/methods/chat.update/).
+Checked: 2026-10-05 for the shared source contract and local regression tests. The draft iOS writer/worker integration is not deployed or runtime-verified. Prior live deployment and evidence checks are recorded separately in the rollout record. API references: [Notion status codes](https://developers.notion.com/reference/status-codes), [Slack corrections](https://docs.slack.dev/reference/methods/chat.update/).
 
 ## Work Item delivery contract (version 1)
 
@@ -70,9 +70,23 @@ New manifests freeze preserved scope exceptions from the supporting automation l
 
 NotionWorkers generates supporting availability rows per Work Item, target, change and release. Exact transport evidence, the latest completed PR, current matching scope and dependencies must agree. Fresh production RC evidence includes defaults and conditional expressions; unrestricted true values can resolve automatically. Restricted audiences require a confirmation bound to the exact release/configuration hash. Missing wording holds publication without blocking verified delivery status. Earlier availability is retained when a new development cycle starts.
 
-HTTP verification requires a JSON endpoint reporting the shipped repository and commit, not merely HTTP 200. Hosting deploys embed release-info.json through a post-build Firebase predeploy hook; backends return it from version. CloudServices verifies Ready state, immutable revision commit labels and 100% traffic for email/exporter/main/pdf. Android Mark Production Release supplies exact-build distribution evidence once. Recording failures can be retried via Re-run failed jobs without rerunning successful deployment jobs.
+HTTP verification requires a JSON endpoint reporting the shipped repository and commit, not merely HTTP 200. Hosting deploys embed release-info.json through a post-build Firebase predeploy hook; backends return it from version. CloudServices verifies Ready state, immutable revision commit labels and 100% traffic for email/exporter/main/pdf. Consumer Android's scheduled production monitor refreshes exact-build published lifecycle and completed rollout evidence; its manual dispatch retries verification without publishing an app. Enterprise distribution uses separate confirmation. Recording failures can be retried via Re-run failed jobs without rerunning successful deployment jobs.
 
 An audited historical production baseline may be stored in Observation.baseline with the immutable manifest hash, repository/target/commit/build and source evidence links. It is used only to choose the next comparison baseline. Historical announcement suppression and unverified historical feature availability remain unchanged. The baseline commit is read from the verified frozen manifest, never a mutable display property.
+
+## App Store observation contract
+
+The shared writer adds exact normalized `verification.version` and `platform = IOS` to the existing frozen build/commit, bundle/app/version IDs, resolved state, build evidence URL and `checkedAt`. `appVersionState` takes precedence over deprecated `appStoreState`; both raw state fields and `downloadable` are retained when returned by Apple. A true `downloadable` value alone is insufficient without a distribution state and matching build.
+
+For a linked phased resource, `phasedReleaseState`, `currentDayNumber`, `totalPauseDuration` and `startDate` are copied exactly when present, with `phasedReleaseId` and `phasedReleaseEvidence`. No percentage or completed rollout is inferred from the day number. An explicit null phased relationship emits the internal absence marker `phasedReleaseState = NONE` and a null `phasedReleaseId`; lookup errors, including HTTP 404, cannot establish absence. Unknown linked states remain raw `rollout` observations.
+
+Each monitor execution rechecks previously live and rollout rows, excluding only matching terminal supersession evidence. `verification.checkedAt` and `Observed At` describe the fresh check; `releasedAt` and `Released At` preserve the first observed distribution time through rollout changes. A TestFlight upload timestamp is not used as that release time. Exact-build removed-from-sale or explicitly non-downloadable evidence records `withdrawn`; an initially negative observation records only the check time and cannot manufacture a release time. A failed lookup or a formerly released version no longer returning distribution evidence preserves its last raw proof and old `checkedAt`, adds `verificationStatus = error`, blocking `verificationError` plus `verificationAttempt.at`, and fails the monitor. Successful rechecks clear only the recovered verification error and retain recovery diagnostics and unrelated delivery errors. Historical buildless baselines and withdrawn rows retain their existing exemptions; dry runs write nothing.
+
+Apple's explicit `REPLACED_WITH_NEW_VERSION` is normal terminal supersession, not a withdrawal or an API failure. After confirming the exact related build, the writer stores fresh raw negative evidence in `Observation.superseded`: the version/build/commit, bundle/app/version IDs, raw state fields, `checkedAt`, evidence URL and frozen `manifestHash`. It retains the historical phase, first release time and successful `verification` unchanged for delivery history and comparison baselines, while setting typed `verificationStatus = superseded` and the blocking `verificationError = App Store version was replaced by a newer version; historical delivery evidence is retained`. `verificationAttempt.at` exactly matches the fresh supersession `checkedAt`. Supersession does not add an operational error to the monitor result or clear unrelated delivery errors. Only a typed `superseded` status with that exact hash/version/build/commit/bundle/version-ID/time-bound marker, matching attempt timestamp and a publication hold is exempt from subsequent checks; legacy or mismatched statuses recheck. Consumers suppress an operations alert only for this structurally bound typed terminal status, never by matching the error text. Lookup failures use typed `error`; successful positive or withdrawn refresh clears the status. Thus ordinary older versions do not fail every hourly run, and current non-superseded released rows still detect genuine retractions.
+
+The current SAP consumer/Enterprise and CIP consumer callers run hourly. This writer contract supports the separate draft NotionWorkers iOS publication policy: fresh exact-build downloadable `ACTIVE` observations may be announced as Released while raw phased evidence remains available. Deploy and verify the writer before enabling that policy; this shared change does not deploy or alter the worker policy. A two-hour worker freshness window must hold publication when scheduled verification is delayed or fails.
+
+Apple references: [version attributes](https://developer.apple.com/documentation/appstoreconnectapi/appstoreversion/attributes-data.dictionary), [phased attributes](https://developer.apple.com/documentation/appstoreconnectapi/appstoreversionphasedrelease/attributes-data.dictionary), [phased states](https://developer.apple.com/documentation/appstoreconnectapi/phasedreleasestate), and [manual download during phased release](https://developer.apple.com/help/app-store-connect/update-your-app/release-a-version-update-in-phases).
 
 ## Marketing website changelogs
 
