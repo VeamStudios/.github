@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {withLock}=require('./lock');
+const {withLock,lockOwner}=require('./lock');
 function fixture(){let owner=null,sequence=0;const writes=[];return {writes,get owner(){return owner},set owner(x){owner=x},gh:async(path,method,body)=>{if(path.endsWith('/heads/main'))return {object:{sha:'a'.repeat(40)}};if(path.endsWith('/git/tags'))return {sha:'tag'+(++sequence)};if(method==='POST'){writes.push(body);if(owner)throw Object.assign(new Error('Reference already exists'),{status:422});owner=body.sha;return {}};if(method==='DELETE'){writes.push('delete '+owner);owner=null;return {}};if(!owner)throw Object.assign(new Error('not found'),{status:404});return {object:{sha:owner}}}}}
 const options={attempts:4,delay:1};
 test('parallel consumer and Enterprise writers both complete without overlapping',async()=>{const f=fixture();let active=0,maximum=0,finished=0;const run=()=>withLock(f.gh,'repo',async()=>{active++;maximum=Math.max(maximum,active);await new Promise(r=>setTimeout(r,2));active--;finished++}, {...options,attempts:20});await Promise.all([run(),run()]);assert.equal(maximum,1);assert.equal(finished,2);assert.equal(f.owner,null)});
@@ -194,4 +194,17 @@ test('recording workflow forwards the optional budget through the composite acti
   assert.match(workflow, /lock_wait_ms: \$\{\{ inputs.lock_wait_ms \}\}/);
   assert.match(action, /lock_wait_ms:\n\s+description:.*\n\s+default: '300000'/);
   assert.match(action, /RELEASE_LEDGER_LOCK_WAIT_MS: \$\{\{ inputs.lock_wait_ms \}\}/);
+});
+
+
+test('Actions lock provenance distinguishes rerun attempts without claiming recovery',()=>{
+  const first=lockOwner({GITHUB_RUN_ID:'123',GITHUB_RUN_ATTEMPT:'1',GITHUB_REPOSITORY:'VeamStudios/ChecklistInspectorPro-iOS'});
+  const rerun=lockOwner({GITHUB_RUN_ID:'123',GITHUB_RUN_ATTEMPT:'2',GITHUB_REPOSITORY:first.repository});
+  assert.equal(first.kind,'github-actions');assert.equal(first.owner,first.runId);assert.equal(first.runAttempt,'1');assert.equal(rerun.runAttempt,'2');assert.notEqual(first.nonce,rerun.nonce);
+});
+test('missing or malformed Actions attempt identity fails before claiming exact ownership',()=>{
+  for(const env of [{GITHUB_RUN_ID:'123',GITHUB_REPOSITORY:'VeamStudios/repo'},{GITHUB_RUN_ID:'123',GITHUB_RUN_ATTEMPT:'0',GITHUB_REPOSITORY:'VeamStudios/repo'},{GITHUB_RUN_ID:'x',GITHUB_RUN_ATTEMPT:'1',GITHUB_REPOSITORY:'VeamStudios/repo'},{GITHUB_RUN_ID:'123',GITHUB_RUN_ATTEMPT:'1',GITHUB_REPOSITORY:'repo'}])assert.throws(()=>lockOwner(env),/Exact GitHub lock ownership/);
+});
+test('local or unspecified owner stays explicitly unknown and cannot imply a stopped Actions run',()=>{
+  const owner=lockOwner({});assert.equal(owner.kind,'unknown');assert.equal(owner.owner,'worker');assert.equal(owner.runId,undefined);assert.equal(owner.runAttempt,undefined);
 });

@@ -3,6 +3,14 @@ const { performance } = require('node:perf_hooks');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const uncertain = error => [409, 422, 500, 502, 503, 504].includes(error.status) || error instanceof TypeError || error.name === 'TimeoutError' || error.name === 'AbortError';
 
+// Exact Actions attempt provenance is prerequisite evidence, not recovery authority.
+function lockOwner(env = process.env) {
+  const repository = env.GITHUB_REPOSITORY || '';
+  if (!env.GITHUB_RUN_ID) return { owner: 'worker', repository, kind: 'unknown', nonce: randomUUID(), createdAt: new Date().toISOString() };
+  if (!/^[1-9]\d*$/.test(env.GITHUB_RUN_ID) || !/^[1-9]\d*$/.test(env.GITHUB_RUN_ATTEMPT || '') || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) throw new Error('Exact GitHub lock ownership requires repository, run ID and run attempt');
+  return { owner: env.GITHUB_RUN_ID, repository, kind: 'github-actions', runId: env.GITHUB_RUN_ID, runAttempt: env.GITHUB_RUN_ATTEMPT, nonce: randomUUID(), createdAt: new Date().toISOString() };
+}
+
 // Share the existing atomic ref with older writers. Contention is expected:
 // consumer/Enterprise jobs and the worker must wait, never steal another holder.
 async function withLock(gh, repo, fn, {
@@ -18,7 +26,7 @@ async function withLock(gh, repo, fn, {
   const head = await gh(`/repos/${repo}/git/ref/heads/main`);
   const tag = await gh(`/repos/${repo}/git/tags`, 'POST', {
     tag: 'veam-release-ledger-lock', object: head.object.sha, type: 'commit',
-    message: JSON.stringify({ owner: process.env.GITHUB_RUN_ID || 'worker', repository: process.env.GITHUB_REPOSITORY || '', nonce: randomUUID(), createdAt: new Date().toISOString() }),
+    message: JSON.stringify(lockOwner()),
   });
   // Start the contention budget after preparing our ownership tag. Use a
   // monotonic clock and count API time as well as sleeps. In-flight requests
@@ -56,4 +64,4 @@ async function withLock(gh, repo, fn, {
   if (failure) throw failure;
   return result;
 }
-module.exports = { withLock };
+module.exports = { withLock, lockOwner };
