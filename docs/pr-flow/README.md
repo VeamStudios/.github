@@ -52,6 +52,11 @@ stacks can help related PRs; cross-repo releases still need dependency order.
 - SAP/CIP iOS: existing unsigned schemes; tests cover changelog tooling, **not app runtime**.
 - CloudServices, TS-Core, Annotator-Web, ImageCaching-SAP: existing build/test CI.
 
+Models caller PRs also need release coordination: their existing pipeline publishes
+a new package and dispatches consumer updates after **every** merge, including CI-only
+changes. Do not waive their changelog check; combine with a planned release or agree
+a narrowly scoped release-trigger change first.
+
 The inventory also records **blocked profiles**, without adding misleading green
 checks or enabling auto-merge: SAP/CIP Web (tests absent from PR CI), SAP/CIP websites
 (build/tests absent), Android (delivery build absent), Annotator-iOS and ImageCaching-CIP (tests absent),
