@@ -210,7 +210,10 @@ async function record(config, api) {
     properties['Availability Evidence'] = { url: config.source };
     if (['deployed', 'live', 'rollout', 'withdrawn'].includes(config.phase)) properties['Released At'] = { date: { start: config.releasedAt || existing[0]?.properties['Released At']?.date?.start || observedAt } };
     Object.assign(properties,verificationProperties(config,previousObservation,existing[0]?.properties,observedAt));
-    if (oldState !== 'Available' && oldState !== 'Withdrawn') properties.State = select(states[config.phase]);
+    // Preserve processor-owned display labels on source replay. They never
+    // establish transport or publication authority; the processor re-evaluates
+    // the raw observation, and explicit withdrawal still overrides below.
+    if (!['Available', 'Released', 'Superseded', 'Withdrawn'].includes(oldState)) properties.State = select(states[config.phase]);
   }
   if(config.verification?.kind==='manual' && !(config.repo==='VeamStudios/SiteAuditPro-AndroidNew'&&config.target==='android-consumer'))properties['Audience Verified']={checkbox:true};
   if(config.verificationError)properties.Error=rich(config.verificationError);
