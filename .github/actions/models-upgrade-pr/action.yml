@@ -1,0 +1,53 @@
+name: Create and assess Models upgrade PR
+description: Summarize cumulative Models changes and safely supersede untouched generated upgrades. Never merges.
+inputs:
+  version:
+    description: Exact stable Models version.
+    required: true
+  package_url:
+    description: SAP or CIP Models GitHub repository URL.
+    required: true
+  package_name:
+    description: npm package name; unused for SPM.
+    default: ''
+  kind:
+    description: npm or spm.
+    required: true
+  branch_prefix:
+    description: chore/update-sap-models- or chore/update-cip-models-.
+    required: true
+  base_branch:
+    description: Consumer base branch.
+    default: main
+  commit_subject:
+    description: Commit subject.
+    default: ''
+  pr_title:
+    description: PR title.
+    required: true
+  pr_body:
+    description: Existing generated PR description to preserve.
+    required: true
+  github_token:
+    description: Existing Release Bot token with caller write and Models read access.
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v5
+      with:
+        node-version: '24.x'
+    - name: Create assessed replacement and preserve human work
+      shell: bash
+      env:
+        MODELS_VERSION: ${{ inputs.version }}
+        MODELS_PACKAGE_URL: ${{ inputs.package_url }}
+        MODELS_PACKAGE_NAME: ${{ inputs.package_name }}
+        MODELS_KIND: ${{ inputs.kind }}
+        MODELS_BRANCH_PREFIX: ${{ inputs.branch_prefix }}
+        MODELS_BASE_BRANCH: ${{ inputs.base_branch }}
+        MODELS_COMMIT_SUBJECT: ${{ inputs.commit_subject }}
+        MODELS_PR_TITLE: ${{ inputs.pr_title }}
+        MODELS_PR_BODY: ${{ inputs.pr_body }}
+        MODELS_GITHUB_TOKEN: ${{ inputs.github_token }}
+      run: node "${{ github.action_path }}/run.js"
