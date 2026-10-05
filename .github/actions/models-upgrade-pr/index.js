@@ -3,6 +3,9 @@
 const BOT = 'veamstudios-release-bot[bot]';
 const START = '<!-- MODELS-UPGRADE-ASSESSMENT:start -->';
 const END = '<!-- MODELS-UPGRADE-ASSESSMENT:end -->';
+const PENDING = 'Assessment pending; review required until the Models upgrade assessment is available.';
+const HISTORY_START = '<!-- MODELS-UPGRADE-SUPERSESSION:start -->';
+const HISTORY_END = '<!-- MODELS-UPGRADE-SUPERSESSION:end -->';
 const canonical = value => JSON.stringify(sort(value));
 function sort(value) {
   if (Array.isArray(value)) return value.map(sort);
@@ -165,11 +168,56 @@ function assessmentBody(result) {
   const label = result.safe ? '**Internal-only — safe for routine merge once required CI passes.**' : result.source?.breaking ? '**Breaking upgrade — review required.**' : result.source?.feature || result.source?.internal === false ? '**Model/API or feature upgrade — review required.**' : '**Uncertain or additional dependency changes — review required.**';
   return `${START}\n### Models upgrade assessment\n${label}\n\nCompared the Models version resolved on consumer \`main\` (${result.from || 'unknown'}) with the proposed version (${result.to}). This assesses cumulative package changes, not only the latest release or the consumer's version-number diff.\n\n${result.source ? `[Models source comparison](${result.source.url})\n\nModels files changed:\n${result.source.files.slice(0, 40).map(path => `- \`${path}\``).join('\n') || '- None.'}\n\nModels commit subjects:\n${result.source.commits.slice(0, 40).map(message => `- ${message.replace(/[<>]/g, '')}`).join('\n') || '- None.'}\n` : 'Models source comparison unavailable.\n'}\n${result.reasons.length ? result.reasons.map(reason => `- ${reason}`).join('\n') : 'No model schema, generated API, runtime/rules or unrelated dependency changes were found in the inspected comparisons.'}\n\nSnapshot: main \`${result.base}\`; PR head \`${result.head}\`. Required CI and ordinary review/merge rules still apply. Reassess if either ref changes. No automatic merge.\n${END}`;
 }
+function withPendingAssessment(body) {
+  return `${START}\n${PENDING}\n${END}\n\n${body}`;
+}
 function withAssessment(body, result) {
+  // Migrate only the exact standalone notice appended by the original runner.
+  body = body.replace(/\n\nAssessment pending; review required until the Models upgrade assessment is available\.(?=\n\n|$)/g, '');
   const block = assessmentBody(result);
   const start = body.indexOf(START), end = body.indexOf(END);
   if (start >= 0 && end > start) return body.slice(0, start) + block + body.slice(end + END.length);
   return `${block}\n\n${body}`;
+}
+function withSupersession(body, outcome) {
+  const closed = new Map();
+  const closedLine = /^- Supersedes \[#(\d+)\]\((https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\1)\); its complete discussion remains available there\.$/;
+  const keptLine = /^- Preserved (?:#\d+: (?:human edits or discussion require manual reconciliation|consumer changes or baseline could not be safely superseded|replacement does not contain the older Models release|changed during assessment; preserved for reconciliation)|Source coverage is unverified; older PRs were preserved)\.$/;
+  const remember = line => {
+    const match = closedLine.exec(line);
+    if (match) closed.set(match[2], line);
+    return Boolean(match) || keptLine.test(line);
+  };
+  // Adopt only legacy sections whose bullets match this action's exact formatter.
+  // Stop before any human text, preserving it and unrelated headings verbatim.
+  const legacy = [];
+  for (const match of body.matchAll(/(?:^|\n\n)### Supersession\n/g)) {
+    let cursor = match.index + match[0].length, end = cursor;
+    for (const line of body.slice(cursor).split('\n')) {
+      cursor += line.length + 1;
+      if (!line) continue;
+      if (!remember(line)) break;
+      end = cursor - 1;
+    }
+    if (end > match.index + match[0].length) legacy.push([match.index, end]);
+  }
+  for (const [start, end] of legacy.reverse()) body = body.slice(0, start) + body.slice(end);
+  const start = body.indexOf(HISTORY_START), end = body.indexOf(HISTORY_END, start);
+  const extras = [];
+  if (start >= 0 && end > start) {
+    for (const line of body.slice(start + HISTORY_START.length, end).split('\n')) {
+      if (!remember(line) && line !== '### Supersession') extras.push(line);
+    }
+  }
+  for (const old of outcome.closed) closed.set(old.html_url, `- Supersedes [#${old.number}](${old.html_url}); its complete discussion remains available there.`);
+  const notes = [...closed.values(), ...new Set(outcome.kept.map(reason => `- Preserved ${reason}`))];
+  while (extras[0] === '') extras.shift();
+  while (extras[extras.length - 1] === '') extras.pop();
+  const custom = extras.join('\n');
+  if (custom) notes.push(custom);
+  const block = notes.length ? `${HISTORY_START}\n### Supersession\n${notes.join('\n')}\n${HISTORY_END}` : '';
+  if (start >= 0 && end > start) return body.slice(0, start) + block + body.slice(end + HISTORY_END.length);
+  return block ? `${body}\n\n${block}` : body;
 }
 function managed(pr, options, consumerRepo) {
   const prefix = options.prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -223,12 +271,10 @@ async function finish(api, repo, pr, candidates, options) {
   const assessment = await assessPR(api, repo, pr, options);
   await api('PATCH', `/repos/${repo}/pulls/${pr.number}`, {body: withAssessment(pr.body || '', assessment)});
   const outcome = await supersede(api, repo, pr, assessment, candidates, options);
-  if (outcome.closed.length || outcome.kept.length) {
-    const fresh = await api('GET', `/repos/${repo}/pulls/${pr.number}`);
-    const context = `\n\n### Supersession\n${outcome.closed.map(old => `- Supersedes [#${old.number}](${old.html_url}); its complete discussion remains available there.`).join('\n')}\n${outcome.kept.map(reason => `- Preserved ${reason}`).join('\n')}`;
-    await api('PATCH', `/repos/${repo}/pulls/${pr.number}`, {body: fresh.body + context});
-  }
+  const fresh = await api('GET', `/repos/${repo}/pulls/${pr.number}`);
+  const body = withSupersession(fresh.body || '', outcome);
+  if (body !== (fresh.body || '')) await api('PATCH', `/repos/${repo}/pulls/${pr.number}`, {body});
   return {assessment, outcome};
 }
 
-module.exports = {BOT, version, compare, packageRepo, npmSnapshot, spmSnapshot, projectWithoutModelsVersion, consumerEvidence, baselineVersion, sourceEvidence, assess, assessmentBody, withAssessment, managed, prVersion, all, assessPR, supersede, finish};
+module.exports = {BOT, version, compare, packageRepo, npmSnapshot, spmSnapshot, projectWithoutModelsVersion, consumerEvidence, baselineVersion, sourceEvidence, assess, assessmentBody, withPendingAssessment, withAssessment, withSupersession, managed, prVersion, all, assessPR, supersede, finish};
