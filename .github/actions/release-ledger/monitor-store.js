@@ -54,7 +54,7 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
   // not a failed lookup or an invented completed phased release.
   if (WITHDRAWN_STATES.includes(state) || version.attributes.downloadable === false) {
     const observedAt = now();
-    return { phase: 'withdrawn', source, releasedAt: observedAt, timeBasis: 'first-observed', verification: { ...verification, checkedAt: observedAt } };
+    return { phase: 'withdrawn', source, verification: { ...verification, checkedAt: observedAt } };
   }
   // The related resource can return 404 when no phased release exists. Only an
   // explicit null relationship proves absence; failed lookups remain errors.
@@ -125,8 +125,9 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
       observed++;
       if (!config.dryRun) {
         const properties = verificationProperties(observation, previous, row.properties, observedAt);
-        properties.Observation = rich(JSON.stringify({ ...previous, ...observation, superseded: undefined, verificationError: undefined, verificationAttempt: undefined }));
-        Object.assign(properties, { 'Observed At': { date: { start: observedAt } }, 'Released At': { date: { start: observation.releasedAt } }, 'Availability Evidence': { url: observation.verification.evidence } });
+        properties.Observation = rich(JSON.stringify({ ...previous, ...observation, releasedAt: observation.releasedAt, superseded: undefined, verificationError: undefined, verificationAttempt: undefined }));
+        Object.assign(properties, { 'Observed At': { date: { start: observedAt } }, 'Availability Evidence': { url: observation.verification.evidence } });
+        if (observation.releasedAt) properties['Released At'] = { date: { start: observation.releasedAt } };
         await api.notion(`/pages/${row.id}`, 'PATCH', { properties });
       }
     } catch (e) {

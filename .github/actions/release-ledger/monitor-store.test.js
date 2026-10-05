@@ -178,6 +178,7 @@ for (const options of [{ state: 'REMOVED_FROM_SALE' }, { state: 'DEVELOPER_REMOV
     assert.equal(result.verification.version, '1.2.3');
     assert.equal(result.verification.checkedAt, now());
     assert.equal(result.verification.phasedReleaseState, undefined);
+    assert.equal(result.releasedAt, undefined);
     assert.ok(!apple.calls.includes(relationshipPath));
     await assert.rejects(observeStore(manifest, 'com.test.app', fixture({ ...options, build: '124' })), /build differs/);
   });
@@ -232,6 +233,24 @@ test('a rechecked live release can become withdrawn without erasing original rel
   assert.equal(withdrawn.verification.checkedAt, now());
   assert.equal(withdrawn.verification.phasedReleaseState, undefined);
   assert.equal(withdrawn.releasedAt, firstSeen);
+  assert.equal(writes[0].body.properties['Released At'].date.start, firstSeen);
+});
+
+test('initial withdrawal or non-downloadable evidence records only a check time, never a release time', async () => {
+  for (const options of [{ state: 'REMOVED_FROM_SALE' }, { attributes: { downloadable: false } }]) {
+    for (const observation of [undefined, { phase: 'uploaded', releasedAt: firstSeen }]) {
+      const { api, writes } = monitorFixture([{ m: current, observation }]);
+      const result = await monitor(monitorConfig, api, fixture(options), now);
+      assert.equal(result.errors.length, 0);
+      const properties = writes[0].body.properties;
+      const withdrawn = JSON.parse(text(properties.Observation));
+      assert.equal(withdrawn.phase, 'withdrawn');
+      assert.equal(withdrawn.releasedAt, undefined);
+      assert.equal(withdrawn.verification.checkedAt, now());
+      assert.equal(properties['Observed At'].date.start, now());
+      assert.equal(properties['Released At'], undefined);
+    }
+  }
 });
 
 for (const phase of ['live', 'rollout']) {
