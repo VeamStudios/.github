@@ -134,3 +134,9 @@ test('full SPM assessment checks source changes and unrelated package pins', asy
   const result = await h.assessPR(api, repo, f.replacement, spmOptions);
   assert.equal(result.coverage, true); assert.equal(result.safe, false); assert.match(result.reasons.join(' '), /Other SPM/);
 });
+test('baseline reads the resolved version rather than a manifest range for stale-event checks', async () => {
+  const f = fixture();
+  assert.equal(await h.baselineVersion(f.api, repo, 'base', [], options), '0.144.0');
+  assert.equal(h.compare('0.145.0', options.target), 0);
+  assert.equal(h.compare('0.146.0', options.target), 1);
+});

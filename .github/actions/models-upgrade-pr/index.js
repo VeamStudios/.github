@@ -119,6 +119,16 @@ async function consumerEvidence(api, repo, base, head, files, options) {
   if (compare(old.version, proposed.version) >= 0) reasons.push('The proposal is not a forward upgrade from the version currently resolved on main.');
   return {from: old.version, to: proposed.version, reasons};
 }
+async function baselineVersion(api, repo, ref, files, options) {
+  if (options.kind === 'npm') {
+    const npmLock = await content(api, repo, 'package-lock.json', ref, true);
+    const lockPath = npmLock === null ? 'yarn.lock' : 'package-lock.json';
+    return npmSnapshot(await content(api, repo, 'package.json', ref), npmLock === null ? await content(api, repo, lockPath, ref) : npmLock, lockPath, options.name).version;
+  }
+  const paths = files.filter(path => path.endsWith('/Package.resolved'));
+  if (paths.length !== 1) throw new Error('Cannot identify one SPM baseline lockfile');
+  return spmSnapshot(await content(api, repo, paths[0], ref), options.url).version;
+}
 async function sourceEvidence(api, repo, from, to) {
   const delta = await api('GET', `/repos/${repo}/compare/v${from}...v${to}`);
   const files = delta.files || [], commits = delta.commits || [];
@@ -221,4 +231,4 @@ async function finish(api, repo, pr, candidates, options) {
   return {assessment, outcome};
 }
 
-module.exports = {BOT, version, compare, packageRepo, npmSnapshot, spmSnapshot, projectWithoutModelsVersion, consumerEvidence, sourceEvidence, assess, assessmentBody, withAssessment, managed, prVersion, all, assessPR, supersede, finish};
+module.exports = {BOT, version, compare, packageRepo, npmSnapshot, spmSnapshot, projectWithoutModelsVersion, consumerEvidence, baselineVersion, sourceEvidence, assess, assessmentBody, withAssessment, managed, prVersion, all, assessPR, supersede, finish};

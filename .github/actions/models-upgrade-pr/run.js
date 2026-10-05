@@ -26,7 +26,14 @@ async function run() {
   }
   let pr = managed.filter(pr => helper.prVersion(pr, options) === options.target).sort((a, b) => b.number - a.number)[0];
   if (!pr) {
-    if (!git('diff', '--name-only')) { console.log('No dependency changes; no replacement or cleanup performed.'); return; }
+    const changed = git('diff', '--name-only');
+    if (!changed) { console.log('No dependency changes; no replacement or cleanup performed.'); return; }
+    // A delayed event must not create a downgrade after a newer upgrade has merged.
+    const baseRef = await api('GET', `/repos/${repo}/git/ref/heads/${encodeURIComponent(options.base)}`);
+    const baseline = await helper.baselineVersion(api, repo, baseRef.object.sha, changed.split('\n'), options);
+    if (helper.compare(baseline, options.target) >= 0) {
+      console.log('Main already resolves this or a newer Models version; no replacement or cleanup performed.'); return;
+    }
     const branch = `${options.prefix}${options.target}-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT || '1'}`;
     git('checkout', '-b', branch);
     git('add', '--all');
