@@ -50,7 +50,8 @@ test('publication writes once, verifies actual rendered content, persists receip
   assert.equal((await publishWebsite(row.id,{publishWebsite:true,dryRun:false},api,{fetcher})).state,'published');
   assert.equal((await publishWebsite(row.id,{publishWebsite:true,dryRun:false},api,{fetcher})).state,'published');
   assert.deepEqual(counts(),{writes:1,dispatches:1});assert.equal(text(row.properties.Announcements),announcements);
-  assert.deepEqual(JSON.parse(text(row.properties['Website Receipt'])),JSON.parse(text(row.properties.Observation)).website);assert.doesNotMatch(website(),/Future|Private|github.com/);
+  // The receipt lives only in its owned column; the shared Observation is never written.
+  assert.equal(JSON.parse(text(row.properties['Website Receipt'])).state,'published');assert.equal(JSON.parse(text(row.properties.Observation)).website,undefined);assert.doesNotMatch(website(),/Future|Private|github.com/);
 });
 test('website guard refuses unrelated revisions since verified production',async()=>{
   const read=(cmd,...args)=>cmd==='rev-parse'?websiteSha:cmd==='merge-base'?'':cmd==='rev-list'?'d'.repeat(40):'';

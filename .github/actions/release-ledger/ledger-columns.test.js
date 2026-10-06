@@ -55,6 +55,12 @@ test('a first owned record starts from the row\'s existing release time and evid
   assert.equal(result.releasedAt, at(1));
 });
 
+test('a row recorded before owned columns still reads its owned website receipt', () => {
+  const { previousObservation } = require('./ledger-columns');
+  const properties = { Observation: rich(JSON.stringify({ phase: 'live', website: { state: 'pending' } })), 'Website Receipt': rich(JSON.stringify({ state: 'published' })) };
+  assert.deepEqual(previousObservation(properties), { phase: 'live', website: { state: 'published' } });
+});
+
 test('rows with no owned observation have no effective observation', () => {
   assert.equal(effectiveObservation({}), null);
 });

@@ -83,7 +83,9 @@ function previousObservation(properties = {}) {
   const owned = effectiveObservation(properties);
   if (owned) return owned.observation;
   const raw = text(properties.Observation);
-  return raw ? JSON.parse(raw) : null;
+  const website = parse(properties[WEBSITE_RECEIPT]);
+  if (!raw) return website ? { website } : null;
+  return { ...JSON.parse(raw), ...(website ? { website } : {}) };
 }
 // The reviewed changelog supplement, from its owned column or the legacy Announcements copy.
 function reviewedSource(properties = {}) {
