@@ -1,4 +1,4 @@
-const {hash,text,rich,reviewed,clients,withLock}=require('./record');
+const {hash,text,rich,reviewed,clients}=require('./record');
 const {validGooglePlay,REPOSITORY}=require('./google-play');
 const {WEBSITE_RECEIPT,previousObservation,reviewedSource}=require('./ledger-columns');
 const {customerEntries,customerSection,websiteSection}=require('./customer-notes');

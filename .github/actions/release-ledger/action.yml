@@ -1,9 +1,6 @@
 name: Record verified release evidence
 description: Freeze shipped PRs and reviewed notes in the Notion release ledger. Never sends Slack.
 inputs:
-  lock_wait_ms:
-    description: Lock acquisition wait budget in milliseconds; 0 tries once without waiting.
-    default: '300000'
   product:
     required: true
     description: Product label.
@@ -70,7 +67,6 @@ runs:
     - name: Build and record release manifest
       shell: bash
       env:
-        RELEASE_LEDGER_LOCK_WAIT_MS: ${{ inputs.lock_wait_ms }}
         INPUT_PRODUCT: ${{ inputs.product }}
         INPUT_TARGET: ${{ inputs.target }}
         INPUT_VERSION: ${{ inputs.version }}
