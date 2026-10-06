@@ -90,8 +90,9 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
 // overwrite evidence a newer check has already written.
 async function writeIfNewest(api, row, properties, checkedAt) {
   const current = await api.notion(`/pages/${row.id}`);
-  const latest = text(current?.properties?.[OWNERS.store.observation]);
-  if (latest && Date.parse(JSON.parse(latest).recordedAt) > Date.parse(checkedAt)) return false;
+  // A malformed column is not newer evidence; never report it as a store failure.
+  let latest; try { latest = JSON.parse(text(current?.properties?.[OWNERS.store.observation]) || 'null'); } catch { latest = null; }
+  if (latest && Date.parse(latest.recordedAt) > Date.parse(checkedAt)) return false;
   await api.notion(`/pages/${row.id}`, 'PATCH', { properties });
   return true;
 }

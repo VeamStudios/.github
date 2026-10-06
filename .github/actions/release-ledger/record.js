@@ -253,7 +253,15 @@ async function record(config, api) {
     // Every creator keeps the earliest row and removes only its own duplicate.
     const rows = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter });
     const keep = rows.sort((a, b) => Date.parse(a.created_time) - Date.parse(b.created_time) || a.id.localeCompare(b.id))[0];
-    if (keep && keep.id !== row.id) { await api.notion(`/pages/${row.id}`, 'PATCH', { in_trash: true }); row = keep; }
+    if (keep && keep.id !== row.id) {
+      await api.notion(`/pages/${row.id}`, 'PATCH', { in_trash: true });
+      const kept = JSON.parse(text(keep.properties.Manifest) || 'null');
+      if (kept?.commit !== manifest.commit || kept?.build !== manifest.build) throw new Error('Release identity already belongs to a different commit/build.');
+      // Carry this writer's own evidence onto the kept row; it owns no other field there.
+      const own = Object.fromEntries(Object.entries(properties).filter(([name]) => Object.values(OWNERS[owner]).includes(name)));
+      if (Object.keys(own).length) await api.notion(`/pages/${keep.id}`, 'PATCH', { properties: own });
+      row = keep;
+    }
   }
   return { key: manifest.key, pageId: row.id, url: row.url, hash: digest, issues: manifest.issues };
 }
