@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const { record, rich, hash, text, deployedBaseline } = require('./record');
+const { ownColumns } = require('./ledger-columns');
 
 function fixture(state) {
   const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
@@ -11,6 +12,8 @@ function fixture(state) {
   const verification = { kind: 'http', commit, reportedCommit: commit, repository: manifest.repository, evidence: 'https://example.com/release-info.json' };
   const observation = { phase: 'deployed', source, releasedAt, verification };
   const row = { id: 'row', properties: { State: { select: { name: state } }, Manifest: rich(JSON.stringify(manifest)), 'Manifest Hash': rich(hash(manifest)), Observation: rich(JSON.stringify(observation)) } };
+  // A current row already holds the recorder's owned column.
+  Object.assign(row.properties, ownColumns('deploy', { Observation: row.properties.Observation }, releasedAt));
   const config = { repo: manifest.repository, target: manifest.target, product: manifest.product, version: manifest.version, build: manifest.build, commit, event: manifest.event, phase: observation.phase, source, releasedAt, verification, releasesId: 'releases', dryRun: true };
   const api = { gh: async () => { throw new Error('Replay must not query mutable GitHub metadata'); }, notion: async path => path === '/data_sources/releases' ? { properties: { Target: { type: 'rich_text' }, Products: { type: 'relation', relation: { data_source_id: '30c06908-3a03-80ca-bd1b-000b2bbce6d8' } } } } : { results: [row], has_more: false } };
   return { config, api, row, manifest };
@@ -46,6 +49,13 @@ test('Released label cannot hide explicit withdrawal or a failed verification', 
   assert.equal(text(failure.properties['Deploy Error']), observation.verificationError);
   assert.equal(observation.verification.commit, manifest.commit);
   await assert.rejects(record({ ...config, build: 'other-build' }, api), /different commit\/build/);
+});
+
+test('an unchanged replay of a row recorded before owned columns writes the recorder column', async () => {
+  const { config, api, row } = fixture('Released');
+  delete row.properties['Deploy Observation'];
+  const result = await record(config, api);
+  assert.equal(JSON.parse(text(result.properties['Deploy Observation'])).observation.phase, 'deployed');
 });
 
 test('Waiting display stays provisional on a verified source replay', async () => {

@@ -47,6 +47,14 @@ for (const { name, writes, website, phase, owner, evidence, releasedAt } of [
   });
 }
 
+test('a first owned record starts from the row\'s existing release time and evidence', () => {
+  const legacy = { 'Availability Evidence': { url: 'https://asc/old' }, 'Released At': { date: { start: at(1) } } };
+  const properties = ownColumns('store', { Observation: rich(JSON.stringify({ ...live, verificationStatus: 'error', verificationError: 'HTTP 403' })) }, at(5), legacy);
+  const result = effectiveObservation(properties);
+  assert.equal(result.availabilityEvidence, 'https://asc/old');
+  assert.equal(result.releasedAt, at(1));
+});
+
 test('rows with no owned observation have no effective observation', () => {
   assert.equal(effectiveObservation({}), null);
 });

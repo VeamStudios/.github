@@ -21,7 +21,8 @@ const RANK = { prepare: 0, uploaded: 1, deployed: 2, rollout: 3, live: 4, withdr
 
 // Mirror the shared fields this writer is sending into its own columns. Released
 // At and Availability Evidence stay set until replaced, so carry this writer's
-// previous values forward when a write (such as a failed check) omits them.
+// previous values forward when a write (such as a failed check) omits them. A
+// writer's first owned record starts from the row's existing shared values.
 function ownColumns(owner, properties, recordedAt, previousProperties = {}) {
   const columns = OWNERS[owner];
   if (!columns) throw new Error(`Unknown release ledger owner: ${owner}`);
@@ -29,7 +30,7 @@ function ownColumns(owner, properties, recordedAt, previousProperties = {}) {
   const result = { ...properties };
   if (properties.Observation) {
     const { website, ...observation } = JSON.parse(text(properties.Observation));
-    const previous = parse(previousProperties[columns.observation]) || {};
+    const previous = parse(previousProperties[columns.observation]) || { availabilityEvidence: previousProperties['Availability Evidence']?.url, releasedAt: previousProperties['Released At']?.date?.start };
     const record = { owner, recordedAt, observation };
     const availabilityEvidence = properties['Availability Evidence']?.url || previous.availabilityEvidence;
     const releasedAt = properties['Released At']?.date?.start || previous.releasedAt;
