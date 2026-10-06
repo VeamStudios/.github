@@ -286,6 +286,19 @@ for (const phase of ['live', 'rollout']) {
   }
 }
 
+// Without the shared lock, an overlapping run that checked earlier must not overwrite newer evidence.
+for (const { name, stored, written } of [
+  { name: 'an older App Store check never overwrites a newer recorded check', stored: JSON.stringify({ owner: 'store', recordedAt: '2026-09-08T12:05:00.000Z', observation: { phase: 'withdrawn' } }), written: 0 },
+  { name: 'a malformed stored check does not block or fail a fresh check', stored: '{not json', written: 1 },
+]) test(name, async () => {
+  const { api, writes } = monitorFixture([{ m: current, observation: await releasedObservation() }]);
+  const read = api.notion;
+  api.notion = async (path, method, body) => path === `/pages/${current.key}` && !method ? { properties: { 'App Store Observation': rich(stored) } } : read(path, method, body);
+  const result = await monitor(monitorConfig, api, fixture(), now);
+  assert.equal(result.errors.length, 0);
+  assert.equal(writes.length, written);
+});
+
 // Recovery history (Operations Receipt) and the shared Error belong to the Notion worker.
 test('successful recheck clears its own error and leaves worker-owned history alone', async () => {
   const previous = { ...await releasedObservation(), verificationError: 'HTTP 403', verificationAttempt: { at: firstSeen } };
