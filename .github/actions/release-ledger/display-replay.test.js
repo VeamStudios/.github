@@ -67,8 +67,9 @@ test('display labels cannot manufacture a verified comparison baseline', () => {
   for (const state of ['Available', 'Released', 'Superseded', 'Waiting']) {
     const { row } = fixture(state);
     assert.equal(deployedBaseline(row), true);
-    const observation = JSON.parse(text(row.properties.Observation));
-    row.properties.Observation = rich(JSON.stringify({ ...observation, verification: null }));
+    // Readers use the recorder's owned column, so remove the verification there.
+    const record = JSON.parse(text(row.properties['Deploy Observation']));
+    row.properties['Deploy Observation'] = rich(JSON.stringify({ ...record, observation: { ...record.observation, verification: null } }));
     assert.equal(deployedBaseline(row), false);
   }
 });

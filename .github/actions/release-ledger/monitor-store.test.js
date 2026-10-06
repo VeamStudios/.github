@@ -362,7 +362,8 @@ test('ordinary supersession holds new publication and preserves frozen delivery 
   assert.equal(terminal.superseded.version, '1.2.3');
   assert.equal(terminal.superseded.build, current.build);
   assert.equal(terminal.superseded.commit, current.commit);
-  assert.equal(owned(properties).releasedAt, undefined);
+  // Supersession keeps the existing release time; it never sets a new one.
+  assert.equal(owned(properties).releasedAt, firstSeen);
   assert.equal(properties.Error, undefined);
   assert.equal(deployedBaseline({ properties: { Manifest: rich(JSON.stringify(current)), 'Manifest Hash': rich(hash(current)), 'App Store Observation': properties['App Store Observation'] } }), true);
 
