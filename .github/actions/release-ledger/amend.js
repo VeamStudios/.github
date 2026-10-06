@@ -23,7 +23,7 @@ async function amend(config,api,build=buildChangelogManifest){
     return old&&announcedItems.has(w.id)?{...w,title:old.title,description:old.description,url:old.url}:w;
   });
   ledger.source={manifest:candidate,digest:hash(candidate),evidence:candidate.wordingSource?.url||`https://github.com/${original.repository}/commit/${original.commit}`};
-  const preview={pageId:row.id,dryRun:config.dryRun!==false,source:ledger.source.evidence,originalManifestHash:hash(original),manifestHash:ledger.source.digest,changes:candidate.changes.map(c=>({id:c.id,summary:c.summary,workItems:c.workItems,approved:c.approved,reasons:c.blocked})),issues:candidate.issues};
+  const preview={pageId:row.id,dryRun:config.dryRun!==false,source:ledger.source.evidence,wordingSource:candidate.wordingSource||null,originalManifestHash:hash(original),manifestHash:ledger.source.digest,changes:candidate.changes.map(c=>({id:c.id,summary:c.summary,workItems:c.workItems,approved:c.approved,reasons:c.blocked})),issues:candidate.issues};
   if(config.dryRun!==false)return preview;
   const current=await api.notion(`/pages/${row.id}`);
   if(text(current.properties['Manifest Hash'])!==text(row.properties['Manifest Hash'])||text(current.properties.Manifest)!==text(row.properties.Manifest)||text(current.properties.Announcements)!==text(row.properties.Announcements))throw new Error('Release changed during note preparation; inspect before retrying');

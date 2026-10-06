@@ -47,6 +47,20 @@ function newEntries(before,after){
 }
 function internalFiles(files){return files.length>0 && files.every(f=> /^(?:\.github\/|\.release-notes\/|docs\/|README(?:\.|$)|LICENSE|.*\.md$)/.test(f.filename) && f.filename!=='CHANGELOG.md')}
 
+async function mergedWording(config,gh) {
+  const pr=await gh(`/repos/${config.repo}/pulls/${config.wordingPr}`);
+  if(pr.number!==config.wordingPr || pr.state!=='closed' || !pr.merged_at ||
+    pr.base?.repo?.full_name!==config.repo || !/^[a-f0-9]{40}$/.test(pr.head?.sha||'') ||
+    !/^[a-f0-9]{40}$/.test(pr.merge_commit_sha||''))throw new Error('The supplemental changelog needs a merged PR in the shipped repository');
+  const head=await gh(`/repos/${config.repo}/contents/CHANGELOG.md?ref=${pr.head.sha}`);
+  const merged=await gh(`/repos/${config.repo}/contents/CHANGELOG.md?ref=${pr.merge_commit_sha}`);
+  if([head,merged].some(f=>f.encoding!=='base64'||typeof f.content!=='string'||!/^[a-f0-9]{40}$/.test(f.sha||'')))throw new Error('Merged supplemental changelog content is unavailable');
+  if(head.sha!==merged.sha || Buffer.from(head.content,'base64').toString('utf8')!==Buffer.from(merged.content,'base64').toString('utf8'))throw new Error('Supplemental changelog differs from the content accepted by the merge');
+  // Merge is the acceptance decision; branch protections govern its reviews.
+  // Retain explicit merge evidence without claiming a separate human review.
+  return {pr,file:merged,acceptance:{kind:'merged-pr',mergeCommit:pr.merge_commit_sha,mergedAt:pr.merged_at}};
+}
+
 async function buildChangelogManifest(config,gh,baseline,notion) {
   const {git,ancestor,reviewed,hash,releaseKey,provenanceMapping,text,allPages}=require('./record');
   const sha=git('rev-parse',`${config.commit}^{commit}`),issues=[],prs=[],changes=[];
@@ -58,13 +72,11 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   for(const commit of commits){const associated=[];for(let page=1;;page++){const rows=await gh(`/repos/${config.repo}/commits/${commit}/pulls?per_page=100&page=${page}`);associated.push(...rows);if(rows.length<100)break};const included=associated.filter(p=>p.base?.repo?.full_name===config.repo && p.merged_at && p.merge_commit_sha && ancestor(p.merge_commit_sha,sha));const number=mapping?.commits[commit]||(included.length===1?included[0].number:undefined);if(number){numbers.add(number);commitPrs.set(commit,number)}else{const sync=config.target==='website'?await verifiedSync(config.repo,commit,gh,git):null;if(sync)syncs.push(sync);else unmapped.push(commit)}}
   if(unmapped.length)issues.push(`Unmapped shipped commits: ${unmapped.join(', ')}. Confirm their source PRs before announcing this release.`);
   const read=ref=>{try{return git('show',`${ref}:CHANGELOG.md`)}catch{return ''}};
-  let wordingPr;
+  let wordingPr,supplement,wordingAcceptance;
   if(config.wordingPr) {
-    wordingPr=await gh(`/repos/${config.repo}/pulls/${config.wordingPr}`);
-    if(!wordingPr.merged_at||wordingPr.base?.repo?.full_name!==config.repo||!await reviewed(gh,config.repo,wordingPr))throw new Error('The supplemental changelog needs a merged human-reviewed PR at its current head');
+    const accepted=await mergedWording(config,gh);
+    wordingPr=accepted.pr;supplement=accepted.file;wordingAcceptance=accepted.acceptance;
   }
-  const supplement=wordingPr?await gh(`/repos/${config.repo}/contents/CHANGELOG.md?ref=${wordingPr.head.sha}`):null;
-  if(supplement&&supplement.encoding!=='base64')throw new Error('Supplemental changelog content is unavailable');
   const raw=supplement?Buffer.from(supplement.content,'base64').toString('utf8'):read(sha),before=validBaseline?read(baseline):'';
   if(!raw && !(config.target==='website'&&WEBSITES[config.repo]))issues.push('CHANGELOG.md is missing at the shipped commit. Add reviewed release notes before publication.');
   const contexts=[];
@@ -124,6 +136,6 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   if(validBaseline && config.target==='website')changes.push(...websiteChanges(config,baseline,sha,contexts,syncs,git));
   const covered=new Set(changes.filter(c=>!c.blocked.length).flatMap(c=>c.sourcePrs));
   const warnings=issues.filter(message=>{const missing=message.match(/^PR #(\d+) has no new changelog entry/);return !missing||!covered.has(Number(missing[1]))});
-  return {schemaVersion:2,deliveryVersion:1,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs,changes,workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url}:null,issues:warnings,provenanceComplete:validBaseline&&unmapped.length===0,websiteSyncs:syncs,source:config.source};
+  return {schemaVersion:2,deliveryVersion:1,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs,changes,workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url,acceptance:wordingAcceptance}:null,issues:warnings,provenanceComplete:validBaseline&&unmapped.length===0,websiteSyncs:syncs,source:config.source};
 }
-module.exports={parseChangelog,newEntries,renderChangelog,identity,buildChangelogManifest,internalFiles};
+module.exports={parseChangelog,newEntries,renderChangelog,identity,buildChangelogManifest,internalFiles,mergedWording};
