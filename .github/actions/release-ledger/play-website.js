@@ -46,8 +46,8 @@ async function publicationReceipt(row,api,value) {
   // Independent from Announcements: website retries never rewrite Slack receipts.
   const current=await api.notion(`/pages/${row.id}`);
   if(text(current.properties.Manifest)!==text(row.properties.Manifest)||text(current.properties['Manifest Hash'])!==text(row.properties['Manifest Hash']))throw Error('Frozen manifest changed during website publication');
-  const observation=JSON.parse(text(current.properties.Observation)||'{}');
-  await api.notion(`/pages/${row.id}`,'PATCH',{properties:{Observation:rich(JSON.stringify({...observation,website:value})),[WEBSITE_RECEIPT]:rich(JSON.stringify(value))}});
+  // Readers fold this owned column into the observation; the shared Observation is no longer written.
+  await api.notion(`/pages/${row.id}`,'PATCH',{properties:{[WEBSITE_RECEIPT]:rich(JSON.stringify(value))}});
 }
 async function publishWebsite(pageId,config,api,{fetcher=fetch}={}) {
   if(!config.publishWebsite)return {state:'disabled'};
