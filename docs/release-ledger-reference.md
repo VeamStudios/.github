@@ -48,17 +48,13 @@ GitHub producers always record merged PR and production evidence. The hosted wor
 
 The default Releases view shows Name, Products, Target, Version, State, Released At and Work Items. The Automation view retains manifests, hashes, IDs, receipts and the Announcements ledger. The duplicate text Product can be removed after all compatible readers and writers are deployed; Feature Availability's separate Product property remains.
 
-Announcements stores each selected entry set and exact text before publication, plus any reviewed supplement and correction history. NotionWorkers is the sole publisher. Recording/publication use the existing atomic GitHub ref lock. Transient Notion reads and idempotent writes retry with bounded backoff and Retry-After. Creates and block appends are reconciled before another attempt. Unchanged properties are not written.
+Announcements stores each selected entry set and exact text before publication, plus any reviewed supplement and correction history. NotionWorkers is the sole publisher. Transient Notion reads and idempotent writes retry with bounded backoff and Retry-After. Creates and block appends are reconciled before another attempt. Unchanged properties are not written.
 
 If Slack delivery is uncertain, the worker searches channel history for the stable event key/hash before saving the original receipt. It does not blindly resend an uncertain message. `correct-announcement` queues reviewed complete text for a known message; chat.update is repeatable without posting a second message.
 
 Needs attention includes actual unresolved errors, including historical records. Historical/Unverified alone is not an operational failure. Recovered errors are cleared only after processing succeeds; Operations Receipt retains diagnostics, and worker logs preserve failures even when error-reporting writes fail. Retry the recording or worker job, never redeploy software solely to retry a notification.
 
-Shared-action writers wait for the existing lock for up to five minutes by default, leaving room for normal worker holds of roughly two minutes. The wait budget uses monotonic elapsed time, including acquisition and reconciliation requests, with at most two seconds between attempts. No new acquisition starts at or after the deadline; an in-flight request and its ownership reconciliation must finish and can extend elapsed time beyond the budget. A lost creation or deletion response is reconciled by the unique owner tag before proceeding. Normal consumer/Enterprise overlap does not require manual recovery.
-
-`record-release.yml` and the release-ledger composite action accept optional `lock_wait_ms` (default `300000`). Direct Node entry points accept `RELEASE_LEDGER_LOCK_WAIT_MS`; programmatic `withLock` callers can pass `timeoutMs`. Values must be non-negative safe integers in milliseconds; `0` makes one immediate attempt without contention waits. Existing callers need no changes. Explicit legacy `attempts` remains an additional cap, while the default no longer stops after 30 attempts. The timeout reports elapsed time, budget, attempt count, shared repository/ref, last observed holder tag SHA and last acquisition error. Inspect that exact tag and its ownership metadata if recovery is needed. This setting only changes acquisition waiting, not lock lifetime, worker scheduling or the protected operation.
-
-Each writer also records what it sends in Releases columns it alone owns, so writers will no longer need the shared lock to avoid overwriting each other:
+Each writer records what it sends in Releases columns it alone owns, so concurrent writers never overwrite each other:
 
 | Writer | Owned columns |
 |---|---|
@@ -72,9 +68,9 @@ An owned observation column holds `{owner, recordedAt, observation, availability
 
 Shared writers no longer send the fields the Notion worker owns: Observation, Observed At, Released At, Availability Evidence, Error, Operations Receipt and, after creation, State. They read the folded observation, falling back to the shared Observation for rows recorded before the owned columns. Their own error columns hold the latest result of their own check. Recovery history and the shared Error belong to the worker. The amender writes only Announcement Source; Announcements remains the worker's receipt ledger.
 
-Shared writers no longer take `refs/tags/veam-release-ledger-lock`; the owned columns make concurrent writes safe. Concurrency groups in the reusable workflows stop the remaining same-row creates from overlapping: Play reconciliation and merge-completion recording run one at a time per repository, and release recording one at a time per repository, target and version. GitHub releases a group when its run is cancelled, so these cannot be left held. The website publisher writes only Website Receipt; the website guard reads it through the folded observation. The Notion worker keeps its own lock against overlapping worker runs and replaces a worker-owned lock older than six minutes.
+Shared writers take no lock; the owned columns make concurrent writes safe. Concurrency groups in the reusable workflows stop the remaining same-row creates from overlapping: Play reconciliation and merge-completion recording run one at a time per repository, and release recording one at a time per repository, target and version. GitHub releases a group when its run is cancelled, so these cannot be left held. The website publisher writes only Website Receipt; the website guard reads it through the folded observation. The Notion worker keeps its own lock against overlapping worker runs and replaces a worker-owned lock older than six minutes.
 
-A cancelled job can leave `refs/tags/veam-release-ledger-lock`. Verify no holder is active, reconcile Sending receipts, then remove only that exact lock ref. Recovery workflows use cancel-in-progress: false so a newer retry does not interrupt a lock holder. Never remove software version tags. The lock is never stolen merely because it is old.
+`refs/tags/veam-release-ledger-lock` now belongs only to the Notion worker and its operator scripts; see NotionWorkers `docs/release-setup.md` for its expiry and recovery rules. Never remove software version tags.
 
 </details>
 

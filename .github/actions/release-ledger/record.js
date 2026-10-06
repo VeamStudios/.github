@@ -3,7 +3,6 @@ const fs = require('node:fs');
 const { parseWorkItemLinks } = require('./work-item-links');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
-const { withLock } = require('./lock');
 const { ownColumns, OWNERS, WORKER_FIELDS, effectiveObservation, previousObservation: priorObservation } = require('./ledger-columns');
 
 const SHA = /^[a-f0-9]{40}$/;
@@ -295,5 +294,5 @@ async function main() {
   console.log(JSON.stringify({ key: result.key || result.manifest.key, url: result.url, hash: result.hash, dryRun: config.dryRun }));
   if(config.verificationError)throw new Error(config.verificationError);
 }
-module.exports = { workItemRelation, verificationProperties, canonical, hash, rich, text, select, workItems, validateNote, releaseKey, request, clients, allPages, withLock, buildManifest, buildLegacyManifest, record, git, ancestor, reviewed, provenanceMapping, deployedBaseline };
+module.exports = { workItemRelation, verificationProperties, canonical, hash, rich, text, select, workItems, validateNote, releaseKey, request, clients, allPages, buildManifest, buildLegacyManifest, record, git, ancestor, reviewed, provenanceMapping, deployedBaseline };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });
