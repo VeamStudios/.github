@@ -16,6 +16,12 @@ permissions:
 jobs:
   complete:
     runs-on: ubuntu-latest
+    # Replaces the shared ledger lock: overlapping merges in one repository could
+    # otherwise both create the same Work Item's automation-state row. GitHub
+    # releases the group if a run is cancelled.
+    concurrency:
+      group: release-ledger-development-${{ github.repository }}
+      cancel-in-progress: false
     steps:
       # No caller checkout or PR code runs in this privileged workflow.
       - uses: actions/setup-node@v5

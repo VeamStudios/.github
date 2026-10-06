@@ -134,7 +134,7 @@ test('monitor retains failed records and continues recording verified releases',
   assert.equal(result.errors.length, 1);
   assert.match(result.errors[0], /bad: App Store build differs/);
   assert.deepEqual(writes.map(x => x.path), ['/pages/bad', '/pages/good']);
-  const failure = JSON.parse(text(writes[0].body.properties.Observation));
+  const failure = owned(writes[0].body.properties).observation;
   assert.equal(failure.phase, 'uploaded');
   assert.equal(failure.verification, undefined);
   assert.match(failure.verificationError, /build differs/);
@@ -186,6 +186,9 @@ for (const options of [{ state: 'REMOVED_FROM_SALE' }, { state: 'DEVELOPER_REMOV
 
 const current = { ...manifest, key: 'current', repository: monitorConfig.repo, target: monitorConfig.target, event: 'release' };
 const firstSeen = '2026-09-07T12:00:00.000Z';
+// The monitor reports evidence only in its owned App Store column.
+const owned = properties => JSON.parse(text(properties['App Store Observation']));
+
 async function releasedObservation(phase = 'live') {
   return { ...await observeStore(manifest, 'com.test.app', fixture(), () => firstSeen), phase, website: { diagnostic: 'preserved' } };
 }
@@ -198,16 +201,17 @@ for (const phase of ['live', 'rollout']) {
     assert.equal(result.observed, 1);
     assert.equal(writes.length, 1);
     const properties = writes[0].body.properties;
-    const fresh = JSON.parse(text(properties.Observation));
+    const fresh = owned(properties).observation;
     assert.equal(fresh.phase, 'live');
     assert.equal(fresh.releasedAt, firstSeen);
     assert.equal(fresh.verification.checkedAt, now());
-    assert.deepEqual(fresh.website, previous.website);
-    assert.equal(properties['Released At'].date.start, firstSeen);
-    assert.equal(properties['Observed At'].date.start, now());
-    const owned = JSON.parse(text(properties['App Store Observation']));
+    // Website receipts live only in their own column, which the store monitor never touches.
+    assert.equal(fresh.website, undefined);
+    assert.equal(properties['Website Receipt'], undefined);
+    assert.equal(owned(properties).releasedAt, firstSeen);
+    assert.equal(owned(properties).recordedAt, now());
     const { website, ...expected } = fresh;
-    assert.deepEqual(owned, { owner: 'store', recordedAt: now(), observation: expected, availabilityEvidence: properties['Availability Evidence'].url, releasedAt: firstSeen });
+    assert.deepEqual(owned(properties), { owner: 'store', recordedAt: now(), observation: expected, availabilityEvidence: fresh.verification.evidence, releasedAt: firstSeen });
   });
 }
 
@@ -218,7 +222,7 @@ test('live to paused to active to complete retains the original first observed t
     const apple = fixture({ relationship: { data: linked }, phased: { data: { ...linked, attributes: { phasedReleaseState: state, currentDayNumber: 4, totalPauseDuration: 3 } } } });
     const result = await monitor(monitorConfig, api, apple, now);
     assert.equal(result.errors.length, 0);
-    previous = JSON.parse(text(writes[0].body.properties.Observation));
+    previous = owned(writes[0].body.properties).observation;
     assert.equal(previous.phase, state === 'COMPLETE' ? 'live' : 'rollout');
     assert.equal(previous.verification.phasedReleaseState, state);
     assert.equal(previous.releasedAt, firstSeen);
@@ -230,13 +234,13 @@ test('a rechecked live release can become withdrawn without erasing original rel
   const { api, writes } = monitorFixture([{ m: current, observation: previous }]);
   const result = await monitor(monitorConfig, api, fixture({ state: 'REMOVED_FROM_SALE' }), now);
   assert.equal(result.errors.length, 0);
-  const withdrawn = JSON.parse(text(writes[0].body.properties.Observation));
+  const withdrawn = owned(writes[0].body.properties).observation;
   assert.equal(withdrawn.phase, 'withdrawn');
   assert.equal(withdrawn.verification.state, 'REMOVED_FROM_SALE');
   assert.equal(withdrawn.verification.checkedAt, now());
   assert.equal(withdrawn.verification.phasedReleaseState, undefined);
   assert.equal(withdrawn.releasedAt, firstSeen);
-  assert.equal(writes[0].body.properties['Released At'].date.start, firstSeen);
+  assert.equal(owned(writes[0].body.properties).releasedAt, firstSeen);
 });
 
 test('initial withdrawal or non-downloadable evidence records only a check time, never a release time', async () => {
@@ -246,12 +250,12 @@ test('initial withdrawal or non-downloadable evidence records only a check time,
       const result = await monitor(monitorConfig, api, fixture(options), now);
       assert.equal(result.errors.length, 0);
       const properties = writes[0].body.properties;
-      const withdrawn = JSON.parse(text(properties.Observation));
+      const withdrawn = owned(properties).observation;
       assert.equal(withdrawn.phase, 'withdrawn');
       assert.equal(withdrawn.releasedAt, undefined);
       assert.equal(withdrawn.verification.checkedAt, now());
-      assert.equal(properties['Observed At'].date.start, now());
-      assert.equal(properties['Released At'], undefined);
+      assert.equal(owned(properties).recordedAt, now());
+      assert.equal(owned(properties).releasedAt, undefined);
     }
   }
 });
@@ -268,34 +272,34 @@ for (const phase of ['live', 'rollout']) {
       assert.equal(result.errors.length, 1);
       assert.equal(writes.length, 1);
       const properties = writes[0].body.properties;
-      const failed = JSON.parse(text(properties.Observation));
+      const failed = owned(properties).observation;
       assert.deepEqual(failed.verification, previous.verification);
       assert.equal(failed.verification.checkedAt, firstSeen);
       assert.equal(failed.phase, previous.phase);
       assert.equal(failed.releasedAt, firstSeen);
       assert.ok(failed.verificationError);
       assert.equal(failed.verificationStatus, 'error');
-      assert.equal(text(properties.Error), failed.verificationError);
+      assert.equal(text(properties['App Store Error']), failed.verificationError);
       assert.equal(failed.verificationAttempt.at, now());
-      assert.equal(properties['Released At'], undefined);
+      assert.equal(owned(properties).releasedAt, undefined);
     });
   }
 }
 
-test('successful recheck clears its own error and saves a recovery receipt', async () => {
+// Recovery history (Operations Receipt) and the shared Error belong to the Notion worker.
+test('successful recheck clears its own error and leaves worker-owned history alone', async () => {
   const previous = { ...await releasedObservation(), verificationError: 'HTTP 403', verificationAttempt: { at: firstSeen } };
   const { api, writes } = monitorFixture([{ m: current, observation: previous, properties: { Error: rich('HTTP 403'), 'Operations Receipt': rich(JSON.stringify({ notification: 'already reported' })) } }]);
   const result = await monitor(monitorConfig, api, fixture(), now);
   assert.equal(result.errors.length, 0);
   const properties = writes[0].body.properties;
-  const recovered = JSON.parse(text(properties.Observation));
+  const recovered = owned(properties).observation;
   assert.equal(recovered.verificationError, undefined);
   assert.equal(recovered.verificationAttempt, undefined);
   assert.equal(recovered.verification.checkedAt, now());
-  assert.equal(text(properties.Error), '');
-  const receipt = JSON.parse(text(properties['Operations Receipt']));
-  assert.equal(receipt.notification, 'already reported');
-  assert.equal(receipt.resolutions[0].error, 'HTTP 403');
+  assert.equal(text(properties['App Store Error']), '');
+  assert.equal(properties['Operations Receipt'], undefined);
+  assert.equal(properties.Error, undefined);
 });
 
 test('a successful store refresh preserves unrelated delivery errors', async () => {
@@ -303,21 +307,21 @@ test('a successful store refresh preserves unrelated delivery errors', async () 
   const { api, writes } = monitorFixture([{ m: current, observation: previous, properties: { Error: rich('Uncertain Slack delivery') } }]);
   await monitor(monitorConfig, api, fixture(), now);
   assert.equal(writes[0].body.properties.Error, undefined);
-  assert.equal(JSON.parse(text(writes[0].body.properties.Observation)).verificationError, undefined);
+  assert.equal(owned(writes[0].body.properties).observation.verificationError, undefined);
 });
 
 test('a failed store refresh blocks eligibility while preserving an unrelated delivery error', async () => {
   const { api, writes } = monitorFixture([{ m: current, observation: await releasedObservation(), properties: { Error: rich('Uncertain Slack delivery') } }]);
   await monitor(monitorConfig, api, fixture({ relationship: new Error('HTTP 403') }), now);
   assert.equal(writes[0].body.properties.Error, undefined);
-  assert.equal(JSON.parse(text(writes[0].body.properties.Observation)).verificationError, 'HTTP 403');
+  assert.equal(owned(writes[0].body.properties).observation.verificationError, 'HTTP 403');
 });
 
 test('first observed distribution time does not inherit a TestFlight upload timestamp', async () => {
   const { api, writes } = monitorFixture([{ m: current, observation: { phase: 'uploaded', releasedAt: firstSeen } }]);
   await monitor(monitorConfig, api, fixture(), now);
-  assert.equal(JSON.parse(text(writes[0].body.properties.Observation)).releasedAt, now());
-  assert.equal(writes[0].body.properties['Released At'].date.start, now());
+  assert.equal(owned(writes[0].body.properties).observation.releasedAt, now());
+  assert.equal(owned(writes[0].body.properties).releasedAt, now());
 });
 
 test('failed dry-run recheck reports the hold without writing a diagnostic', async () => {
@@ -344,7 +348,7 @@ test('ordinary supersession holds new publication and preserves frozen delivery 
   const result = await monitor(monitorConfig, api, apple, now);
   assert.deepEqual(result, { checked: 1, observed: 1, skippedHistorical: 0, errors: [] });
   const properties = writes[0].body.properties;
-  const terminal = JSON.parse(text(properties.Observation));
+  const terminal = owned(properties).observation;
   assert.equal(terminal.phase, previous.phase);
   assert.equal(terminal.releasedAt, firstSeen);
   assert.deepEqual(terminal.verification, previous.verification);
@@ -358,9 +362,10 @@ test('ordinary supersession holds new publication and preserves frozen delivery 
   assert.equal(terminal.superseded.version, '1.2.3');
   assert.equal(terminal.superseded.build, current.build);
   assert.equal(terminal.superseded.commit, current.commit);
-  assert.equal(properties['Released At'], undefined);
+  // Supersession keeps the existing release time; it never sets a new one.
+  assert.equal(owned(properties).releasedAt, firstSeen);
   assert.equal(properties.Error, undefined);
-  assert.equal(deployedBaseline({ properties: { Manifest: rich(JSON.stringify(current)), 'Manifest Hash': rich(hash(current)), Observation: properties.Observation } }), true);
+  assert.equal(deployedBaseline({ properties: { Manifest: rich(JSON.stringify(current)), 'Manifest Hash': rich(hash(current)), 'App Store Observation': properties['App Store Observation'] } }), true);
 
   const repeated = monitorFixture([{ m: current, observation: terminal }]);
   const noRequests = { findAppByBundleId: async () => { throw new Error('Terminal supersession must not be queried again'); } };
@@ -373,7 +378,7 @@ test('supersession before any successful distribution proof cannot manufacture h
   const { api, writes } = monitorFixture([{ m: current }]);
   const result = await monitor(monitorConfig, api, fixture({ attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } }), now);
   assert.equal(result.errors.length, 0);
-  const terminal = JSON.parse(text(writes[0].body.properties.Observation));
+  const terminal = owned(writes[0].body.properties).observation;
   assert.equal(terminal.phase, 'uploaded');
   assert.equal(terminal.verification, undefined);
   assert.ok(terminal.verificationError);
@@ -383,14 +388,14 @@ test('supersession before any successful distribution proof cannot manufacture h
 test('only exact identity-bound supersession is terminal; mismatches recheck and clear a resolved hold', async () => {
   const initial = monitorFixture([{ m: current, observation: await releasedObservation() }]);
   await monitor(monitorConfig, initial.api, fixture({ attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } }), now);
-  const terminal = JSON.parse(text(initial.writes[0].body.properties.Observation));
+  const terminal = owned(initial.writes[0].body.properties).observation;
   for (const change of [{ manifestHash: 'different' }, { commit: 'b'.repeat(40) }, { build: '124' }, { version: '1.2.4' }, { bundleId: 'other' }, { appStoreVersionId: '' }, { appStoreVersionId: 'different' }, { checkedAt: 'invalid' }]) {
     const previous = { ...terminal, superseded: { ...terminal.superseded, ...change } };
     const { api, writes } = monitorFixture([{ m: current, observation: previous, properties: { Error: rich('Uncertain Slack delivery') } }]);
     const result = await monitor(monitorConfig, api, fixture(), now);
     assert.equal(result.observed, 1);
     assert.equal(result.errors.length, 0);
-    const fresh = JSON.parse(text(writes[0].body.properties.Observation));
+    const fresh = owned(writes[0].body.properties).observation;
     assert.equal(fresh.superseded, undefined);
     assert.equal(fresh.verificationError, undefined);
     assert.equal(fresh.verification.checkedAt, now());
@@ -399,24 +404,24 @@ test('only exact identity-bound supersession is terminal; mismatches recheck and
   }
 });
 
-test('successful supersession check resolves a prior lookup failure while retaining its recovery receipt', async () => {
+test('successful supersession check resolves a prior lookup failure and clears its own error', async () => {
   const previous = { ...await releasedObservation(), verificationError: 'HTTP 403' };
   const { api, writes } = monitorFixture([{ m: current, observation: previous, properties: { Error: rich('HTTP 403') } }]);
   const result = await monitor(monitorConfig, api, fixture({ attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } }), now);
   assert.equal(result.errors.length, 0);
   const properties = writes[0].body.properties;
-  const terminal = JSON.parse(text(properties.Observation));
-  assert.equal(text(properties.Error), '');
+  const terminal = owned(properties).observation;
+  assert.equal(text(properties['App Store Error']), '');
   assert.match(terminal.verificationError, /replaced by a newer version/);
   assert.deepEqual(terminal.verification, previous.verification);
-  assert.equal(JSON.parse(text(properties['Operations Receipt'])).resolutions[0].error, 'HTTP 403');
+  assert.equal(properties['Operations Receipt'], undefined);
 });
 
 test('superseded build mismatches remain actual errors and do not establish a terminal marker', async () => {
   const { api, writes } = monitorFixture([{ m: current, observation: await releasedObservation() }]);
   const result = await monitor(monitorConfig, api, fixture({ build: '124', attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } }), now);
   assert.equal(result.errors.length, 1);
-  const failed = JSON.parse(text(writes[0].body.properties.Observation));
+  const failed = owned(writes[0].body.properties).observation;
   assert.equal(failed.superseded, undefined);
   assert.match(failed.verificationError, /build differs/);
 });
@@ -424,13 +429,13 @@ test('superseded build mismatches remain actual errors and do not establish a te
 test('legacy, error-status and attempt-mismatched supersession markers recheck rather than silence verification', async () => {
   const initial = monitorFixture([{ m: current, observation: await releasedObservation() }]);
   await monitor(monitorConfig, initial.api, fixture({ attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } }), now);
-  const terminal = JSON.parse(text(initial.writes[0].body.properties.Observation));
+  const terminal = owned(initial.writes[0].body.properties).observation;
   for (const change of [{ verificationStatus: undefined }, { verificationStatus: 'error' }, { verificationAttempt: { at: firstSeen } }]) {
     const { api, writes } = monitorFixture([{ m: current, observation: { ...terminal, ...change } }]);
     const result = await monitor(monitorConfig, api, fixture(), now);
     assert.equal(result.observed, 1);
     assert.equal(result.errors.length, 0);
-    const fresh = JSON.parse(text(writes[0].body.properties.Observation));
+    const fresh = owned(writes[0].body.properties).observation;
     assert.equal(fresh.superseded, undefined);
     assert.equal(fresh.verificationStatus, undefined);
     assert.equal(fresh.verificationError, undefined);
@@ -440,11 +445,11 @@ test('legacy, error-status and attempt-mismatched supersession markers recheck r
 test('a genuine lookup failure with retained supersession proof is typed as error', async () => {
   const initial = monitorFixture([{ m: current, observation: await releasedObservation() }]);
   await monitor(monitorConfig, initial.api, fixture({ attributes: { appVersionState: 'REPLACED_WITH_NEW_VERSION' } }), now);
-  const terminal = JSON.parse(text(initial.writes[0].body.properties.Observation));
+  const terminal = owned(initial.writes[0].body.properties).observation;
   const { api, writes } = monitorFixture([{ m: current, observation: { ...terminal, verificationStatus: 'error' } }]);
   const result = await monitor(monitorConfig, api, fixture({ relationship: new Error('HTTP 503') }), now);
   assert.equal(result.errors.length, 1);
-  const failed = JSON.parse(text(writes[0].body.properties.Observation));
+  const failed = owned(writes[0].body.properties).observation;
   assert.deepEqual(failed.superseded, terminal.superseded);
   assert.equal(failed.verificationStatus, 'error');
   assert.equal(failed.verificationError, 'HTTP 503');

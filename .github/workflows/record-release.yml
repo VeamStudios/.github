@@ -64,6 +64,11 @@ permissions:
 jobs:
   record:
     runs-on: ubuntu-latest
+    # Replaces the shared ledger lock: overlapping recordings of one release could
+    # otherwise both create its row. GitHub releases the group if a run is cancelled.
+    concurrency:
+      group: release-ledger-record-${{ github.repository }}-${{ inputs.target }}-${{ inputs.version }}
+      cancel-in-progress: false
     # Preparation is supporting bookkeeping. Preserve its artifact/error, but a
     # Notion outage must not prevent the production deployment from starting.
     continue-on-error: ${{ inputs.phase == 'prepare' }}

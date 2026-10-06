@@ -69,4 +69,28 @@ function effectiveObservation(properties) {
   return { observation: { ...current.observation, ...(website ? { website } : {}) }, owner: current.owner, availabilityEvidence, releasedAt, observedAt };
 }
 
-module.exports = { OWNERS, WEBSITE_RECEIPT, ANNOUNCEMENT_SOURCE, RANK, ownColumns, effectiveObservation };
+// Fields the Notion worker now owns. Shared writers derive their owned columns
+// from these values and then stop sending them.
+const WORKER_FIELDS = ['Observation', 'Observed At', 'Released At', 'Availability Evidence', 'Error', 'Operations Receipt', 'State'];
+function ownedOnly(owner, properties, recordedAt, previousProperties) {
+  const result = ownColumns(owner, properties, recordedAt, previousProperties);
+  for (const name of WORKER_FIELDS) delete result[name];
+  return result;
+}
+// The observation a writer builds on: the fold of the owned columns, or the
+// shared field for rows written before them.
+function previousObservation(properties = {}) {
+  const owned = effectiveObservation(properties);
+  if (owned) return owned.observation;
+  const raw = text(properties.Observation);
+  return raw ? JSON.parse(raw) : null;
+}
+// The reviewed changelog supplement, from its owned column or the legacy Announcements copy.
+function reviewedSource(properties = {}) {
+  const owned = parse(properties[ANNOUNCEMENT_SOURCE]);
+  if (owned) return owned;
+  const ledger = text(properties.Announcements);
+  return ledger ? JSON.parse(ledger).source : undefined;
+}
+
+module.exports = { OWNERS, WEBSITE_RECEIPT, ANNOUNCEMENT_SOURCE, RANK, WORKER_FIELDS, ownColumns, ownedOnly, effectiveObservation, previousObservation, reviewedSource };

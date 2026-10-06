@@ -36,18 +36,17 @@ for (const state of ['Available', 'Released', 'Superseded', 'Withdrawn']) {
   });
 }
 
+// The worker derives State from the observation phase, so the recorder only reports evidence.
 test('Released label cannot hide explicit withdrawal or a failed verification', async () => {
   const { config, api, manifest } = fixture('Released');
   const withdrawal = await record({ ...config, phase: 'withdrawn' }, api);
-  assert.equal(withdrawal.properties.State.select.name, 'Withdrawn');
-  assert.equal(JSON.parse(text(withdrawal.properties.Observation)).phase, 'withdrawn');
-  const failure = await record({ ...config, verification: undefined, verificationError: 'Current production lookup failed' }, api);
-  const observation = JSON.parse(text(failure.properties.Observation));
-  assert.equal(observation.verificationError, 'Current production lookup failed');
-  assert.equal(text(failure.properties.Error), observation.verificationError);
   assert.equal(JSON.parse(text(withdrawal.properties['Deploy Observation'])).observation.phase, 'withdrawn');
+  const failure = await record({ ...config, verification: undefined, verificationError: 'Current production lookup failed' }, api);
+  const observation = JSON.parse(text(failure.properties['Deploy Observation'])).observation;
+  assert.equal(observation.verificationError, 'Current production lookup failed');
   assert.equal(text(failure.properties['Deploy Error']), observation.verificationError);
   assert.equal(observation.verification.commit, manifest.commit);
+  for (const name of ['State', 'Observation', 'Error', 'Released At', 'Availability Evidence']) assert.equal(withdrawal.properties[name], undefined, name);
   await assert.rejects(record({ ...config, build: 'other-build' }, api), /different commit\/build/);
 });
 
@@ -68,8 +67,9 @@ test('display labels cannot manufacture a verified comparison baseline', () => {
   for (const state of ['Available', 'Released', 'Superseded', 'Waiting']) {
     const { row } = fixture(state);
     assert.equal(deployedBaseline(row), true);
-    const observation = JSON.parse(text(row.properties.Observation));
-    row.properties.Observation = rich(JSON.stringify({ ...observation, verification: null }));
+    // Readers use the recorder's owned column, so remove the verification there.
+    const record = JSON.parse(text(row.properties['Deploy Observation']));
+    row.properties['Deploy Observation'] = rich(JSON.stringify({ ...record, observation: { ...record.observation, verification: null } }));
     assert.equal(deployedBaseline(row), false);
   }
 });
