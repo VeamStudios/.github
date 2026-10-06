@@ -1,5 +1,6 @@
 const fs=require('node:fs');
 const {clients,allPages,withLock,record,git,text,rich,hash}=require('./record');
+const {ownColumns}=require('./ledger-columns');
 const {GooglePlayMonitor,snapshotBuilds,observePlay,resolveBuild,REPOSITORY}=require('./google-play');
 
 async function optional(gh,path) {try{return await gh(path)}catch(e){if(e.status===404)return null;throw e}}
@@ -39,8 +40,8 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
   let snapshot;
   const invalidate=async(row,message)=>{
     if(config.dryRun)return;
-    const previous=JSON.parse(text(row.properties.Observation)||'{}');
-    await api.notion(`/pages/${row.id}`,'PATCH',{properties:{Observation:rich(JSON.stringify({...previous,verification:null,verificationError:message,verificationAttempt:{at:new Date().toISOString(),source:config.source}})),Error:rich(message)}});
+    const previous=JSON.parse(text(row.properties.Observation)||'{}'),at=new Date().toISOString();
+    await api.notion(`/pages/${row.id}`,'PATCH',{properties:ownColumns('play',{Observation:rich(JSON.stringify({...previous,verification:null,verificationError:message,verificationAttempt:{at,source:config.source}})),Error:rich(message)},at,row.properties)});
   };
   try {snapshot=await play.snapshot();snapshotBuilds(snapshot)}
   catch(e){for(const row of rows) {const m=JSON.parse(text(row.properties.Manifest)||'{}');if(m.target==='android-consumer'&&m.build)await invalidate(row,e.message)}throw e}

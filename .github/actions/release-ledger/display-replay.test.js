@@ -42,6 +42,8 @@ test('Released label cannot hide explicit withdrawal or a failed verification', 
   const observation = JSON.parse(text(failure.properties.Observation));
   assert.equal(observation.verificationError, 'Current production lookup failed');
   assert.equal(text(failure.properties.Error), observation.verificationError);
+  assert.equal(JSON.parse(text(withdrawal.properties['Deploy Observation'])).observation.phase, 'withdrawn');
+  assert.equal(text(failure.properties['Deploy Error']), observation.verificationError);
   assert.equal(observation.verification.commit, manifest.commit);
   await assert.rejects(record({ ...config, build: 'other-build' }, api), /different commit\/build/);
 });

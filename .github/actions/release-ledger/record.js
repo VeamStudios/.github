@@ -4,6 +4,7 @@ const { parseWorkItemLinks } = require('./work-item-links');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const { withLock } = require('./lock');
+const { ownColumns, OWNERS } = require('./ledger-columns');
 
 const SHA = /^[a-f0-9]{40}$/;
 const canonical = value => JSON.stringify(value, (_, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v);
@@ -228,6 +229,10 @@ async function record(config, api) {
     for(const [name,value] of Object.entries(properties))if(hash(propertyValue(value))===hash(propertyValue(existing[0].properties[name])))delete properties[name];
     if(!Object.keys(properties).length)return {key:manifest.key,pageId:existing[0].id,url:existing[0].url,hash:digest,issues:manifest.issues};
   }
+  // Play monitor recordings own the Play columns; every other recording is a deploy.
+  const owner = config.verification?.kind === 'google-play' ? 'play' : 'deploy';
+  Object.assign(properties, ownColumns(owner, properties, observedAt, existing[0]?.properties));
+  if (properties.Observation && !config.verificationError) properties[OWNERS[owner].error] = rich('');
   if (config.dryRun) return { manifest, properties, dryRun: true };
   let row;
   try { row = existing[0] ? await api.notion(`/pages/${existing[0].id}`, 'PATCH', { properties }) : await api.notion('/pages', 'POST', { parent: { type: 'data_source_id', data_source_id: config.releasesId }, properties }); }
