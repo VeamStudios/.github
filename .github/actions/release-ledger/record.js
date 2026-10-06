@@ -248,6 +248,13 @@ async function record(config, api) {
     if(found.length!==1||text(found[0].properties['Manifest Hash'])!==digest)throw error;
     row=found[0];
   }
+  if (!existing[0]) {
+    // Without the shared lock, overlapping creators can each create this release.
+    // Every creator keeps the earliest row and removes only its own duplicate.
+    const rows = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter });
+    const keep = rows.sort((a, b) => Date.parse(a.created_time) - Date.parse(b.created_time) || a.id.localeCompare(b.id))[0];
+    if (keep && keep.id !== row.id) { await api.notion(`/pages/${row.id}`, 'PATCH', { in_trash: true }); row = keep; }
+  }
   return { key: manifest.key, pageId: row.id, url: row.url, hash: digest, issues: manifest.issues };
 }
 async function main() {

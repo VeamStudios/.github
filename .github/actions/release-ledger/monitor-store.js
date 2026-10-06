@@ -86,6 +86,15 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
   // ASC createdDate is not the actual release time. Record first observed live time explicitly.
   return { phase: limited ? 'rollout' : 'live', source, releasedAt: observedAt, timeBasis: 'first-observed', verification: { ...verification, checkedAt: observedAt } };
 }
+// Without the shared lock, an overlapping run that checked earlier must not
+// overwrite evidence a newer check has already written.
+async function writeIfNewest(api, row, properties, checkedAt) {
+  const current = await api.notion(`/pages/${row.id}`);
+  const latest = text(current?.properties?.[OWNERS.store.observation]);
+  if (latest && Date.parse(JSON.parse(latest).recordedAt) > Date.parse(checkedAt)) return false;
+  await api.notion(`/pages/${row.id}`, 'PATCH', { properties });
+  return true;
+}
 async function monitor(config, api, apple, now = () => new Date().toISOString()) {
   const schema = await releaseSchema(api.notion, config.releasesId);
   const rows = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter: { and: [{ property: 'Repository', rich_text: { equals: config.repo } }, targetFilter(schema, config.target)] } });
@@ -118,7 +127,7 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
         if (!config.dryRun) {
           const properties = verificationProperties({ phase: terminal.phase, source: observation.source, verification: observation.verification }, previous, row.properties, observedAt);
           Object.assign(properties, { Observation: rich(JSON.stringify(terminal)), 'Observed At': { date: { start: observedAt } } });
-          await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { ...ownedOnly('store', properties, observedAt, row.properties), [OWNERS.store.error]: rich('') } });
+          await writeIfNewest(api, row, { ...ownedOnly('store', properties, observedAt, row.properties), [OWNERS.store.error]: rich('') }, observedAt);
         }
         continue;
       }
@@ -129,7 +138,7 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
         properties.Observation = rich(JSON.stringify({ ...previous, ...observation, releasedAt: observation.releasedAt, superseded: undefined, verificationStatus: undefined, verificationError: undefined, verificationAttempt: undefined }));
         Object.assign(properties, { 'Observed At': { date: { start: observedAt } }, 'Availability Evidence': { url: observation.verification.evidence } });
         if (observation.releasedAt) properties['Released At'] = { date: { start: observation.releasedAt } };
-        await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { ...ownedOnly('store', properties, observedAt, row.properties), [OWNERS.store.error]: rich('') } });
+        await writeIfNewest(api, row, { ...ownedOnly('store', properties, observedAt, row.properties), [OWNERS.store.error]: rich('') }, observedAt);
       }
     } catch (e) {
       errors.push(`${row.id}: ${e.message}`);
@@ -142,7 +151,7 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
           const properties = { Observation: rich(JSON.stringify(observation)), 'Observed At': { date: { start: attemptedAt } } };
           if (!text(row.properties.Error) || text(row.properties.Error) === previous?.verificationError) properties.Error = rich(e.message);
           // The owned error always reflects this check, even when the shared Error holds another writer's message.
-          await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { ...ownedOnly('store', properties, attemptedAt, row.properties), [OWNERS.store.error]: rich(e.message) } });
+          await writeIfNewest(api, row, { ...ownedOnly('store', properties, attemptedAt, row.properties), [OWNERS.store.error]: rich(e.message) }, attemptedAt);
         } catch (writeError) { errors.push(`${row.id}: could not persist verification error: ${writeError.message}`); }
       }
     }
