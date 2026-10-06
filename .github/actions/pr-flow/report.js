@@ -1,8 +1,6 @@
 // Read CI evidence; never check out or execute pull-request code.
 const { workItemGate } = require('../release-ledger/work-item-gate');
 const GROUPS = ['Build', 'Run', 'Verify'];
-const APP_ID = 15368; // GitHub Actions; also bind required checks to this app.
-const MARKER = 'veam-pr-flow-v1';
 
 function evaluate(part, evidence) {
   if (part.missing) return { state: 'failure', detail: part.missing };
@@ -40,7 +38,8 @@ function samePull(a, b) {
 
 function md(text) { return String(text).replace(/[|\r\n]/g, ' ').replace(/</g, '&lt;'); }
 
-async function report({ github, context, core, profiles }) {
+async function report({ github, context, core, profiles, publishResult }) {
+  if (typeof publishResult !== 'function') throw new Error('A native result collector is required.');
   const repo = context.repo;
   const profile = profiles[repo.repo];
   if (!profile) throw new Error(`No reviewed PR-flow profile for ${repo.repo}.`);
@@ -57,23 +56,10 @@ async function report({ github, context, core, profiles }) {
     pulls = await github.paginate(github.rest.pulls.list, { ...repo, state: 'open', per_page: 100 });
   }
   for (const pr of pulls.filter(pr => pr.state === 'open')) {
-    const existing = await github.paginate(github.rest.checks.listForRef, {
-      ...repo, ref: pr.head.sha, filter: 'all', per_page: 100,
-    });
-    const ids = {};
     async function publish(name, state, output) {
-      const external_id = `${MARKER}:${pr.number}:${name}`;
-      const fields = { ...repo, name, external_id, status: state === 'pending' ? 'in_progress' : 'completed',
-        ...(state === 'pending' ? {} : { conclusion: state }), output };
-      if (!ids[name]) {
-        // Do not overwrite a same-name check belonging to another integration/workflow.
-        ids[name] = existing.filter(c => c.app?.id === APP_ID && c.external_id === external_id)
-          .sort((a, b) => b.id - a.id)[0]?.id;
-      }
-      if (ids[name]) await github.rest.checks.update({ ...fields, check_run_id: ids[name] });
-      else ids[name] = (await github.rest.checks.create({ ...fields, head_sha: pr.head.sha })).data.id;
+      await publishResult({ name, state, output, pull_number: pr.number, head_sha: pr.head.sha });
     }
-    // Invalidate previous success before reading new evidence, including reruns and body edits.
+    // A native job must never pass before current evidence is read, including reruns and body edits.
     for (const name of GROUPS) await publish(name, 'pending', {
       title: `${name}: checking current evidence`, summary: `PR #${pr.number}, commit ${pr.head.sha}.`,
     });
@@ -124,4 +110,14 @@ async function report({ github, context, core, profiles }) {
   }
 }
 
-module.exports = { evaluate, groupState, samePull, report };
+// Native Actions jobs accept only success. Pending, races, API errors, empty
+// reconciliation and failed evidence must leave the required jobs blocking.
+function nativeStates(records) {
+  const latest = new Map(records.map(r => [`${r.pull_number}:${r.name}`, r]));
+  return Object.fromEntries(GROUPS.map(name => {
+    const parts = [...latest.values()].filter(r => r.name === name);
+    return [name, groupState(parts)];
+  }));
+}
+
+module.exports = { evaluate, groupState, samePull, report, nativeStates };

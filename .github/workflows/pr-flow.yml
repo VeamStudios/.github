@@ -5,7 +5,6 @@ on:
 
 permissions:
   actions: read
-  checks: write
   contents: read
   pull-requests: read
 
@@ -14,8 +13,12 @@ jobs:
     name: Report PR checks
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      build: ${{ steps.evidence.outputs.build }}
+      run: ${{ steps.evidence.outputs.run }}
+      verify: ${{ steps.evidence.outputs.verify }}
     steps:
-      # Only trusted shared code runs with check-writing permissions. No PR checkout,
+      # Only trusted shared code reads CI evidence with read-only permissions. No PR checkout,
       # dependency installation, artifacts, secrets or arbitrary source scripts.
       - uses: actions/checkout@v6
         with:
@@ -27,10 +30,60 @@ jobs:
             .github/actions/release-ledger/work-item-gate.js
             .github/actions/release-ledger/work-item-links.js
           persist-credentials: false
-      - name: Report Build, Run and Verify
+      - name: Read Build, Run and Verify evidence
+        id: evidence
         uses: actions/github-script@v8
         with:
           script: |
-            const { report } = require('./.github/actions/pr-flow/report');
+            const { report, nativeStates } = require('./.github/actions/pr-flow/report');
             const profiles = require('./.github/actions/pr-flow/profiles.json');
-            await report({ github, context, core, profiles });
+            const records = [];
+            await report({ github, context, core, profiles,
+              publishResult: result => records.push(result) });
+            for (const [name, state] of Object.entries(nativeStates(records))) {
+              core.setOutput(name.toLowerCase(), state);
+            }
+            const latest = new Map(records.map(r => [`${r.pull_number}:${r.name}`, r]));
+            for (const r of latest.values()) {
+              core.summary.addRaw(`### PR #${r.pull_number} — ${r.name}: ${r.state}\n\n${r.output.summary}\n\n`);
+            }
+            await core.summary.write();
+
+  build:
+    name: Build
+    needs: report
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Require verified Build evidence
+        env:
+          RESULT: ${{ needs.report.outputs.build }}
+        run: test "$RESULT" = success
+
+  run:
+    name: Run
+    needs: report
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Require verified Run evidence
+        env:
+          RESULT: ${{ needs.report.outputs.run }}
+        run: test "$RESULT" = success
+
+  verify:
+    name: Verify
+    needs: report
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Require verified Verify evidence
+        env:
+          RESULT: ${{ needs.report.outputs.verify }}
+        run: test "$RESULT" = success

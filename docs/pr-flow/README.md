@@ -10,12 +10,12 @@
 
 | Required name | Details |
 | --- | --- |
-| Build | App Store, Enterprise, Cloud, Backend, Web or Package |
-| Run | Tests, with the actual coverage stated |
-| Verify | Work Item Linked, Lint Rules Pass, Formatting Matches, and other exact conditions |
+| report / Build | App Store, Enterprise, Cloud, Backend, Web or Package |
+| report / Run | Tests, with the actual coverage stated |
+| report / Verify | Work Item Linked, Lint Rules Pass, Formatting Matches, and other exact conditions |
 
 The shared reporter reads existing workflow runs for the **current PR commit**. It
-runs no product builds/tests again. Each check links to the original job. Missing,
+runs no product builds/tests again. Native Actions jobs publish the three required results; the reporter job summary links to the original CI evidence. Missing,
 cancelled, skipped or failed required evidence blocks. Work Item Linked checks the
 PR URL format; it does not contact Notion. No NotionWorkers change is needed.
 
@@ -76,10 +76,26 @@ still approve behavior, breaking changes, app/runtime coverage and deploy side e
 - `pull_request_target` only runs trusted shared code. No PR checkout, artifact
   download, PR-controlled scripts, installation or app/private-key secrets.
 - Source runs must be `pull_request` runs for the current SHA, branch and head repo.
-- Pagination is exhausted. Latest runs/attempts win. Old success is invalidated first.
-- Updates are scoped to this reporter's check IDs, never another app's checks.
+- Pagination is exhausted. Latest runs/attempts win. Native jobs remain blocking until current evidence is verified.
+- No custom check runs are created or updated. Native Actions jobs enforce only their own evidence result.
+- API errors, changed PRs, pending evidence and empty reconciliation cannot pass the native jobs.
 - Checks are tied to GitHub Actions app ID 15368 in the proposed ruleset.
 - Existing author/bot identities are unchanged; the separate identity audit owns that decision.
 
 Sources: [native auto-merge](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/automatically-merging-a-pull-request),
 [branch rules](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/managing-a-branch-protection-rule).
+
+## Native summary job migration
+
+A custom check created using the Actions token can be returned as successful by
+REST/GraphQL while remaining absent from the PR merge box. Rerunning the reporter
+did not resolve this on SAP Models #183. The reporter now exposes real Actions
+jobs with exact contexts `report / Build`, `report / Run`, `report / Verify`.
+Pending source CI fails these jobs until the source completion event reconciles
+again; it never grants an early success. All existing source checks remain required.
+
+Activation needs separate approval: merge this shared change, verify the native
+job names and passing/failing behavior in the downstream repositories, then replace
+only the three old required contexts with their native equivalents. Keep app ID
+15368, strictness, native source gates and every review/safety rule unchanged.
+This code does not update any repository rule or merge any downstream PR.

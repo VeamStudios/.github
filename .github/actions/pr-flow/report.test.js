@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { evaluate, groupState, samePull, report } = require('./report');
+const { evaluate, groupState, samePull, report, nativeStates } = require('./report');
 const profiles = require('./profiles.json');
 const part = { name: 'App Store', workflow: 'ci.yml', job: 'Build app', steps: ['Compile'] };
 const passing = () => ({ run: { status: 'completed', conclusion: 'success' }, jobs: [{ name: 'Build app', status: 'completed', conclusion: 'success', steps: [{ name: 'Compile', conclusion: 'success' }] }] });
@@ -48,7 +48,7 @@ function fixture({ failing = false, apiError = false, newerHead = false } = {}) 
   const pr = { number: 1, state: 'open', title: 'ci: checks', body: '', head: { sha: 'head', ref: 'branch', repo: { id: 1 } }, base: { sha: 'base' } };
   const run = { id: 2, run_attempt: 1, status: 'completed', conclusion: 'success', event: 'pull_request', head_sha: 'head', head_branch: 'branch', head_repository: { id: 1 }, pull_requests: [{ number: 1 }] };
   const actions = { listWorkflowRuns() {}, listJobsForWorkflowRun() {} };
-  const checks = { listForRef() {}, async create(x) { writes.push(x); return { data: { id: writes.length } }; }, async update(x) { writes.push(x); } };
+  const checks = { listForRef() {} };
   const github = { rest: { actions, checks, pulls: { async get() { gets++; return { data: newerHead && gets > 1 ? { ...pr, head: { ...pr.head, sha: 'new' } } : pr }; } } }, async paginate(method) {
     if (method === checks.listForRef) return [];
     if (apiError) throw Error('API unavailable');
@@ -57,7 +57,7 @@ function fixture({ failing = false, apiError = false, newerHead = false } = {}) 
     if (failing) jobs[0].conclusion = 'cancelled';
     return jobs;
   } };
-  return { writes, options: { github, context: { repo: { owner: 'test', repo: 'test' }, payload: { pull_request: { number: 1 } } }, core: { info() {} }, profiles: { test: { Build: [part], Run: [part], Verify: [part] } } } };
+  return { writes, options: { github, context: { repo: { owner: 'test', repo: 'test' }, payload: { pull_request: { number: 1 } } }, core: { info() {} }, publishResult(result) { writes.push({ ...result, status: result.state === 'pending' ? 'in_progress' : 'completed', conclusion: result.state === 'pending' ? undefined : result.state }); }, profiles: { test: { Build: [part], Run: [part], Verify: [part] } } } };
 }
 test('publishes pending first, then only current verified evidence succeeds', async () => {
   const { writes, options } = fixture(); await report(options);
@@ -69,7 +69,7 @@ test('a cancelled mandatory job fails all dependent summaries', async () => {
   const { writes, options } = fixture({ failing: true }); await report(options);
   assert.ok(writes.slice(3).every(w => w.conclusion === 'failure'));
 });
-test('API errors clear old success and fail closed', async () => {
+test('API errors cannot produce successful native results', async () => {
   const { writes, options } = fixture({ apiError: true }); await assert.rejects(report(options));
   assert.ok(writes.slice(3).every(w => w.conclusion === 'failure'));
 });
@@ -82,9 +82,27 @@ const { policy } = require('./policy');
 test('activation retains native guards alongside summaries and refuses missing coverage', () => {
   const rules = policy('SiteAuditPro-Backend').rules;
   const checks = rules.find(rule => rule.type === 'required_status_checks').parameters;
-  assert.deepEqual(checks.required_status_checks.map(c => c.context), ['Build', 'Run', 'Verify', 'check / validate', 'check / test']);
+  assert.deepEqual(checks.required_status_checks.map(c => c.context), ['report / Build', 'report / Run', 'report / Verify', 'check / validate', 'check / test']);
   assert.ok(checks.required_status_checks.every(c => c.integration_id === 15368));
   assert.equal(checks.strict_required_status_checks_policy, true);
   assert.throws(() => policy('SiteAuditPro-Web'), /Cannot activate/);
   assert.throws(() => policy('unknown'), /Unknown repository/);
+});
+
+test('native results stay blocked for missing, pending, failed and raced evidence', () => {
+  assert.deepEqual(nativeStates([]), { Build: 'failure', Run: 'failure', Verify: 'failure' });
+  const records = ['Build', 'Run', 'Verify'].map(name => ({ pull_number: 1, name, state: 'pending' }));
+  assert.deepEqual(nativeStates(records), { Build: 'pending', Run: 'pending', Verify: 'pending' });
+  records.push(...['Build', 'Run', 'Verify'].map(name => ({ pull_number: 1, name, state: 'success' })));
+  assert.deepEqual(nativeStates(records), { Build: 'success', Run: 'success', Verify: 'success' });
+  records.push({ pull_number: 2, name: 'Verify', state: 'failure' });
+  assert.equal(nativeStates(records).Verify, 'failure');
+});
+test('native reporter reads CI without calling or reusing custom check APIs', async () => {
+  const { options } = fixture();
+  options.github.rest.checks = new Proxy({}, { get() { throw Error('Custom checks must not be used'); } });
+  const records = [];
+  options.publishResult = result => records.push(result);
+  await report(options);
+  assert.deepEqual(nativeStates(records), { Build: 'success', Run: 'success', Verify: 'success' });
 });

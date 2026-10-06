@@ -18,9 +18,9 @@
       "strict_required_status_checks_policy": true,
       "do_not_enforce_on_create": false,
       "required_status_checks": [
-        { "context": "Build", "integration_id": 15368 },
-        { "context": "Run", "integration_id": 15368 },
-        { "context": "Verify", "integration_id": 15368 }
+        { "context": "report / Build", "integration_id": 15368 },
+        { "context": "report / Run", "integration_id": 15368 },
+        { "context": "report / Verify", "integration_id": 15368 }
       ]
     } }
   ]
