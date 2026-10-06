@@ -226,7 +226,9 @@ async function record(config, api) {
   if(existing[0]) {
     const sameObservation=properties.Observation && text(properties.Observation)===text(existing[0].properties.Observation);
     if(!properties.Observation || sameObservation)delete properties['Observed At'];
-    for(const [name,value] of Object.entries(properties))if(hash(propertyValue(value))===hash(propertyValue(existing[0].properties[name])))delete properties[name];
+    // A row recorded before owned columns still needs this writer's column on an unchanged replay.
+    const ownedMissing=!text(existing[0].properties[OWNERS[config.verification?.kind === 'google-play' ? 'play' : 'deploy'].observation]);
+    for(const [name,value] of Object.entries(properties))if(!(name==='Observation'&&ownedMissing)&&hash(propertyValue(value))===hash(propertyValue(existing[0].properties[name])))delete properties[name];
     if(!Object.keys(properties).length)return {key:manifest.key,pageId:existing[0].id,url:existing[0].url,hash:digest,issues:manifest.issues};
   }
   // Play monitor recordings own the Play columns; every other recording is a deploy.
