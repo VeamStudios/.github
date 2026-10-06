@@ -14,8 +14,8 @@ test('rechecking an existing source defaults to a read-only preview with immutab
 });
 test('explicit apply saves only the supplement and preserves original manifest',async()=>{
  const {config,api,build,calls}=setup();await amend({...config,dryRun:false},api,build);
- const writes=calls.filter(c=>c.method==='PATCH');assert.equal(writes.length,1);assert.deepEqual(Object.keys(writes[0].body.properties),['Announcements','Announcement Source']);
- const p=writes[0].body.properties;assert.deepEqual(JSON.parse(text(p['Announcement Source'])),JSON.parse(text(p.Announcements)).source);
+ const writes=calls.filter(c=>c.method==='PATCH');assert.equal(writes.length,1);assert.deepEqual(Object.keys(writes[0].body.properties),['Announcement Source']);
+ const source=JSON.parse(text(writes[0].body.properties['Announcement Source']));assert.equal(source.digest,hash(source.manifest));
 });
 test('uncertain or pending announcements cannot be replaced by a recovery attempt',async()=>{
  const {config,api,build,row}=setup();row.properties.Announcements=rich(JSON.stringify({version:1,batches:[{state:'Sending'}]}));

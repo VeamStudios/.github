@@ -1,7 +1,7 @@
 const { releaseSchema, targetFilter } = require('./presentation');
 const { AppStoreConnectClient, normalizeVersion } = require('./app-store-client.js');
-const { clients, allPages, withLock, text, rich, hash, verificationProperties } = require('./record.js');
-const { ownColumns, OWNERS } = require('./ledger-columns');
+const { clients, allPages, text, rich, hash, verificationProperties } = require('./record.js');
+const { ownedOnly, OWNERS, effectiveObservation, previousObservation } = require('./ledger-columns');
 
 const DISTRIBUTION_STATES = ['READY_FOR_DISTRIBUTION', 'READY_FOR_SALE'];
 const WITHDRAWN_STATES = ['DEVELOPER_REMOVED_FROM_SALE', 'REMOVED_FROM_SALE'];
@@ -100,7 +100,7 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
       // Keep integrity checks above this exception and validate current releases.
       if (!m.build && m.event === 'baseline' && row.properties.Historical?.checkbox === true) { skippedHistorical++; continue; }
       if (!m.build) { errors.push(`${row.id}: invalid manifest`); continue; }
-      previous = text(row.properties.Observation) ? JSON.parse(text(row.properties.Observation)) : null;
+      previous = previousObservation(row.properties);
       validRecord = true;
       if (previous?.phase === 'withdrawn' || matchingSupersession(previous, m, config.bundleId)) continue;
       // Refresh released rows too: live is an observation, not a permanent exemption.
@@ -118,18 +118,18 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
         if (!config.dryRun) {
           const properties = verificationProperties({ phase: terminal.phase, source: observation.source, verification: observation.verification }, previous, row.properties, observedAt);
           Object.assign(properties, { Observation: rich(JSON.stringify(terminal)), 'Observed At': { date: { start: observedAt } } });
-          await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { ...ownColumns('store', properties, observedAt, row.properties), [OWNERS.store.error]: rich('') } });
+          await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { ...ownedOnly('store', properties, observedAt, row.properties), [OWNERS.store.error]: rich('') } });
         }
         continue;
       }
-      if (['live', 'rollout', 'withdrawn'].includes(previous?.phase)) observation.releasedAt = previous.releasedAt || row.properties['Released At']?.date?.start || observation.releasedAt;
+      if (['live', 'rollout', 'withdrawn'].includes(previous?.phase)) observation.releasedAt = previous.releasedAt || effectiveObservation(row.properties)?.releasedAt || row.properties['Released At']?.date?.start || observation.releasedAt;
       observed++;
       if (!config.dryRun) {
         const properties = verificationProperties(observation, previous, row.properties, observedAt);
         properties.Observation = rich(JSON.stringify({ ...previous, ...observation, releasedAt: observation.releasedAt, superseded: undefined, verificationStatus: undefined, verificationError: undefined, verificationAttempt: undefined }));
         Object.assign(properties, { 'Observed At': { date: { start: observedAt } }, 'Availability Evidence': { url: observation.verification.evidence } });
         if (observation.releasedAt) properties['Released At'] = { date: { start: observation.releasedAt } };
-        await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { ...ownColumns('store', properties, observedAt, row.properties), [OWNERS.store.error]: rich('') } });
+        await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { ...ownedOnly('store', properties, observedAt, row.properties), [OWNERS.store.error]: rich('') } });
       }
     } catch (e) {
       errors.push(`${row.id}: ${e.message}`);
@@ -142,7 +142,7 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
           const properties = { Observation: rich(JSON.stringify(observation)), 'Observed At': { date: { start: attemptedAt } } };
           if (!text(row.properties.Error) || text(row.properties.Error) === previous?.verificationError) properties.Error = rich(e.message);
           // The owned error always reflects this check, even when the shared Error holds another writer's message.
-          await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { ...ownColumns('store', properties, attemptedAt, row.properties), [OWNERS.store.error]: rich(e.message) } });
+          await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { ...ownedOnly('store', properties, attemptedAt, row.properties), [OWNERS.store.error]: rich(e.message) } });
         } catch (writeError) { errors.push(`${row.id}: could not persist verification error: ${writeError.message}`); }
       }
     }
@@ -154,7 +154,8 @@ async function main() {
   for (const [key, value] of Object.entries(config)) if (key !== 'dryRun' && !value) throw new Error(`Missing ${key}`);
   const apple = new AppStoreConnectClient({ keyId: process.env.APP_STORE_CONNECT_API_KEY_ID, issuerId: process.env.APP_STORE_CONNECT_ISSUER_ID, privateKey: process.env.APP_STORE_CONNECT_API_KEY_CONTENT });
   const api = clients(config);
-  const result = config.dryRun ? await monitor(config, api, apple) : await withLock(api.gh, 'VeamStudios/.github', () => monitor(config, api, apple));
+  // Owned columns replace the shared lock: no other writer sends these properties.
+  const result = await monitor(config, api, apple);
   console.log(JSON.stringify(result));
   if (result.errors.length) throw new Error('App Store evidence requires attention; no availability was inferred for failed records');
 }

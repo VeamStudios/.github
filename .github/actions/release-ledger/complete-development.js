@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const {readState,writeState}=require('./automation-state');
-const { clients, withLock, workItems, rich, text, select } = require('./record');
+const { clients, workItems, rich, text, select } = require('./record');
 
 const normalize = id => String(id || '').replace(/-/g, '').toLowerCase();
 const SAP = '30c069083a0380d09845fe97daa54c31';
@@ -64,7 +64,8 @@ async function main() {
   const config = { repo: process.env.GITHUB_REPOSITORY, number: Number(process.env.PR_NUMBER), mode: process.env.RELEASE_LEDGER_MODE || 'off', lifecycleWrites: process.env.RELEASE_LIFECYCLE_WRITES === 'true', workItemsId: process.env.WORK_ITEMS_ID || '20aeddfe-a3f7-41e9-b440-c9eb6b26887f', githubToken: process.env.GH_TOKEN, notionToken: process.env.NOTION_TOKEN };
   if (config.mode !== 'off' && (!config.githubToken || !config.notionToken)) throw new Error('GitHub and Notion tokens are required');
   const api = clients(config);
-  const result = config.mode === 'live' && config.lifecycleWrites ? await withLock(api.gh, 'VeamStudios/.github', () => completeDevelopment(config, api)) : await completeDevelopment(config, api);
+  // No shared lock: the worker rechecks this evidence before marking a platform Released.
+  const result = await completeDevelopment(config, api);
   fs.writeFileSync('development-completion.json', JSON.stringify(result, null, 2) + '\n');
   console.log(JSON.stringify(result));
 }

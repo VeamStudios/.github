@@ -4,7 +4,7 @@ const { parseWorkItemLinks } = require('./work-item-links');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const { withLock } = require('./lock');
-const { ownColumns, OWNERS } = require('./ledger-columns');
+const { ownColumns, OWNERS, WORKER_FIELDS, effectiveObservation, previousObservation: priorObservation } = require('./ledger-columns');
 
 const SHA = /^[a-f0-9]{40}$/;
 const canonical = value => JSON.stringify(value, (_, v) => v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v);
@@ -148,14 +148,15 @@ function workItemRelation(ids, previous) {
 }
 function deployedBaseline(row) {
   try {
-    const m=JSON.parse(text(row.properties.Manifest)),o=JSON.parse(text(row.properties.Observation)||'null');
+    const m=JSON.parse(text(row.properties.Manifest)),o=priorObservation(row.properties);
+    const evidence=effectiveObservation(row.properties)?.availabilityEvidence||row.properties['Availability Evidence']?.url;
     if(hash(m)!==text(row.properties['Manifest Hash'])||!o)return false;
     const b=o.baseline;
     // An audited baseline only chooses the comparison commit; it never establishes Play availability.
     if(b?.kind==='audited-production-baseline'&&b.manifestHash===hash(m)&&b.commit===m.commit&&b.repository===m.repository&&b.target===m.target&&Number.isFinite(Date.parse(b.checkedAt))&&Array.isArray(b.evidence)&&b.evidence.length>=2&&b.evidence.every(url=>typeof url==='string'&&url.startsWith('https://'))&&(!m.target.match(/^(ios|android)-/)||Boolean(b.build&&b.build===(m.build||text(row.properties.Build)))))return true;
     if(m.repository==='VeamStudios/SiteAuditPro-AndroidNew'&&m.target==='android-consumer')return o.phase==='live'&&require('./google-play').validGooglePlay(o.verification,m);
-    if(m.target.includes('ios')||m.target.includes('android'))return Boolean(o.phase==='live'&&m.build&&((o.verification?.kind==='app-store'&&o.verification.build===m.build)||(o.verification?.kind==='manual'&&o.verification.build===m.build&&row.properties['Audience Verified']?.checkbox&&row.properties['Availability Evidence']?.url)));
-    return Boolean(o.phase==='deployed'&&((o.verification?.kind==='http'&&o.verification.commit===m.commit&&o.verification.reportedCommit===m.commit&&o.verification.repository===m.repository&&o.verification.evidence)||(o.verification?.kind==='cloud-run'&&validCloudRun(o.verification,m.commit,m.repository))||(o.verification?.kind==='manual'&&o.verification.commit===m.commit&&o.verification.evidence&&row.properties['Audience Verified']?.checkbox&&row.properties['Availability Evidence']?.url)));
+    if(m.target.includes('ios')||m.target.includes('android'))return Boolean(o.phase==='live'&&m.build&&((o.verification?.kind==='app-store'&&o.verification.build===m.build)||(o.verification?.kind==='manual'&&o.verification.build===m.build&&row.properties['Audience Verified']?.checkbox&&evidence)));
+    return Boolean(o.phase==='deployed'&&((o.verification?.kind==='http'&&o.verification.commit===m.commit&&o.verification.reportedCommit===m.commit&&o.verification.repository===m.repository&&o.verification.evidence)||(o.verification?.kind==='cloud-run'&&validCloudRun(o.verification,m.commit,m.repository))||(o.verification?.kind==='manual'&&o.verification.commit===m.commit&&o.verification.evidence&&row.properties['Audience Verified']?.checkbox&&evidence)));
   }catch{return false}
 }
 function verificationProperties(config, previous, oldProperties, observedAt) {
@@ -197,7 +198,7 @@ async function record(config, api) {
   const states = { prepare: 'Waiting', deployed: 'Waiting', uploaded: 'Waiting', live: 'Waiting', rollout: 'Limited rollout', withdrawn: 'Withdrawn', halted: 'Waiting' };
   if (!states[config.phase]) throw new Error('Unknown release phase.');
   const observedAt = new Date().toISOString();
-  const previousObservation = text(existing[0]?.properties.Observation) ? JSON.parse(text(existing[0].properties.Observation)) : null;
+  const previousObservation = priorObservation(existing[0]?.properties);
   const rank = { prepare: 0, uploaded: 1, deployed: 2, rollout: 3, live: 4, withdrawn: 5 };
   const acceptObservation = config.verification?.kind==='google-play' || !previousObservation || rank[config.phase] >= (rank[previousObservation.phase] ?? -1);
   const oldState = existing[0]?.properties.State?.select?.name;
@@ -209,7 +210,7 @@ async function record(config, api) {
   // Transport evidence does not imply audience availability. The processor verifies this observation.
   if (config.phase !== 'prepare' && acceptObservation) {
     properties['Availability Evidence'] = { url: config.source };
-    if (['deployed', 'live', 'rollout', 'withdrawn'].includes(config.phase)) properties['Released At'] = { date: { start: config.releasedAt || existing[0]?.properties['Released At']?.date?.start || observedAt } };
+    if (['deployed', 'live', 'rollout', 'withdrawn'].includes(config.phase)) properties['Released At'] = { date: { start: config.releasedAt || (existing[0] && effectiveObservation(existing[0].properties)?.releasedAt) || existing[0]?.properties['Released At']?.date?.start || observedAt } };
     Object.assign(properties,verificationProperties(config,previousObservation,existing[0]?.properties,observedAt));
     // Preserve processor-owned display labels on source replay. They never
     // establish transport or publication authority; the processor re-evaluates
@@ -235,6 +236,9 @@ async function record(config, api) {
   const owner = config.verification?.kind === 'google-play' ? 'play' : 'deploy';
   Object.assign(properties, ownColumns(owner, properties, observedAt, existing[0]?.properties));
   if (properties.Observation && !config.verificationError) properties[OWNERS[owner].error] = rich('');
+  // The Notion worker owns these; a new row still starts with its initial State.
+  for (const name of WORKER_FIELDS) if (existing[0] || name !== 'State') delete properties[name];
+  if (existing[0] && !Object.keys(properties).length) return { key: manifest.key, pageId: existing[0].id, url: existing[0].url, hash: digest, issues: manifest.issues };
   if (config.dryRun) return { manifest, properties, dryRun: true };
   let row;
   try { row = existing[0] ? await api.notion(`/pages/${existing[0].id}`, 'PATCH', { properties }) : await api.notion('/pages', 'POST', { parent: { type: 'data_source_id', data_source_id: config.releasesId }, properties }); }
@@ -271,7 +275,8 @@ async function main() {
     config.verification={kind:'manual',build:config.build,commit:git('rev-parse',`${config.commit}^{commit}`),evidence:evidence.href,checkedAt:new Date().toISOString(),actor:process.env.GITHUB_ACTOR};
   }
   const api = clients(config);
-  const result = config.dryRun ? await record(config, api) : await withLock(api.gh, 'VeamStudios/.github', () => record(config, api));
+  // Owned columns replace the shared lock: no other writer sends these properties.
+  const result = await record(config, api);
   console.log(JSON.stringify({ key: result.key || result.manifest.key, url: result.url, hash: result.hash, dryRun: config.dryRun }));
   if(config.verificationError)throw new Error(config.verificationError);
 }

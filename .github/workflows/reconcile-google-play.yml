@@ -27,6 +27,11 @@ jobs:
   reconcile:
     runs-on: ubuntu-latest
     environment: prod
+    # Replaces the shared ledger lock for this job: one Play reconciliation per
+    # repository at a time. GitHub releases the group if a run is cancelled.
+    concurrency:
+      group: release-ledger-play-${{ github.repository }}
+      cancel-in-progress: false
     steps:
       - uses: actions/create-github-app-token@v3
         id: token

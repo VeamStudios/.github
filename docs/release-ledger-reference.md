@@ -68,7 +68,11 @@ Each writer also records what it sends in Releases columns it alone owns, so wri
 | Website publisher (`play-website.js`) | Website Receipt |
 | Release-notes amender (`amend.js`) | Announcement Source |
 
-An owned observation column holds `{owner, recordedAt, observation, availabilityEvidence?, releasedAt?}`. `effectiveObservation` in `ledger-columns.js` rebuilds the shared Observation by applying the owned records oldest first. A deploy record only replaces an equal or lower phase; App Store and Play records always replace; the Website Receipt is merged in as `website`. NotionWorkers implements the same fold. During migration the shared fields are still written and remain authoritative.
+An owned observation column holds `{owner, recordedAt, observation, availabilityEvidence?, releasedAt?}`. `effectiveObservation` in `ledger-columns.js` rebuilds the shared Observation by applying the owned records oldest first. A deploy record only replaces an equal or lower phase; App Store and Play records always replace; the Website Receipt is merged in as `website`. NotionWorkers implements the same fold.
+
+Shared writers no longer send the fields the Notion worker owns: Observation, Observed At, Released At, Availability Evidence, Error, Operations Receipt and, after creation, State. They read the folded observation, falling back to the shared Observation for rows recorded before the owned columns. Their own error columns hold the latest result of their own check. Recovery history and the shared Error belong to the worker. The amender writes only Announcement Source; Announcements remains the worker's receipt ledger.
+
+Shared writers no longer take `refs/tags/veam-release-ledger-lock`; the owned columns make concurrent writes safe. Play reconciliation runs one at a time per repository through the reusable workflow's concurrency group. `publish-play-website.js` still takes the lock until it is migrated. The website publisher keeps writing `Observation.website` beside Website Receipt so the existing website guard keeps working. The Notion worker keeps its own lock against overlapping worker runs and replaces a worker-owned lock older than six minutes.
 
 A cancelled job can leave `refs/tags/veam-release-ledger-lock`. Verify no holder is active, reconcile Sending receipts, then remove only that exact lock ref. Recovery workflows use cancel-in-progress: false so a newer retry does not interrupt a lock holder. Never remove software version tags. The lock is never stolen merely because it is old.
 
