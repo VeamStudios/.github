@@ -8,7 +8,16 @@ function workItemGate({ title, body }) {
   }
   const { listedUrls, invalidEntries } = parseWorkItemLinks(body);
   if (invalidEntries.length) {
-    return { ok: false, summary: 'Every entry under `Work Items:` must be a valid Notion Work Item URL.' };
+    const unbulletedUrl = invalidEntries.some(entry =>
+      parseWorkItemLinks(`Work Items:\n- ${entry}`).listedUrls.length > 0,
+    );
+    const reason = unbulletedUrl
+      ? 'A valid Notion URL is missing its `- ` bullet.'
+      : 'An entry is not a valid Notion Work Item URL.';
+    return {
+      ok: false,
+      summary: `${reason} Edit the PR description so each entry is a URL-only bullet, for example:\n\nWork Items:\n- https://www.notion.so/<work-item-id>`,
+    };
   }
   if (!listedUrls.length) {
     return { ok: false, summary: 'Feature PRs need a `Work Items:` list with at least one Notion Work Item URL in the description. To create one, open the Notion Work Item check and click Create work item.' };

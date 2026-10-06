@@ -39,3 +39,14 @@ for (const [title, body, ok] of [
 ]) test(`PR gate requires Work Items only for feat titles: ${title.trim()}`, () => {
   assert.equal(workItemGate({ title, body }).ok, ok);
 });
+test('PR gate explains an unbulleted Notion URL and shows the required format', () => {
+  const result = workItemGate({ title: 'feat: Camera', body: `Work Items:\nhttps://www.notion.so/${a}` });
+  assert.equal(result.ok, false);
+  assert.match(result.summary, /missing its `- ` bullet/);
+  assert.match(result.summary, /Work Items:\n- https:\/\/www\.notion\.so\//);
+});
+test('PR gate distinguishes an invalid URL from a missing bullet', () => {
+  const result = workItemGate({ title: 'feat: Camera', body: 'Work Items:\n- not a link' });
+  assert.equal(result.ok, false);
+  assert.match(result.summary, /not a valid Notion Work Item URL/);
+});
