@@ -205,6 +205,9 @@ for (const phase of ['live', 'rollout']) {
     assert.deepEqual(fresh.website, previous.website);
     assert.equal(properties['Released At'].date.start, firstSeen);
     assert.equal(properties['Observed At'].date.start, now());
+    const owned = JSON.parse(text(properties['App Store Observation']));
+    const { website, ...expected } = fresh;
+    assert.deepEqual(owned, { owner: 'store', recordedAt: now(), observation: expected, availabilityEvidence: properties['Availability Evidence'].url, releasedAt: firstSeen });
   });
 }
 

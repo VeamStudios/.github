@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {GooglePlayMonitor,observePlay,resolveBuild,snapshotBuilds,validGooglePlay,PACKAGE,REPOSITORY,ROOT}=require('./google-play');
 const {ensureRelease,monitor}=require('./monitor-play');
-const {hash,rich}=require('./record');
+const {hash,rich,text}=require('./record');
 const identity={repository:REPOSITORY,target:'android-consumer',version:'v4.0.0',build:'211481388',commit:'a'.repeat(40),internalTag:'internal/4.0.0-211481388'};
 function snapshot(state='PUBLISHED',status='completed') {return {packageName:PACKAGE,track:'production',checkedAt:new Date().toISOString(),evidence:`${ROOT}/tracks/production/releases`,rolloutEvidence:`${ROOT}/edits/123/tracks/production`,lifecycle:{releases:[{track:'production',activeArtifacts:[{versionCode:211481388}],releaseLifecycleState:`RELEASE_LIFECYCLE_STATE_${state}`}]},rollout:{track:'production',releases:[{versionCodes:['211481388'],status,...(status==='inProgress'?{userFraction:0.2}:{})}]}}}
 for(const state of ['DRAFT','NOT_SENT_FOR_REVIEW','IN_REVIEW','APPROVED_NOT_PUBLISHED','NOT_APPROVED'])test(`${state} is waiting even if edit reports completed`,()=>assert.equal(observePlay(identity,snapshot(state)).phase,'uploaded'));
@@ -70,5 +70,6 @@ test('API failure invalidates pending availability and never calls recorder or p
   const api={gh:()=>assert.fail(),notion:async(path,method,body)=>{if(path.includes('/query'))return {results:[row]};updates.push(body);return {}}};
   await assert.rejects(()=>monitor({repo:REPOSITORY,releasesId:'db',dryRun:false},api,{snapshot:async()=>{throw Error('API unavailable')}},{recorder:()=>assert.fail(),publish:()=>assert.fail()}),/unavailable/);
   assert.equal(updates.length,1);assert.match(JSON.stringify(updates[0]),/verification\\":null/);
+  const owned=JSON.parse(text(updates[0].properties['Play Observation']));assert.equal(owned.observation.verification,null);assert.equal(text(updates[0].properties['Play Error']),'API unavailable');
 });
 module.exports={identity,snapshot};

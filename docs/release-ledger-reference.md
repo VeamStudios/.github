@@ -58,6 +58,18 @@ Shared-action writers wait for the existing lock for up to five minutes by defau
 
 `record-release.yml` and the release-ledger composite action accept optional `lock_wait_ms` (default `300000`). Direct Node entry points accept `RELEASE_LEDGER_LOCK_WAIT_MS`; programmatic `withLock` callers can pass `timeoutMs`. Values must be non-negative safe integers in milliseconds; `0` makes one immediate attempt without contention waits. Existing callers need no changes. Explicit legacy `attempts` remains an additional cap, while the default no longer stops after 30 attempts. The timeout reports elapsed time, budget, attempt count, shared repository/ref, last observed holder tag SHA and last acquisition error. Inspect that exact tag and its ownership metadata if recovery is needed. This setting only changes acquisition waiting, not lock lifetime, worker scheduling or the protected operation.
 
+Each writer also records what it sends in Releases columns it alone owns, so writers will no longer need the shared lock to avoid overwriting each other:
+
+| Writer | Owned columns |
+|---|---|
+| Deploy recorder (`record.js`) | Deploy Observation, Deploy Error |
+| App Store monitor (`monitor-store.js`) | App Store Observation, App Store Error |
+| Google Play monitor (`monitor-play.js`, including its `record()` calls) | Play Observation, Play Error |
+| Website publisher (`play-website.js`) | Website Receipt |
+| Release-notes amender (`amend.js`) | Announcement Source |
+
+An owned observation column holds `{owner, recordedAt, observation, availabilityEvidence?, releasedAt?}`. `effectiveObservation` in `ledger-columns.js` rebuilds the shared Observation by applying the owned records oldest first. A deploy record only replaces an equal or lower phase; App Store and Play records always replace; the Website Receipt is merged in as `website`. NotionWorkers implements the same fold. During migration the shared fields are still written and remain authoritative.
+
 A cancelled job can leave `refs/tags/veam-release-ledger-lock`. Verify no holder is active, reconcile Sending receipts, then remove only that exact lock ref. Recovery workflows use cancel-in-progress: false so a newer retry does not interrupt a lock holder. Never remove software version tags. The lock is never stolen merely because it is old.
 
 </details>

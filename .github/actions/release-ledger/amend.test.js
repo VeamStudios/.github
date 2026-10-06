@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {amend}=require('./amend');
-const {hash,rich}=require('./record');
+const {hash,rich,text}=require('./record');
 function setup(){
  const original={schemaVersion:2,repository:'VeamStudios/Test',target:'website',commit:'a'.repeat(40),baseline:'b'.repeat(40),key:'release',version:'v1',changes:[],workItemSnapshots:[],issues:[]};
  const row={id:'page',parent:{data_source_id:'releases'},properties:{Manifest:rich(JSON.stringify(original)),'Manifest Hash':rich(hash(original)),Announcements:rich('')}};
@@ -14,7 +14,8 @@ test('rechecking an existing source defaults to a read-only preview with immutab
 });
 test('explicit apply saves only the supplement and preserves original manifest',async()=>{
  const {config,api,build,calls}=setup();await amend({...config,dryRun:false},api,build);
- const writes=calls.filter(c=>c.method==='PATCH');assert.equal(writes.length,1);assert.deepEqual(Object.keys(writes[0].body.properties),['Announcements']);
+ const writes=calls.filter(c=>c.method==='PATCH');assert.equal(writes.length,1);assert.deepEqual(Object.keys(writes[0].body.properties),['Announcements','Announcement Source']);
+ const p=writes[0].body.properties;assert.deepEqual(JSON.parse(text(p['Announcement Source'])),JSON.parse(text(p.Announcements)).source);
 });
 test('uncertain or pending announcements cannot be replaced by a recovery attempt',async()=>{
  const {config,api,build,row}=setup();row.properties.Announcements=rich(JSON.stringify({version:1,batches:[{state:'Sending'}]}));

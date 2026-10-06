@@ -1,6 +1,7 @@
 const { releaseSchema, targetFilter } = require('./presentation');
 const { AppStoreConnectClient, normalizeVersion } = require('./app-store-client.js');
 const { clients, allPages, withLock, text, rich, hash, verificationProperties } = require('./record.js');
+const { ownColumns, OWNERS } = require('./ledger-columns');
 
 const DISTRIBUTION_STATES = ['READY_FOR_DISTRIBUTION', 'READY_FOR_SALE'];
 const WITHDRAWN_STATES = ['DEVELOPER_REMOVED_FROM_SALE', 'REMOVED_FROM_SALE'];
@@ -117,7 +118,7 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
         if (!config.dryRun) {
           const properties = verificationProperties({ phase: terminal.phase, source: observation.source, verification: observation.verification }, previous, row.properties, observedAt);
           Object.assign(properties, { Observation: rich(JSON.stringify(terminal)), 'Observed At': { date: { start: observedAt } } });
-          await api.notion(`/pages/${row.id}`, 'PATCH', { properties });
+          await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { ...ownColumns('store', properties, observedAt, row.properties), [OWNERS.store.error]: rich('') } });
         }
         continue;
       }
@@ -128,7 +129,7 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
         properties.Observation = rich(JSON.stringify({ ...previous, ...observation, releasedAt: observation.releasedAt, superseded: undefined, verificationStatus: undefined, verificationError: undefined, verificationAttempt: undefined }));
         Object.assign(properties, { 'Observed At': { date: { start: observedAt } }, 'Availability Evidence': { url: observation.verification.evidence } });
         if (observation.releasedAt) properties['Released At'] = { date: { start: observation.releasedAt } };
-        await api.notion(`/pages/${row.id}`, 'PATCH', { properties });
+        await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { ...ownColumns('store', properties, observedAt, row.properties), [OWNERS.store.error]: rich('') } });
       }
     } catch (e) {
       errors.push(`${row.id}: ${e.message}`);
@@ -140,7 +141,8 @@ async function monitor(config, api, apple, now = () => new Date().toISOString())
         try {
           const properties = { Observation: rich(JSON.stringify(observation)), 'Observed At': { date: { start: attemptedAt } } };
           if (!text(row.properties.Error) || text(row.properties.Error) === previous?.verificationError) properties.Error = rich(e.message);
-          await api.notion(`/pages/${row.id}`, 'PATCH', { properties });
+          // The owned error always reflects this check, even when the shared Error holds another writer's message.
+          await api.notion(`/pages/${row.id}`, 'PATCH', { properties: { ...ownColumns('store', properties, attemptedAt, row.properties), [OWNERS.store.error]: rich(e.message) } });
         } catch (writeError) { errors.push(`${row.id}: could not persist verification error: ${writeError.message}`); }
       }
     }

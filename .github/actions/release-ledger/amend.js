@@ -1,6 +1,7 @@
 // Operator recovery: preview or generate an evidence-backed supplement; never replace shipped facts.
 const {clients,allPages,withLock,hash,text,rich}=require('./record');
 const {buildChangelogManifest}=require('./changelog');
+const {ANNOUNCEMENT_SOURCE}=require('./ledger-columns');
 async function amend(config,api,build=buildChangelogManifest){
   const row=await api.notion(`/pages/${config.pageId}`);
   if((row.parent?.data_source_id||'').replace(/-/g,'')!==config.releasesId.replace(/-/g,''))throw new Error('Page is outside Releases');
@@ -27,7 +28,7 @@ async function amend(config,api,build=buildChangelogManifest){
   if(config.dryRun!==false)return preview;
   const current=await api.notion(`/pages/${row.id}`);
   if(text(current.properties['Manifest Hash'])!==text(row.properties['Manifest Hash'])||text(current.properties.Manifest)!==text(row.properties.Manifest)||text(current.properties.Announcements)!==text(row.properties.Announcements))throw new Error('Release changed during note preparation; inspect before retrying');
-  await api.notion(`/pages/${row.id}`,'PATCH',{properties:{Announcements:rich(JSON.stringify(ledger))}});
+  await api.notion(`/pages/${row.id}`,'PATCH',{properties:{Announcements:rich(JSON.stringify(ledger)),[ANNOUNCEMENT_SOURCE]:rich(JSON.stringify(ledger.source))}});
   return preview;
 }
 async function main(){
