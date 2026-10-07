@@ -1,0 +1,22 @@
+name: Evaluate Changelog Entry Assessment
+on:
+  workflow_call:
+    secrets:
+      CURSOR_API_KEY:
+        required: true
+permissions:
+  contents: read
+jobs:
+  synthetic:
+    name: Synthetic cases
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Evaluate three public synthetic policy cases
+        uses: VeamStudios/.github/.github/actions/check-changelog-entry@7c97e5ade1a92686062364126922ca976bd19c08
+        with:
+          assessment-mode: synthetic-evaluation
+          repository: ${{ github.repository }}
+          head: ${{ github.event.pull_request.head.sha }}
+          base: ${{ github.event.pull_request.base.sha }}
+          cursor-api-key: ${{ secrets.CURSOR_API_KEY }}

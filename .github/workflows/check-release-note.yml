@@ -18,7 +18,7 @@ on:
         default: ''
         type: string
       coverage-mode:
-        description: Advisory entry preview or changelog format/link diagnostics (preview or deterministic)
+        description: preview, deterministic advisory diagnostics, or enforce missing-entry coverage
         required: false
         default: preview
         type: string
@@ -32,6 +32,11 @@ on:
         required: false
         default: categorized
         type: string
+    secrets:
+      NOTION_TOKEN:
+        required: false
+      CURSOR_API_KEY:
+        required: false
 permissions:
   contents: read
   pull-requests: read
@@ -39,11 +44,12 @@ jobs:
   release-note:
     name: ${{ inputs.job-name }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Validate changelog mode
-        if: ${{ inputs.coverage-mode != 'preview' && inputs.coverage-mode != 'deterministic' }}
+        if: ${{ inputs.coverage-mode != 'preview' && inputs.coverage-mode != 'deterministic' && inputs.coverage-mode != 'enforce' }}
         run: |
-          printf '%s\n' '::error::coverage-mode must be preview or deterministic.'
+          printf '%s\n' '::error::coverage-mode must be preview, deterministic or enforce.'
           exit 1
       - name: Describe changelog preview mode
         if: ${{ inputs.coverage-mode == 'preview' }}
@@ -73,6 +79,16 @@ jobs:
           base: ${{ github.event.pull_request.base.sha }}
           changelog-path: ${{ inputs.changelog-path }}
           changelog-format: ${{ inputs.changelog-format }}
+
+      - name: Check missing changelog entries
+        if: ${{ inputs.coverage-mode == 'enforce' }}
+        uses: VeamStudios/.github/.github/actions/check-changelog-entry@7c97e5ade1a92686062364126922ca976bd19c08
+        with:
+          repository: ${{ github.repository }}
+          head: ${{ github.event.pull_request.head.sha }}
+          base: ${{ github.event.pull_request.base.sha }}
+          notion-token: ${{ secrets.NOTION_TOKEN }}
+          cursor-api-key: ${{ secrets.CURSOR_API_KEY }}
 
       - name: Describe this check
         if: ${{ always() && inputs.job-summary != '' }}

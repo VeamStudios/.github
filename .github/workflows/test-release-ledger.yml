@@ -4,6 +4,7 @@ on:
     paths:
       - '.github/workflows/**'
       - '.github/actions/release-ledger/**'
+      - '.github/actions/check-changelog-entry/**'
       - '.github/actions/remote-config-notion-sync/**'
       - '.github/workflows/reconcile-google-play.yml'
       - '.github/workflows/update-changelog-website.yml'
@@ -19,6 +20,7 @@ on:
     paths:
       - '.github/workflows/**'
       - '.github/actions/release-ledger/**'
+      - '.github/actions/check-changelog-entry/**'
       - '.github/actions/remote-config-notion-sync/**'
       - '.github/workflows/reconcile-google-play.yml'
       - '.github/workflows/update-changelog-website.yml'
