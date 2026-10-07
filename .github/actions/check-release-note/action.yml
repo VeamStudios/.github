@@ -7,6 +7,10 @@ inputs:
   head:
     description: Exact reviewed PR head
     required: true
+  summary-title:
+    description: Heading for the changelog review summary
+    required: false
+    default: Release announcement preview
 runs:
   using: composite
   steps:
@@ -14,4 +18,5 @@ runs:
       env:
         PR_BODY: ${{ inputs.body }}
         PR_HEAD_SHA: ${{ inputs.head }}
+        PR_CHECK_SUMMARY_TITLE: ${{ inputs.summary-title }}
       run: node "${{ github.action_path }}/../release-ledger/check-note.js"

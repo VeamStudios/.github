@@ -3,6 +3,31 @@ name: PR Governance
 on:
   workflow_call:
     inputs:
+      work-item-check-name:
+        description: Display name for the required Work Item gate
+        required: false
+        default: Work Item gate
+        type: string
+      work-item-helper-name:
+        description: Display name of the informational Work Item setup check
+        required: false
+        default: Notion Work Item
+        type: string
+      work-item-summary:
+        description: Optional short explanation for the Work Item job summary
+        required: false
+        default: ''
+        type: string
+      qa-queue-check-name:
+        description: Display name for the QA project queue job
+        required: false
+        default: qa-project-status
+        type: string
+      qa-queue-summary:
+        description: Optional short explanation for the QA queue job summary
+        required: false
+        default: ''
+        type: string
       bot-qa-client-id:
         description: 'GitHub App client ID used to mint the QA bot token'
         required: false
@@ -24,7 +49,7 @@ on:
 
 jobs:
   work-item-gate:
-    name: Work Item gate
+    name: ${{ inputs.work-item-check-name }}
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     concurrency:
@@ -46,18 +71,24 @@ jobs:
           persist-credentials: false
       - name: Require a Work Items link on feat PRs
         uses: actions/github-script@v8
+        env:
+          HELPER_CHECK_NAME: ${{ inputs.work-item-helper-name }}
+          CHECK_SUMMARY: ${{ inputs.work-item-summary }}
         with:
           script: |
             const { workItemGate } = require(`${process.env.GITHUB_WORKSPACE}/.veam-shared/.github/actions/release-ledger/work-item-gate.js`);
             const pr = context.payload.pull_request;
-            const result = workItemGate({ title: pr.title, body: pr.body });
+            const result = workItemGate({ title: pr.title, body: pr.body, helperCheckName: process.env.HELPER_CHECK_NAME });
+            if (process.env.CHECK_SUMMARY) core.summary.addRaw(`${process.env.CHECK_SUMMARY}\n\n`);
             await core.summary.addRaw(result.summary).write();
             if (!result.ok) core.setFailed(result.summary);
             else core.info(result.summary);
 
   qa-project-status:
-    if: "github.event.action == 'labeled' && github.event.label.name == 'bot: qa needed'"
+    name: ${{ inputs.qa-queue-check-name }}
     runs-on: ubuntu-latest
+    env:
+      QA_QUEUE_NEEDED: "${{ github.event.action == 'labeled' && github.event.label.name == 'bot: qa needed' }}"
     concurrency:
       group: qa-project-status-${{ github.repository }}-${{ github.event.pull_request.number }}
       cancel-in-progress: false
@@ -66,6 +97,7 @@ jobs:
 
     steps:
       - name: Validate QA bot configuration
+        if: env.QA_QUEUE_NEEDED == 'true'
         run: |
           if [ -z "${{ secrets.BOT_QA_PRIVATE_KEY }}" ]; then
             echo "::error::Required workflow secret BOT_QA_PRIVATE_KEY is missing"
@@ -73,6 +105,7 @@ jobs:
           fi
 
       - name: Mint GitHub App token
+        if: env.QA_QUEUE_NEEDED == 'true'
         id: app_token
         uses: actions/create-github-app-token@v3
         with:
@@ -81,6 +114,7 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Set QA project status to Not Started
+        if: env.QA_QUEUE_NEEDED == 'true'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app_token.outputs.token }}
@@ -209,3 +243,15 @@ jobs:
             core.info(
               `Set Project ${PROJECT_NUMBER} item ${itemId} to Not Started for ${context.repo.owner}/${context.repo.repo}#${pr.number}`,
             );
+
+      - name: Describe this check
+        if: ${{ always() }}
+        env:
+          CHECK_SUMMARY: ${{ inputs.qa-queue-summary }}
+        run: |
+          if [ -n "$CHECK_SUMMARY" ]; then
+            printf '%s\n\n' "$CHECK_SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "$QA_QUEUE_NEEDED" != "true" ]; then
+            printf '%s\n' 'No queue update needed: this event did not apply the QA-needed label.' >> "$GITHUB_STEP_SUMMARY"
+          fi

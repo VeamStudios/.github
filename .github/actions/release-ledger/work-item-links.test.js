@@ -32,6 +32,13 @@ test('legacy singular feature note matches the same Work Item IDs as the Work It
   assert.doesNotThrow(() => validateNote({ ...note, kind: 'fix', workItems: [] }, []));
 });
 const { workItemGate } = require('./work-item-gate');
+test('missing feature link points to the configured setup check and retains the legacy default', () => {
+  const pr = { title: 'feat: Camera', body: '' };
+  assert.match(workItemGate(pr).summary, /open the Notion Work Item check/);
+  const result = workItemGate({ ...pr, helperCheckName: 'Work Items - Setup' });
+  assert.equal(result.ok, false);
+  assert.match(result.summary, /open the Work Items - Setup check/);
+});
 for (const [title, body, ok] of [
   ['chore: align environment versions', '', true],
   ['fix(auth): retry token refresh', '', true],
