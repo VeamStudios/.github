@@ -18,6 +18,7 @@ function processFailure(stderr, stage, exitCode) {
   if (/unauthenticated|unauthorized|invalid.{0,20}(api.key|token)|authentication|not logged in|login required|401/i.test(stderr)) category = 'authentication';
   else if (/model.{0,60}(not found|unavailable|invalid|not supported|denied)|unknown model/i.test(stderr)) category = 'model';
   else if (/workspace.{0,40}trust|untrusted|trust.{0,40}(workspace|directory)/i.test(stderr)) category = 'workspace_trust';
+  else if (/missing field|unknown variant|invalid type|failed to (parse|read).{0,30}policy|invalid.{0,20}policy/i.test(stderr)) category = 'sandbox_policy';
   else if (/Landlock V3.*not supported|unsupported kernel features|Sandbox requires kernel/i.test(stderr)) category = 'sandbox_kernel';
   else if (/partially enforced|ruleset was NOT enforced|not_enforced/i.test(stderr)) category = 'sandbox_enforcement';
   else if (/Step 5.5|Step 6\/7|seccomp.*failed|Failed to apply seccomp/i.test(stderr)) category = 'sandbox_seccomp';
@@ -26,7 +27,11 @@ function processFailure(stderr, stage, exitCode) {
   else if (/Landlock|failed to apply landlock/i.test(stderr)) category = 'sandbox_landlock';
   else if (/sandbox|bwrap|bubblewrap/i.test(stderr)) category = 'sandbox';
   else if (/ECONN|ENOTFOUND|ETIMEDOUT|network|fetch failed|connection|TLS|certificate/i.test(stderr)) category = 'network';
-  return new CursorAssessmentError(category, `Changelog assessment provider failed (${category}).`, stage, exitCode);
+  const error = new CursorAssessmentError(category, `Changelog assessment provider failed (${category}).`, stage, exitCode);
+  // Only this native helper runs without credentials, source, model or prompt.
+  // Never expose provider stderr through this diagnostic field.
+  if (stage === 'sandbox-preflight') error.nativeDiagnostic = stderr.slice(0, 4096).replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/[\u202a-\u202e\u2066-\u2069]/g, '');
+  return error;
 }
 function execute(executable, args, { cwd, env, timeoutMs, onLine, stage = 'provider' }) {
   return new Promise((resolve, reject) => {
@@ -150,7 +155,12 @@ if (require.main === module && process.argv[2] === '--sandbox-preflight') {
   preflightSandbox(process.env.CURSOR_EXECUTABLE).then(() => console.log('Cursor sandbox preflight: supported.')).catch(error => {
     const code = error instanceof CursorAssessmentError ? error.code : 'unexpected_execution';
     const status = Number.isInteger(error.exitCode) ? `; exit=${error.exitCode}` : '';
-    console.error(`Cursor sandbox preflight: ${code}${status}.`); process.exitCode = 1;
+    console.error(`Cursor sandbox preflight: ${code}${status}.`);
+    if (error instanceof CursorAssessmentError && error.stage === 'sandbox-preflight' && typeof error.nativeDiagnostic === 'string') {
+      // A single JSON-escaped line with a fixed prefix cannot create Actions commands.
+      console.error('Native sandbox diagnostic (credential-free): ' + JSON.stringify(error.nativeDiagnostic));
+    }
+    process.exitCode = 1;
   });
 }
 module.exports = { runAssessment, preflightSandbox, CursorAssessmentError };

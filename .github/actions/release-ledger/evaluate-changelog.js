@@ -34,7 +34,7 @@ async function evaluate(options, dependencies = {}) {
     } catch (error) {
       totals.errors++;
       totals.skipped = totals.total - totals.passed - totals.mismatched - totals.errors;
-      const allowedCodes = new Set(['sandbox_kernel','sandbox_enforcement','sandbox_seccomp','sandbox_namespace','sandbox_helper','sandbox_landlock','authentication','model','workspace_trust','sandbox','network','cli_process','cli_execution','timeout','process_start','output_limit','invalid_event','configuration','input_limit','version_mismatch','missing_terminal','policy_json','policy_identity']);
+      const allowedCodes = new Set(['sandbox_policy','sandbox_kernel','sandbox_enforcement','sandbox_seccomp','sandbox_namespace','sandbox_helper','sandbox_landlock','authentication','model','workspace_trust','sandbox','network','cli_process','cli_execution','timeout','process_start','output_limit','invalid_event','configuration','input_limit','version_mismatch','missing_terminal','policy_json','policy_identity']);
       const diagnostic = { case: example.name, code: error instanceof CursorAssessmentError && allowedCodes.has(error.code) ? error.code : error instanceof AssessmentValidationError ? 'assessment_validation' : 'unexpected_execution' };
       if (error instanceof CursorAssessmentError) {
         diagnostic.stage = error.stage === 'version' ? 'version' : 'provider';

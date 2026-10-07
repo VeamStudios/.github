@@ -108,3 +108,14 @@ for (const [message, code] of [['Landlock V3 filesystem restrictions not support
   await fs.writeFile(helper, `#!${process.execPath}\nprocess.stderr.write(${JSON.stringify(message)});process.exit(2);`, {mode:0o700});
   await assert.rejects(preflightSandbox(options.executable), error => error.code === code && error.stage === 'sandbox-preflight' && error.exitCode === 2);
 });
+
+test('native preflight retains bounded diagnostics while provider errors do not', async t => {
+  const options = await fixture(t, 'process.stderr.write("sandbox PRIVATE PROVIDER");process.exit(2)');
+  await assert.rejects(runAssessment(evidence, options), error => error.nativeDiagnostic === undefined);
+  const helper = path.join(path.dirname(options.executable), 'cursorsandbox');
+  await fs.writeFile(helper, `#!${process.execPath}\nprocess.stderr.write('Landlock preflight failed: EINVAL\\n::error::untrusted text'+ 'x'.repeat(5000));process.exit(2)`, {mode:0o700});
+  await assert.rejects(preflightSandbox(options.executable), error => {
+    assert.equal(error.stage,'sandbox-preflight'); assert.equal(error.nativeDiagnostic.length,4096);
+    assert.ok(error.nativeDiagnostic.startsWith('Landlock preflight failed: EINVAL')); return true;
+  });
+});
