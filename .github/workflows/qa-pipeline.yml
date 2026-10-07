@@ -3,6 +3,31 @@ name: PR Governance
 on:
   workflow_call:
     inputs:
+      work-item-check-name:
+        description: Display name for the required Work Item gate
+        required: false
+        default: Work Item gate
+        type: string
+      work-item-helper-name:
+        description: Display name of the informational Work Item setup check
+        required: false
+        default: Notion Work Item
+        type: string
+      work-item-summary:
+        description: Optional short explanation for the Work Item job summary
+        required: false
+        default: ''
+        type: string
+      qa-queue-check-name:
+        description: Display name for the QA project queue job
+        required: false
+        default: qa-project-status
+        type: string
+      qa-queue-summary:
+        description: Optional short explanation for the QA queue job summary
+        required: false
+        default: ''
+        type: string
       bot-qa-client-id:
         description: 'GitHub App client ID used to mint the QA bot token'
         required: false
@@ -24,7 +49,7 @@ on:
 
 jobs:
   work-item-gate:
-    name: Work Item gate
+    name: ${{ inputs.work-item-check-name }}
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     concurrency:
@@ -46,16 +71,21 @@ jobs:
           persist-credentials: false
       - name: Require a Work Items link on feat PRs
         uses: actions/github-script@v8
+        env:
+          HELPER_CHECK_NAME: ${{ inputs.work-item-helper-name }}
+          CHECK_SUMMARY: ${{ inputs.work-item-summary }}
         with:
           script: |
             const { workItemGate } = require(`${process.env.GITHUB_WORKSPACE}/.veam-shared/.github/actions/release-ledger/work-item-gate.js`);
             const pr = context.payload.pull_request;
-            const result = workItemGate({ title: pr.title, body: pr.body });
+            const result = workItemGate({ title: pr.title, body: pr.body, helperCheckName: process.env.HELPER_CHECK_NAME });
+            if (process.env.CHECK_SUMMARY) core.summary.addRaw(`${process.env.CHECK_SUMMARY}\n\n`);
             await core.summary.addRaw(result.summary).write();
             if (!result.ok) core.setFailed(result.summary);
             else core.info(result.summary);
 
   qa-project-status:
+    name: ${{ inputs.qa-queue-check-name }}
     if: "github.event.action == 'labeled' && github.event.label.name == 'bot: qa needed'"
     runs-on: ubuntu-latest
     concurrency:
@@ -209,3 +239,9 @@ jobs:
             core.info(
               `Set Project ${PROJECT_NUMBER} item ${itemId} to Not Started for ${context.repo.owner}/${context.repo.repo}#${pr.number}`,
             );
+
+      - name: Describe this check
+        if: ${{ always() && inputs.qa-queue-summary != '' }}
+        env:
+          CHECK_SUMMARY: ${{ inputs.qa-queue-summary }}
+        run: printf '%s\n' "$CHECK_SUMMARY" >> "$GITHUB_STEP_SUMMARY"

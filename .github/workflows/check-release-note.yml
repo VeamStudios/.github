@@ -1,11 +1,28 @@
 name: Check Release Note
 on:
   workflow_call:
+    inputs:
+      job-name:
+        description: Display name for the changelog check
+        required: false
+        default: release-note
+        type: string
+      summary-title:
+        description: Heading for the changelog review summary
+        required: false
+        default: Release announcement preview
+        type: string
+      job-summary:
+        description: Optional explanation of the current changelog check behaviour
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
   pull-requests: read
 jobs:
   release-note:
+    name: ${{ inputs.job-name }}
     runs-on: ubuntu-latest
     steps:
       - name: Report release note enforcement
@@ -24,3 +41,10 @@ jobs:
         with:
           body: ${{ github.event.pull_request.body }}
           head: ${{ github.event.pull_request.head.sha }}
+          summary-title: ${{ inputs.summary-title }}
+
+      - name: Describe this check
+        if: ${{ always() && inputs.job-summary != '' }}
+        env:
+          CHECK_SUMMARY: ${{ inputs.job-summary }}
+        run: printf '%s\n' "$CHECK_SUMMARY" >> "$GITHUB_STEP_SUMMARY"

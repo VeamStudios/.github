@@ -3,6 +3,16 @@ name: PR iOS Build
 on:
   workflow_call:
     inputs:
+      job-name:
+        description: Display name for this check; existing callers keep their current name
+        required: false
+        default: Build iOS app
+        type: string
+      job-summary:
+        description: Optional short explanation for the job summary
+        required: false
+        default: ''
+        type: string
       xcode_version:
         description: "Xcode version passed to select-xcode"
         required: false
@@ -24,7 +34,7 @@ on:
 
 jobs:
   build:
-    name: Build iOS app
+    name: ${{ inputs.job-name }}
     runs-on: ${{ startsWith(inputs.xcode_version, '26.') && 'macos-26' || 'xcode-27' }}
     steps:
       - name: Mint GitHub App token
@@ -55,3 +65,9 @@ jobs:
 
       - name: Build
         run: xcodebuild ${{ inputs.xcodebuild_args }}
+
+      - name: Describe this check
+        if: ${{ always() && inputs.job-summary != '' }}
+        env:
+          CHECK_SUMMARY: ${{ inputs.job-summary }}
+        run: printf '%s\n' "$CHECK_SUMMARY" >> "$GITHUB_STEP_SUMMARY"
