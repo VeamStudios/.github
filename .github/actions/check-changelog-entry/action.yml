@@ -1,0 +1,60 @@
+name: Changelog entry coverage
+description: Fail for meaningful changes without an adequate upcoming changelog entry
+inputs:
+  assessment-mode:
+    default: enforce
+    description: enforce or synthetic-evaluation (evaluation never assesses a product PR)
+  repository:
+    required: true
+    description: Exact repository being assessed
+  head:
+    required: true
+    description: Exact PR head commit
+  base:
+    required: true
+    description: Exact PR base commit
+  notion-token:
+    required: false
+    description: Existing credential for read-only release evidence lookup
+  cursor-api-key:
+    required: true
+    description: Existing Cursor integration credential
+runs:
+  using: composite
+  steps:
+    - name: Validate assessment mode
+      if: ${{ inputs.assessment-mode != 'enforce' && inputs.assessment-mode != 'synthetic-evaluation' }}
+      shell: bash
+      run: exit 1
+    - uses: actions/setup-node@v5
+      with:
+        node-version: '24'
+    - name: Prepare pinned assessment CLI
+      shell: bash
+      run: |
+        set -euo pipefail
+        cli_dir="$(mktemp -d "$RUNNER_TEMP/changelog-cli.XXXXXX")"
+        curl --fail --silent --show-error --max-time 120 \
+          https://downloads.cursor.com/lab/2026.10.01-e373342/linux/x64/agent-cli-package.tar.gz \
+          -o "$cli_dir/agent.tar.gz"
+        printf '%s  %s\n' a79726c6e644520e993970be4c45775a6889802b67abe461a677a53219ae28e8 "$cli_dir/agent.tar.gz" | sha256sum --check --status
+        tar --extract --gzip --file "$cli_dir/agent.tar.gz" --directory "$cli_dir" --strip-components=1
+        printf 'CHANGELOG_CURSOR_EXECUTABLE=%s/cursor-agent\n' "$cli_dir" >> "$GITHUB_ENV"
+    - name: Assess changes against upcoming entries
+      if: ${{ inputs.assessment-mode == 'enforce' }}
+      shell: bash
+      env:
+        CHECK_REPOSITORY: ${{ inputs.repository }}
+        PR_HEAD_SHA: ${{ inputs.head }}
+        PR_BASE_SHA: ${{ inputs.base }}
+        NOTION_TOKEN: ${{ inputs.notion-token }}
+        CURSOR_API_KEY: ${{ inputs.cursor-api-key }}
+        CURSOR_EXECUTABLE: ${{ env.CHANGELOG_CURSOR_EXECUTABLE }}
+      run: node "$GITHUB_ACTION_PATH/../release-ledger/enforce-changelog.js"
+    - name: Evaluate public synthetic policy cases
+      if: ${{ inputs.assessment-mode == 'synthetic-evaluation' }}
+      shell: bash
+      env:
+        CURSOR_API_KEY: ${{ inputs.cursor-api-key }}
+        CURSOR_EXECUTABLE: ${{ env.CHANGELOG_CURSOR_EXECUTABLE }}
+      run: node "$GITHUB_ACTION_PATH/../release-ledger/evaluate-changelog.js"
