@@ -32,6 +32,6 @@ Existing SAP Web and Android historical syntax findings are advisory; this rollo
 
 ## Review and sequencing
 
-The existing shared PR #110 and SAP PR #2602 are reused as part of one coordinated set, not a SAP-only pilot. Draft references to `ci/sap-changelogs-pilot-20261007` permit dependency validation before merge. Merge the separately approved shared dependency first, then restore callers and the shared action reference to `@main`, recheck their exact final commits and obtain any approvals dismissed by that final push. No required status context is renamed or removed. Repository merges and any future gate activation need their applicable authorization/reviews.
+The existing shared PR #110 and SAP PR #2602 are reused as part of one coordinated set, not a SAP-only pilot. Caller references to `ci/sap-changelogs-pilot-20261007` permit dependency validation before merge. The nested action uses its reviewed immutable commit so automatic deletion of that branch cannot break the shared workflow. Merge the separately approved shared dependency first, then promptly restore callers to `@main`, recheck their exact final commits and obtain any approvals dismissed by that final push. No required status context is renamed or removed; the Changelogs diagnostic is not a required context. Repository merges and any future gate activation need their applicable authorization/reviews.
 
 Run the shared suite with `node --test .github/actions/release-ledger/*.test.js .github/actions/remote-config-notion-sync/*.test.js`.

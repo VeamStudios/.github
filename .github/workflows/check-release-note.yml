@@ -65,8 +65,8 @@ jobs:
 
       - name: Check changelog format and links
         if: ${{ inputs.coverage-mode == 'deterministic' }}
-        # Draft dependency: restore @main only after the shared check is merged.
-        uses: VeamStudios/.github/.github/actions/check-changelog-coverage@ci/sap-changelogs-pilot-20261007
+        # Pin the reviewed action so automatic draft-branch deletion cannot break it.
+        uses: VeamStudios/.github/.github/actions/check-changelog-coverage@7e6f22fde039d822b0f43836fadcee9ae0fd730d
         with:
           repository: ${{ github.repository }}
           head: ${{ github.event.pull_request.head.sha }}
