@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
-const { runAssessment } = require('./changelog-cursor');
+const { runAssessment, preflightSandbox } = require('./changelog-cursor');
 const evidence = { repository: 'VeamStudios/Test', head: 'a'.repeat(40), base: 'b'.repeat(40), digest: 'c'.repeat(64), files: [] };
 const assessment = { schemaVersion: 1, repository: evidence.repository, head: evidence.head, base: evidence.base, evidenceDigest: evidence.digest, outcome: 'pass', findings: [] };
 const result = value => JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify(value) });
@@ -88,4 +88,23 @@ for (const [message, code] of [['Unauthorized API key SECRET', 'authentication']
   await assert.rejects(runAssessment(evidence, options), error => {
     assert.equal(error.code, code); assert.equal(error.stage, 'provider'); assert.equal(error.exitCode, 7); assert.ok(!error.message.includes('SECRET')); return true;
   });
+});
+
+test('standalone sandbox preflight uses pinned sibling helper and no credentials', async t => {
+  const options = await fixture(t, 'throw Error("provider must not run")');
+  const helper = path.join(path.dirname(options.executable), 'cursorsandbox');
+  await fs.writeFile(helper, `#!${process.execPath}
+const assert=require('node:assert/strict'),fs=require('node:fs');
+assert.equal(process.env.CURSOR_API_KEY,undefined);assert.equal(process.env.GITHUB_TOKEN,undefined);
+assert.ok(process.argv.includes('--preflight-only'));
+const policy=JSON.parse(fs.readFileSync(process.argv[process.argv.indexOf('--policy')+1]));
+assert.equal(policy.sandbox.type,'workspace_readonly');assert.equal(policy.networkPolicy.default,'deny');
+`, {mode:0o700});
+  assert.deepEqual(await preflightSandbox(options.executable), {supported:true});
+});
+for (const [message, code] of [['Landlock V3 filesystem restrictions not supported','sandbox_kernel'], ['CRITICAL: ruleset was NOT enforced','sandbox_enforcement'], ['Failed to apply seccomp','sandbox_seccomp'], ['AppArmor configuration','sandbox_namespace']]) test(`sandbox preflight classifies ${code}`, async t => {
+  const options = await fixture(t, 'throw Error("provider must not run")');
+  const helper = path.join(path.dirname(options.executable), 'cursorsandbox');
+  await fs.writeFile(helper, `#!${process.execPath}\nprocess.stderr.write(${JSON.stringify(message)});process.exit(2);`, {mode:0o700});
+  await assert.rejects(preflightSandbox(options.executable), error => error.code === code && error.stage === 'sandbox-preflight' && error.exitCode === 2);
 });

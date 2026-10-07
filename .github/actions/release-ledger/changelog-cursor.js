@@ -18,7 +18,13 @@ function processFailure(stderr, stage, exitCode) {
   if (/unauthenticated|unauthorized|invalid.{0,20}(api.key|token)|authentication|not logged in|login required|401/i.test(stderr)) category = 'authentication';
   else if (/model.{0,60}(not found|unavailable|invalid|not supported|denied)|unknown model/i.test(stderr)) category = 'model';
   else if (/workspace.{0,40}trust|untrusted|trust.{0,40}(workspace|directory)/i.test(stderr)) category = 'workspace_trust';
-  else if (/sandbox|bwrap|bubblewrap|user namespace|unshare/i.test(stderr)) category = 'sandbox';
+  else if (/Landlock V3.*not supported|unsupported kernel features|Sandbox requires kernel/i.test(stderr)) category = 'sandbox_kernel';
+  else if (/partially enforced|ruleset was NOT enforced|not_enforced/i.test(stderr)) category = 'sandbox_enforcement';
+  else if (/Step 5.5|Step 6\/7|seccomp.*failed|Failed to apply seccomp/i.test(stderr)) category = 'sandbox_seccomp';
+  else if (/AppArmor|user namespace|UnshareError|unshare/i.test(stderr)) category = 'sandbox_namespace';
+  else if (/Sandbox binary not found|binary path was not configured|ENOENT/i.test(stderr)) category = 'sandbox_helper';
+  else if (/Landlock|failed to apply landlock/i.test(stderr)) category = 'sandbox_landlock';
+  else if (/sandbox|bwrap|bubblewrap/i.test(stderr)) category = 'sandbox';
   else if (/ECONN|ENOTFOUND|ETIMEDOUT|network|fetch failed|connection|TLS|certificate/i.test(stderr)) category = 'network';
   return new CursorAssessmentError(category, `Changelog assessment provider failed (${category}).`, stage, exitCode);
 }
@@ -129,4 +135,22 @@ async function runAssessment(evidence, { executable, expectedVersion, model, api
     return assessment;
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 }
-module.exports = { runAssessment, CursorAssessmentError };
+async function preflightSandbox(executable, { timeoutMs = 15000 } = {}) {
+  if (!path.isAbsolute(executable || '')) throw new CursorAssessmentError('configuration', 'An absolute pinned Cursor executable path is required.', 'sandbox-preflight');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'changelog-sandbox-preflight-'));
+  try {
+    const helper = path.join(path.dirname(executable), 'cursorsandbox');
+    const policy = path.join(root, 'policy.json');
+    await fs.writeFile(policy, JSON.stringify({ sandbox: { type: 'workspace_readonly', cwd: root, readBoundary: 'workspace', hardcodedReadPaths: ['/bin', '/usr', '/lib', '/lib64', '/etc/ld.so.cache'], additionalReadonlyPaths: {}, networkAccess: false }, networkPolicy: { version: 1, default: 'deny', deny: ['*'] }, networkPolicyStrict: true }), { mode: 0o400 });
+    await execute(helper, ['--policy', policy, '--preflight-only', '--', '/bin/true'], { cwd: root, env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' }, timeoutMs, stage: 'sandbox-preflight' });
+    return { supported: true };
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+}
+if (require.main === module && process.argv[2] === '--sandbox-preflight') {
+  preflightSandbox(process.env.CURSOR_EXECUTABLE).then(() => console.log('Cursor sandbox preflight: supported.')).catch(error => {
+    const code = error instanceof CursorAssessmentError ? error.code : 'unexpected_execution';
+    const status = Number.isInteger(error.exitCode) ? `; exit=${error.exitCode}` : '';
+    console.error(`Cursor sandbox preflight: ${code}${status}.`); process.exitCode = 1;
+  });
+}
+module.exports = { runAssessment, preflightSandbox, CursorAssessmentError };

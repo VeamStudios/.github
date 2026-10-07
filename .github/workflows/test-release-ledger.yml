@@ -42,3 +42,27 @@ jobs:
           node-version: '24'
       - run: node --test .github/actions/release-ledger/*.test.js .github/actions/remote-config-notion-sync/*.test.js
       - run: python3 -m unittest discover -s .github/actions/verify-functions -p 'test_*.py'
+  sandbox-preflight:
+    name: Cursor sandbox preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      - name: Check pinned sandbox helper without credentials or model calls
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -sr
+          cli_dir="$(mktemp -d "$RUNNER_TEMP/changelog-preflight.XXXXXX")"
+          trap 'rm -rf "$cli_dir"' EXIT
+          curl --fail --silent --show-error --max-time 120 \
+            https://downloads.cursor.com/lab/2026.10.01-e373342/linux/x64/agent-cli-package.tar.gz \
+            -o "$cli_dir/agent.tar.gz"
+          printf '%s  %s\n' a79726c6e644520e993970be4c45775a6889802b67abe461a677a53219ae28e8 "$cli_dir/agent.tar.gz" | sha256sum --check --status
+          tar --extract --gzip --file "$cli_dir/agent.tar.gz" --directory "$cli_dir" --strip-components=1
+          CURSOR_EXECUTABLE="$cli_dir/cursor-agent" node .github/actions/release-ledger/changelog-cursor.js --sandbox-preflight
