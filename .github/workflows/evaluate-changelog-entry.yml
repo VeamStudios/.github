@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 8
     steps:
       - name: Evaluate three public synthetic policy cases
-        uses: VeamStudios/.github/.github/actions/check-changelog-entry@d93e8c26b82b2c645409f88f8779e6104c743ca3
+        uses: VeamStudios/.github/.github/actions/check-changelog-entry@905d15b5b317b7752330f61a90d5cdf5354e6b99
         with:
           assessment-mode: synthetic-evaluation
           repository: ${{ github.repository }}

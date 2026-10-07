@@ -59,6 +59,8 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: ${{ inputs.coverage-mode == 'deterministic' && 1 || 0 }}
           persist-credentials: false
+          sparse-checkout: ${{ inputs.coverage-mode == 'enforce' && '/CHANGELOG.md' || '' }}
+          sparse-checkout-cone-mode: false
       - name: Preview changelog entries and Work Item links
         if: ${{ inputs.coverage-mode == 'preview' }}
         env:
@@ -82,13 +84,14 @@ jobs:
 
       - name: Check missing changelog entries
         if: ${{ inputs.coverage-mode == 'enforce' }}
-        uses: VeamStudios/.github/.github/actions/check-changelog-entry@d93e8c26b82b2c645409f88f8779e6104c743ca3
+        uses: VeamStudios/.github/.github/actions/check-changelog-entry@905d15b5b317b7752330f61a90d5cdf5354e6b99
         with:
           repository: ${{ github.repository }}
           head: ${{ github.event.pull_request.head.sha }}
           base: ${{ github.event.pull_request.base.sha }}
           notion-token: ${{ secrets.NOTION_TOKEN }}
           cursor-api-key: ${{ secrets.CURSOR_API_KEY }}
+          github-token: ${{ github.token }}
 
       - name: Describe this check
         if: ${{ always() && inputs.job-summary != '' }}
