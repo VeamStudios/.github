@@ -47,6 +47,11 @@ function newEntries(before,after){
 }
 function internalFiles(files){return files.length>0 && files.every(f=> /^(?:\.github\/|\.release-notes\/|docs\/|README(?:\.|$)|LICENSE|.*\.md$)/.test(f.filename) && f.filename!=='CHANGELOG.md')}
 
+function readChangelog(ref,runGit=require('./record').git) {
+  // An absent path is valid for early history; an unreadable Git object is not.
+  if(!runGit('ls-tree',ref,'--','CHANGELOG.md').trim())return '';
+  return runGit('show',`${ref}:CHANGELOG.md`);
+}
 async function mergedWording(config,gh) {
   const pr=await gh(`/repos/${config.repo}/pulls/${config.wordingPr}`);
   if(pr.number!==config.wordingPr || pr.state!=='closed' || !pr.merged_at ||
@@ -71,7 +76,7 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   const numbers=new Set(),unmapped=[],syncs=[],commitPrs=new Map();
   for(const commit of commits){const associated=[];for(let page=1;;page++){const rows=await gh(`/repos/${config.repo}/commits/${commit}/pulls?per_page=100&page=${page}`);associated.push(...rows);if(rows.length<100)break};const included=associated.filter(p=>p.base?.repo?.full_name===config.repo && p.merged_at && p.merge_commit_sha && ancestor(p.merge_commit_sha,sha));const number=mapping?.commits[commit]||(included.length===1?included[0].number:undefined);if(number){numbers.add(number);commitPrs.set(commit,number)}else{const sync=config.target==='website'?await verifiedSync(config.repo,commit,gh,git):null;if(sync)syncs.push(sync);else unmapped.push(commit)}}
   if(unmapped.length)issues.push(`Unmapped shipped commits: ${unmapped.join(', ')}. Confirm their source PRs before announcing this release.`);
-  const read=ref=>{try{return git('show',`${ref}:CHANGELOG.md`)}catch{return ''}};
+  const read=ref=>readChangelog(ref,git);
   let wordingPr,supplement,wordingAcceptance;
   if(config.wordingPr) {
     const accepted=await mergedWording(config,gh);
@@ -138,4 +143,4 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   const warnings=issues.filter(message=>{const missing=message.match(/^PR #(\d+) has no new changelog entry/);return !missing||!covered.has(Number(missing[1]))});
   return {schemaVersion:2,deliveryVersion:1,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs,changes,workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url,acceptance:wordingAcceptance}:null,issues:warnings,provenanceComplete:validBaseline&&unmapped.length===0,websiteSyncs:syncs,source:config.source};
 }
-module.exports={parseChangelog,newEntries,renderChangelog,identity,buildChangelogManifest,internalFiles,mergedWording};
+module.exports={parseChangelog,newEntries,renderChangelog,identity,buildChangelogManifest,internalFiles,readChangelog,mergedWording};

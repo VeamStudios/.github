@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {execFileSync}=require('node:child_process');
-const {parseChangelog,newEntries,renderChangelog}=require('./changelog');
+const {parseChangelog,newEntries,renderChangelog,readChangelog}=require('./changelog');
 const {buildManifest,deployedBaseline,rich,hash}=require('./record');
 const {check}=require('./check-note');
 test('metadata and multiline entries survive without leaking raw flags into wording',()=>{const entries=parseChangelog('# Product\n## [Unreleased]\n### New\n- Export reports.\n  Include all photos.\n  rcValue: export_enabled\n  previewTag: Research Preview\n');assert.equal(entries[0].summary,'Export reports.\nInclude all photos.');assert.deepEqual(entries[0].flagKeys,['export_enabled']);assert.equal(entries[0].previewTag,'Research Preview');assert.doesNotMatch(renderChangelog(entries),/rcValue|export_enabled/)});
@@ -46,5 +46,32 @@ test('explicit Work Item links select shipped implementation PRs instead of an u
   const m=await buildManifest({repo,product:'Site Audit Pro',target:'web',version:'v1.1.0',commit:shipped,event:'release',source:'https://github.com/run'},gh,baseline,notion);
   assert.deepEqual(m.changes[0].sourcePrs,[1]);assert.deepEqual(m.changes[0].workItems,[wi]);assert.equal(m.changes[0].pr,2);assert.equal(m.changes[0].approved,true);assert.deepEqual(m.changes[0].blocked,[]);
   assert.deepEqual(m.changes[1].workItems,[]);assert.match(m.changes[1].blocked.join(' '),/Several Work Items/);
+ }finally{process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
+});
+
+
+test('absent historical changelog is distinct from unreadable Git history',()=>{
+ const calls=[];
+ assert.equal(readChangelog('early',(...args)=>{calls.push(args);return ''}), '');
+ assert.deepEqual(calls,[['ls-tree','early','--','CHANGELOG.md']]);
+ const failure=new Error('could not fetch promisor blob');
+ assert.throws(()=>readChangelog('baseline',command=>{if(command==='ls-tree')return '100644 blob abc\tCHANGELOG.md';throw failure}),error=>error===failure);
+ assert.throws(()=>readChangelog('invalid',()=>{throw new Error('invalid object name')}),/invalid object name/);
+ assert.equal(readChangelog('baseline',command=>command==='ls-tree'?'100644 blob abc\tCHANGELOG.md':'## 1.0.0\n- Old note'), '## 1.0.0\n- Old note');
+});
+
+
+test('a missing historical blob aborts comparison instead of announcing old notes again',()=>{
+ const cwd=process.cwd(),dir=fs.mkdtempSync(path.join(os.tmpdir(),'changelog-unreadable-'));
+ try{
+  process.chdir(dir);
+  const git=(...args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+  git('init');git('config','user.name','Test');git('config','user.email','test@example.com');
+  fs.writeFileSync('CHANGELOG.md','## 1.0.0\n### Fixed\n- Old fix.\n');git('add','.');git('commit','-m','baseline');
+  const baseline=git('rev-parse','HEAD'),blob=git('rev-parse',`${baseline}:CHANGELOG.md`);
+  fs.writeFileSync('CHANGELOG.md','## 1.1.0\n### Fixed\n- New fix.\n## 1.0.0\n### Fixed\n- Old fix.\n');git('add','.');git('commit','-m','shipped');
+  fs.unlinkSync(path.join('.git','objects',blob.slice(0,2),blob.slice(2)));
+  assert.match(git('ls-tree',baseline,'--','CHANGELOG.md'),/CHANGELOG.md/);
+  assert.throws(()=>newEntries(readChangelog(baseline,git),readChangelog('HEAD',git)),/Command failed/);
  }finally{process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
 });
