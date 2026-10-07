@@ -2,7 +2,7 @@
 
 The iOS build, PR Governance and changelog preview workflows accept optional
 display-name and summary inputs. Existing callers retain their current labels
-and behaviour when these inputs are omitted. SAP iOS opts in to the clearer names.
+when these inputs are omitted. SAP iOS opts in to the clearer names.
 
 | Workflow | Optional inputs | Defaults |
 | --- | --- | --- |
@@ -14,6 +14,14 @@ Use hyphens inside labels. GitHub adds slash separators for reusable jobs and an
 event suffix in its PR UI. Required-check rulesets store the emitted check-run
 name rather than the complete UI row. Coordinate any job-name change with those
 requirements after the replacement context has actually run on the PR head.
+
+GitHub does not evaluate dynamic job names when a whole job is skipped
+([tracked limitation](https://github.com/actions/runner/issues/1215)). The QA
+queue therefore starts a brief job on each caller event. Configuration validation,
+token creation and project updates still run only when that event applies the
+QA-needed label. Other events report that no queue update is needed. This adds
+runner startup time and changes idle queue results from skipped to successful;
+it does not execute QA or update a project on those events.
 
 The Work Item gate's configurable helper name only changes its correction
 instructions. Feature title detection and URL validation are unchanged. Pass the
