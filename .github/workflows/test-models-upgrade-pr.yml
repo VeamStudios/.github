@@ -1,0 +1,24 @@
+name: Test Models Upgrade PRs
+on:
+  pull_request:
+    paths:
+      - '.github/actions/models-upgrade-pr/**'
+      - '.github/workflows/pr-spm-package-update.yml'
+      - '.github/workflows/test-models-upgrade-pr.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/actions/models-upgrade-pr/**'
+      - '.github/workflows/pr-spm-package-update.yml'
+      - '.github/workflows/test-models-upgrade-pr.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.x'
+      - run: node --test .github/actions/models-upgrade-pr/*.test.js

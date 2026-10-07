@@ -1,5 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const path = require('node:path');
 const { parseWorkItemLinks } = require('./work-item-links');
 const { workItems, validateNote } = require('./record');
 const a = 'a'.repeat(32), b = 'b'.repeat(32);
@@ -38,4 +40,20 @@ for (const [title, body, ok] of [
   ['  feat: Billing', 'Work Items:\n- not a link', false],
 ]) test(`PR gate requires Work Items only for feat titles: ${title.trim()}`, () => {
   assert.equal(workItemGate({ title, body }).ok, ok);
+});
+test('feature PR filled from the shared template passes the Work Item gate', () => {
+  const template = readFileSync(path.join(__dirname, '../../PULL_REQUEST_TEMPLATE.md'), 'utf8');
+  const body = template.replace('Work Items:', `Work Items:\n- https://www.notion.so/${a}`);
+  assert.equal(workItemGate({ title: 'feat: camera', body }).ok, true);
+});
+test('PR gate explains an unbulleted Notion URL and shows the required format', () => {
+  const result = workItemGate({ title: 'feat: Camera', body: `Work Items:\nhttps://www.notion.so/${a}` });
+  assert.equal(result.ok, false);
+  assert.match(result.summary, /missing its `- ` bullet/);
+  assert.match(result.summary, /Work Items:\n- https:\/\/www\.notion\.so\//);
+});
+test('PR gate distinguishes an invalid URL from a missing bullet', () => {
+  const result = workItemGate({ title: 'feat: Camera', body: 'Work Items:\n- not a link' });
+  assert.equal(result.ok, false);
+  assert.match(result.summary, /not a valid Notion Work Item URL/);
 });

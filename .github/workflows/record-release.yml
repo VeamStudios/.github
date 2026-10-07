@@ -2,10 +2,6 @@ name: Record Release Evidence
 on:
   workflow_call:
     inputs:
-      lock_wait_ms:
-        description: Lock acquisition wait budget in milliseconds; 0 tries once without waiting.
-        type: number
-        default: 300000
       product:
         required: true
         type: string
@@ -64,6 +60,11 @@ permissions:
 jobs:
   record:
     runs-on: ubuntu-latest
+    # Replaces the shared ledger lock: overlapping recordings of one release could
+    # otherwise both create its row. GitHub releases the group if a run is cancelled.
+    concurrency:
+      group: release-ledger-record-${{ github.repository }}-${{ inputs.target }}-${{ inputs.version }}
+      cancel-in-progress: false
     # Preparation is supporting bookkeeping. Preserve its artifact/error, but a
     # Notion outage must not prevent the production deployment from starting.
     continue-on-error: ${{ inputs.phase == 'prepare' }}
@@ -89,7 +90,6 @@ jobs:
           owner: ${{ github.repository_owner }}
       - uses: VeamStudios/.github/.github/actions/release-ledger@main
         with:
-          lock_wait_ms: ${{ inputs.lock_wait_ms }}
           product: ${{ inputs.product }}
           target: ${{ inputs.target }}
           version: ${{ inputs.version }}

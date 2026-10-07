@@ -1,17 +1,18 @@
-const {hash,text,rich,reviewed,clients,withLock}=require('./record');
+const {hash,text,rich,reviewed,clients}=require('./record');
 const {validGooglePlay,REPOSITORY}=require('./google-play');
+const {WEBSITE_RECEIPT,previousObservation,reviewedSource}=require('./ledger-columns');
 const {customerEntries,customerSection,websiteSection}=require('./customer-notes');
 const WEBSITE='VeamStudios/siteauditpro.com';
 const DESTINATION='src/app/content/changelogs/android/changelog.md';
 const URL='https://siteauditpro.com';
 const sectionMap=raw=>{const result=new Map();let version='';for(const line of raw.split(/\r?\n/)){if(/^## /.test(line)){version=line.slice(3).trim();if(result.has(version))throw Error('Duplicate website version');result.set(version,[])}if(version)result.get(version).push(line)}return new Map([...result].map(([v,lines])=>[v,lines.join('\n').trim()]))};
 async function sourceNotes(row,api) {
-  const frozen=JSON.parse(text(row.properties.Manifest)),observation=JSON.parse(text(row.properties.Observation)||'{}');
+  const frozen=JSON.parse(text(row.properties.Manifest)),observation=previousObservation(row.properties)||{};
   if(hash(frozen)!==text(row.properties['Manifest Hash'])||!validGooglePlay(observation.verification,frozen)||observation.phase!=='live')throw Error('Website publication requires exact completed Google Play verification');
   if(Date.now()-Date.parse(observation.verification.checkedAt)>2*60*60*1000)throw Error('Refresh Play verification before website publication');
-  const ledger=JSON.parse(text(row.properties.Announcements)||'{"version":1,"batches":[]}');
-  const m=ledger.source?.manifest||frozen;
-  if(ledger.source && (ledger.source.digest!==hash(m)||['key','repository','target','version','build','commit','baseline'].some(k=>m[k]!==frozen[k])))throw Error('Supplement differs from the frozen release identity');
+  const supplement=reviewedSource(row.properties);
+  const m=supplement?.manifest||frozen;
+  if(supplement && (supplement.digest!==hash(m)||['key','repository','target','version','build','commit','baseline'].some(k=>m[k]!==frozen[k])))throw Error('Supplement differs from the frozen release identity');
   if(m.repository!==REPOSITORY||m.target!=='android-consumer')throw Error('Unsupported website release source');
   const sourceCommit=m.initialSnapshot?.sourceCommit||m.commit;
   const file=await api.gh(`/repos/${m.repository}/contents/CHANGELOG.md?ref=${sourceCommit}`);
@@ -45,15 +46,15 @@ async function publicationReceipt(row,api,value) {
   // Independent from Announcements: website retries never rewrite Slack receipts.
   const current=await api.notion(`/pages/${row.id}`);
   if(text(current.properties.Manifest)!==text(row.properties.Manifest)||text(current.properties['Manifest Hash'])!==text(row.properties['Manifest Hash']))throw Error('Frozen manifest changed during website publication');
-  const observation=JSON.parse(text(current.properties.Observation)||'{}');
-  await api.notion(`/pages/${row.id}`,'PATCH',{properties:{Observation:rich(JSON.stringify({...observation,website:value}))}});
+  // Readers fold this owned column into the observation; the shared Observation is no longer written.
+  await api.notion(`/pages/${row.id}`,'PATCH',{properties:{[WEBSITE_RECEIPT]:rich(JSON.stringify(value))}});
 }
 async function publishWebsite(pageId,config,api,{fetcher=fetch}={}) {
   if(!config.publishWebsite)return {state:'disabled'};
   const row=await api.notion(`/pages/${pageId}`);
   const finish=async result=>{if(!config.dryRun)await publicationReceipt(row,api,result);return result};
   let source;
-  try {source=await sourceNotes(row,api)}catch(e){return finish({...JSON.parse(text(row.properties.Observation)||'{}').website,state:'held',reason:e.message})}
+  try {source=await sourceNotes(row,api)}catch(e){return finish({...previousObservation(row.properties)?.website,state:'held',reason:e.message})}
   const m=source.manifest,previous=source.observation.website;
   if(previous?.state==='published') {
     if(previous.sectionHash!==source.sectionHash||previous.sourceCommit!==source.sourceCommit)throw Error('Website receipt belongs to different notes');

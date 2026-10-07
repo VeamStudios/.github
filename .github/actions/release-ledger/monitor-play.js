@@ -1,5 +1,6 @@
 const fs=require('node:fs');
-const {clients,allPages,withLock,record,git,text,rich,hash}=require('./record');
+const {clients,allPages,record,git,text,rich,hash}=require('./record');
+const {ownedOnly,previousObservation}=require('./ledger-columns');
 const {GooglePlayMonitor,snapshotBuilds,observePlay,resolveBuild,REPOSITORY}=require('./google-play');
 
 async function optional(gh,path) {try{return await gh(path)}catch(e){if(e.status===404)return null;throw e}}
@@ -39,8 +40,8 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
   let snapshot;
   const invalidate=async(row,message)=>{
     if(config.dryRun)return;
-    const previous=JSON.parse(text(row.properties.Observation)||'{}');
-    await api.notion(`/pages/${row.id}`,'PATCH',{properties:{Observation:rich(JSON.stringify({...previous,verification:null,verificationError:message,verificationAttempt:{at:new Date().toISOString(),source:config.source}})),Error:rich(message)}});
+    const previous=previousObservation(row.properties)||{},at=new Date().toISOString();
+    await api.notion(`/pages/${row.id}`,'PATCH',{properties:ownedOnly('play',{Observation:rich(JSON.stringify({...previous,verification:null,verificationError:message,verificationAttempt:{at,source:config.source}})),Error:rich(message)},at,row.properties)});
   };
   try {snapshot=await play.snapshot();snapshotBuilds(snapshot)}
   catch(e){for(const row of rows) {const m=JSON.parse(text(row.properties.Manifest)||'{}');if(m.target==='android-consumer'&&m.build)await invalidate(row,e.message)}throw e}
@@ -58,7 +59,7 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
       const sha=await tagCommit(api.gh,identity.repository,identity.version);
       if(sha&&sha!==identity.commit)throw Error('Production tag conflicts with the exact internal build');
       await ensureRelease(identity,api.gh,true);
-      const prior=sameVersion[0]&&JSON.parse(text(sameVersion[0].properties.Observation)||'{}');
+      const prior=sameVersion[0]&&(previousObservation(sameVersion[0].properties)||{});
       // Preserve first-observed release time; hourly checks are not new releases.
       if(prior?.phase===observation.phase&&prior.releasedAt)observation.releasedAt=prior.releasedAt;
       const recorded=await recorder({...config,...identity,repo:identity.repository,product:'Site Audit Pro',event:'release',...observation},api);
@@ -71,7 +72,7 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
             entry.website={state:'failed',reason:e.message};
             result.errors.push({build,stage:'website',error:e.message});
             // A website outage does not invalidate verified Play availability or Slack receipts.
-            if(!config.dryRun){const row=await api.notion(`/pages/${entry.pageId}`);const previous=JSON.parse(text(row.properties.Observation)||'{}');await require('./play-website').publicationReceipt(row,api,{...previous.website,...entry.website})}
+            if(!config.dryRun){const row=await api.notion(`/pages/${entry.pageId}`);const previous=previousObservation(row.properties)||{};await require('./play-website').publicationReceipt(row,api,{...previous.website,...entry.website})}
           }
         }
         else entry.website={state:'waiting',reason:'Record the verified release before publishing notes'};
@@ -87,7 +88,8 @@ async function main() {
   let credentials;try{credentials=JSON.parse(process.env.PLAY_MONITOR_SERVICE_ACCOUNT_JSON||'')}catch{throw Error('Configure PLAY_MONITOR_SERVICE_ACCOUNT_JSON with the dedicated Play monitor account')}
   const play=new GooglePlayMonitor(credentials,{expectedEmail:process.env.PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL,uploaderEmail:process.env.PLAY_UPLOADER_SERVICE_ACCOUNT_EMAIL});
   const api=clients(config),run=()=>monitor(config,api,play,{publish:require('./play-website').publishWebsite});
-  const result=await (config.dryRun?run():withLock(api.gh,'VeamStudios/.github',run));
+  // Owned columns replace the shared lock; the reusable workflow serializes Play monitor runs per repository.
+  const result=await run();
   fs.writeFileSync('play-observation.json',JSON.stringify(result,null,2)+'\n');
   console.log(JSON.stringify(result));
   if(result.errors.length)throw Error('One or more Android releases require attention; failed identities were not published');

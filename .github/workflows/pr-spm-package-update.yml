@@ -3,6 +3,11 @@ name: PR SPM Package Update
 on:
   workflow_call:
     inputs:
+      models_upgrade:
+        description: "Assess SAP/CIP Models source changes and safely supersede generated upgrade PRs"
+        required: false
+        default: false
+        type: boolean
       version:
         description: "Git tag / version string to pin (must exist on package_repo_url)"
         required: true
@@ -176,7 +181,22 @@ jobs:
             -project "$(find . -name '*.xcodeproj' -maxdepth 1 | head -1)" \
             -scheme "$SCHEME"
 
+      - name: Create assessed Models update PR
+        if: inputs.models_upgrade
+        uses: VeamStudios/.github/.github/actions/models-upgrade-pr@main
+        with:
+          version: ${{ inputs.version }}
+          package_url: ${{ inputs.package_repo_url }}
+          kind: spm
+          base_branch: ${{ inputs.base_branch }}
+          branch_prefix: ${{ inputs.branch_prefix }}
+          commit_subject: ${{ inputs.commit_subject }}
+          pr_title: ${{ inputs.pr_title }}
+          pr_body: ${{ inputs.pr_body }}
+          github_token: ${{ steps.app_token.outputs.token }}
+
       - name: Create PR
+        if: ${{ !inputs.models_upgrade }}
         uses: actions/github-script@v8
         env:
           VERSION: ${{ inputs.version }}
