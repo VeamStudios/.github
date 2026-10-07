@@ -1,43 +1,26 @@
-# SAP iOS Changelogs pilot
+# SAP iOS Changelogs format and links
 
-This draft adds diagnostic coverage preparation to SAP iOS's existing **Changelogs / Coverage** check. Other repositories keep the current advisory preview. The pilot does not enable a required semantic gate.
+This draft checks `CHANGELOG.md` structure and link syntax in SAP iOS's existing **Changelogs / Coverage** check. Diagnostics appear in the job summary and as warnings with repair instructions. This phase adds no blocking gate: a successful job means the diagnostic action ran, and the summary says whether the supported format/link checks passed.
 
 ## For PR authors
 
-Edit only `CHANGELOG.md` when your change needs a release note. Describe a meaningful feature under **New**, a user-affecting fix under **Fixed**, or a consequential migration, permission, compatibility or rollout change under **Internal** in the upcoming release section. Ordinary tests, formatting, behaviour-preserving refactors and CI/docs maintenance need no entry unless they have a material effect.
+Edit only `CHANGELOG.md` when your change needs a release note. Put meaningful features under **New**, user-affecting fixes under **Fixed**, and consequential migrations, permissions, compatibility or rollout changes under **Internal** in the upcoming release section. Ordinary tests, formatting, behaviour-preserving refactors and CI/docs maintenance need no entry unless they have a material effect. No new bullet is required for every PR; an adequate existing entry can cover related work in the same upcoming release.
 
-An existing entry in this PR's exact head can cover related changes in the same upcoming release when its wording and existing Work Item/source-PR links actually cover the change. A shipped entry or a promised entry in another unmerged PR cannot supply coverage. Keep published history intact. No changelog-specific labels, PR declarations or author-managed JSON files are needed. Existing feature Work Item requirements remain separate.
+The check reads the exact PR head's changelog as data and reports malformed structure or Work Item/source-PR links. Follow its correction in `CHANGELOG.md`, then push to rerun. A missing or unreadable changelog is reported as an input problem. Reviewers review wording in the ordinary changelog diff and decide whether it covers the actual change. Existing feature Work Item checks remain separate. No changelog-specific labels, declarations or author-managed JSON files are needed.
 
-Open the **Changelogs / Coverage** job summary to read the preview and diagnostics. Reviewers review wording in the ordinary `CHANGELOG.md` diff. This pilot reports input problems and uncertainty explicitly; a green job does not certify semantic coverage or public availability.
+## What this phase verifies
 
-## Draft implementation
+The deterministic check validates the supported release headings, categories, bullet structure and link syntax. It does not decide whether code needs a release note, whether wording is adequate, whether an entry has already shipped, or whether a linked remote page exists. It does not verify public availability or distinguish consumer and Enterprise release history. Keep published history intact through normal review and the existing release process.
 
-The shared workflow accepts `coverage-mode: preview` (the unchanged default) or `coverage-mode: pilot` (SAP iOS only). Pilot diagnostics run after the existing entry/Work Item preview. The collector reads exact head/base Git objects and complete changed-file evidence without running PR code. Results must match those SHAs and the collected input digest. Findings must cite supplied changed lines; coverage can refer only to eligible upcoming entries.
+No model, provider call, credential or release-baseline artifact is used. Repository code is not executed or uploaded. A future automated shipped-history guard would need a current trusted release baseline and separate approval; it is outside this phase.
 
-The internal result contract distinguishes four outcomes:
+## Workflow integration and tests
 
-| Outcome | Meaning | Pilot behaviour |
-| --- | --- | --- |
-| `pass` | Evidence supports coverage, or a specific reason no note is needed | Show the reason |
-| `missing_note` | A supported effect is not covered | Show the source, suggested heading and precise `CHANGELOG.md` correction |
-| `review` | Evidence cannot support a definite judgment | Explain what needs human review |
-| `error` | Required input, baseline or result could not be verified | Explain the check-execution problem and repair/rerun instruction |
+The shared workflow retains `coverage-mode: preview` as its advisory default for existing callers. SAP iOS opts into `coverage-mode: deterministic`, which runs the new format/link diagnostics instead of the legacy new-entry preview. The approved **Changelogs / Coverage** names remain unchanged. Existing package release guards and release-ledger availability checks remain separate.
 
-All four are diagnostic in this pilot and leave the job successful if the action runs correctly. No enforcing mode is exposed by this workflow. Existing package release guards and release-ledger availability verification remain unchanged.
+The SAP caller and new shared action temporarily reference `ci/sap-changelogs-pilot-20261007` so the two draft PRs can be reviewed together. Restore those references to `@main` only after the shared dependency has merged. SAP remains the first pilot; merging, required-gate activation, deployment and rollout to additional repositories are separate decisions.
 
-The new action has optional baseline/assessment paths for **trusted runner-generated inputs**. They are intentionally unset in the SAP caller. They are not files an author should add to a PR. Do not read these inputs from the checked-out PR or accept an author-supplied result as trusted evidence. The action makes no provider calls, requests no keys/grants and uploads no private source. CI logs and summaries should contain concise findings rather than collected source dumps.
-
-## Remaining decisions before enforcement
-
-A current, verified shipped-release baseline still needs an approved CI transport. A local historical snapshot is useful for offline tests, but cannot be a permanent production baseline. Missing, stale, incomplete or unverifiable baseline input is an execution problem. Consumer release evidence does not establish Enterprise release history.
-
-No semantic assessor has been selected or evaluated. The existing Jev/TypeSafe Work Item classification does not assess PR-code coverage. Without an approved result, the pilot must report uncertainty rather than infer semantic coverage from titles, paths, keywords or a changelog file touch. Connecting an assessor, transmitting private source, paying for runs or adding credentials requires the relevant approval first.
-
-The [agreed 16 acceptance cases](changelogs-acceptance-cases.json) are policy expectations, not evidence of assessment accuracy. The local tests validate collection, shipped/upcoming boundaries, result references and feedback. Before requiring a gate, use a human-labelled SAP PR sample covering missing/complete notes, maintenance, important internal changes, related PR coverage and ambiguity. Measure false blocking and missed required notes separately, repeat judgments to expose instability, and evaluate latency, cost, retry behaviour and data handling.
-
-## Draft dependencies and review
-
-The SAP caller and new shared action temporarily reference `ci/sap-changelogs-pilot-20261007` so the two draft PRs can be reviewed together. Restore those references to `@main` only after the shared dependency has merged. Keep SAP as the first pilot. Merging, gate activation, deployment, additional repositories and Cursor/reminder changes are separate decisions.
+The agreed semantic coverage cases remain policy expectations for a later phase. They do not demonstrate that this format/link checker can assess meaningful effects or changelog coverage.
 
 Run the shared regression suite locally:
 

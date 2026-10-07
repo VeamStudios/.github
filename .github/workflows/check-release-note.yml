@@ -8,7 +8,7 @@ on:
         default: release-note
         type: string
       summary-title:
-        description: Heading for the changelog review summary
+        description: Heading for the advisory entry preview
         required: false
         default: Release announcement preview
         type: string
@@ -18,7 +18,7 @@ on:
         default: ''
         type: string
       coverage-mode:
-        description: Advisory preview, or SAP iOS pilot diagnostics (preview or pilot)
+        description: Advisory entry preview or SAP iOS format/link diagnostics (preview or deterministic)
         required: false
         default: preview
         type: string
@@ -31,18 +31,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate changelog mode
-        if: ${{ inputs.coverage-mode != 'preview' && inputs.coverage-mode != 'pilot' }}
+        if: ${{ inputs.coverage-mode != 'preview' && inputs.coverage-mode != 'deterministic' }}
         run: |
-          printf '%s\n' '::error::coverage-mode must be preview or pilot.'
+          printf '%s\n' '::error::coverage-mode must be preview or deterministic.'
           exit 1
       - name: Describe changelog preview mode
+        if: ${{ inputs.coverage-mode == 'preview' }}
         run: echo "Changelog review is advisory."
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
+          fetch-depth: ${{ inputs.coverage-mode == 'deterministic' && 1 || 0 }}
           persist-credentials: false
       - name: Preview changelog entries and Work Item links
+        if: ${{ inputs.coverage-mode == 'preview' }}
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         uses: VeamStudios/.github/.github/actions/check-release-note@main
@@ -51,9 +53,9 @@ jobs:
           head: ${{ github.event.pull_request.head.sha }}
           summary-title: ${{ inputs.summary-title }}
 
-      - name: Collect SAP iOS coverage pilot diagnostics
-        if: ${{ inputs.coverage-mode == 'pilot' }}
-        # Draft dependency: restore @main only after the shared pilot is merged.
+      - name: Check SAP iOS changelog format and links
+        if: ${{ inputs.coverage-mode == 'deterministic' }}
+        # Draft dependency: restore @main only after the shared check is merged.
         uses: VeamStudios/.github/.github/actions/check-changelog-coverage@ci/sap-changelogs-pilot-20261007
         with:
           repository: ${{ github.repository }}
