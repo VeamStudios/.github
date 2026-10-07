@@ -29,7 +29,9 @@ const cfg=JSON.parse(fs.readFileSync(path.join(process.env.CURSOR_CONFIG_DIR,'cl
 assert.equal(cfg.sandbox.readBoundary,'workspace');assert.equal(cfg.approvalMode,'allowlist');
 assert.deepEqual(cfg.permissions.deny,['Shell(*)','Write(**)','WebFetch(*)','Mcp(*:*)']);
 assert.ok(process.argv.includes('--mode=ask'));assert.ok(!process.argv.includes('--force'));
-assert.deepEqual(fs.readdirSync(process.cwd()),['evidence.json']);
+assert.deepEqual(fs.readdirSync(process.cwd()),['.cursor','evidence.json']);
+assert.equal(cfg.sandbox.networkAccess,'user_config_only');
+assert.deepEqual(JSON.parse(fs.readFileSync('.cursor/sandbox.json')), {type:'workspace_readonly',networkPolicy:{default:'deny',deny:['*']},disableTmpWrite:true});
 assert.deepEqual(JSON.parse(fs.readFileSync('evidence.json')),${JSON.stringify(evidence)});
 console.log(${JSON.stringify(result(assessment))});`);
   assert.deepEqual(await runAssessment(evidence, options), assessment);
@@ -78,4 +80,11 @@ for (const [label, changes] of [
   const badRead = readEvents.replace('exceededLimit:false', `exceededLimit:false,${changes}`);
   const options = await fixture(t, badRead + `console.log(${JSON.stringify(result(assessment))})`, 'reviewed-version', false);
   await assert.rejects(runAssessment(evidence, options), /invalid event/);
+});
+
+for (const [message, code] of [['Unauthorized API key SECRET', 'authentication'], ['Unknown model SECRET','model'], ['workspace is not trusted SECRET','workspace_trust'], ['sandbox unavailable SECRET','sandbox'], ['ECONNRESET SECRET','network'], ['other SECRET','cli_process']]) test(`classifies ${code} without provider stderr`, async t => {
+  const options = await fixture(t, `process.stderr.write(${JSON.stringify(message)});process.exit(7)`);
+  await assert.rejects(runAssessment(evidence, options), error => {
+    assert.equal(error.code, code); assert.equal(error.stage, 'provider'); assert.equal(error.exitCode, 7); assert.ok(!error.message.includes('SECRET')); return true;
+  });
 });

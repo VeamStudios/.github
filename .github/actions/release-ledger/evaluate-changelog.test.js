@@ -13,7 +13,7 @@ test('three synthetic policy cases pass the actual validator with representative
     assert.equal(options.timeoutMs, 60000); assert.equal(options.expectedVersion, CLI_VERSION); assert.equal(options.model, MODEL);
     return answer(evidence, ['missing', 'covered', 'exempt'][calls++]);
   } });
-  assert.equal(calls, 3); assert.deepEqual(report, { total: 3, passed: 3, mismatched: 0, errors: 0, exitCode: 0 });
+  assert.equal(calls, 3); assert.deepEqual(report, { total: 3, passed: 3, mismatched: 0, errors: 0, skipped: 0, diagnostics: [], exitCode: 0 });
 });
 test('existing upcoming coverage does not require a changelog edit', () => {
   const covered = cases()[1];
@@ -22,14 +22,14 @@ test('existing upcoming coverage does not require a changelog edit', () => {
 });
 test('valid but incorrect semantic answers fail acceptance', async () => {
   const report = await evaluate({}, { runAssessment: async evidence => answer(evidence, 'exempt') });
-  assert.deepEqual(report, { total: 3, passed: 1, mismatched: 2, errors: 0, exitCode: 1 });
+  assert.deepEqual(report, { total: 3, passed: 1, mismatched: 2, errors: 0, skipped: 0, diagnostics: [], exitCode: 1 });
 });
 test('malformed output is an error rather than an outcome mismatch', async () => {
   const report = await evaluate({}, { runAssessment: async () => ({ secret: 'must never be logged' }) });
-  assert.deepEqual(report, { total: 3, passed: 0, mismatched: 0, errors: 3, exitCode: 1 });
+  assert.equal(report.errors, 1); assert.equal(report.skipped, 2); assert.equal(report.diagnostics[0].code, 'assessment_validation'); assert.equal(report.exitCode, 1);
 });
 test('provider errors are bounded to one invocation per case with no retry', async () => {
   let calls = 0;
   const report = await evaluate({}, { runAssessment: async () => { calls++; throw Error('private provider content'); } });
-  assert.equal(calls, 3); assert.equal(report.errors, 3); assert.equal(report.exitCode, 1);
+  assert.equal(calls, 1); assert.equal(report.errors, 1); assert.equal(report.skipped, 2); assert.equal(report.exitCode, 1);
 });
