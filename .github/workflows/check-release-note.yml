@@ -25,16 +25,14 @@ jobs:
     name: ${{ inputs.job-name }}
     runs-on: ubuntu-latest
     steps:
-      - name: Report release note enforcement
-        run: echo "Release ledger mode is $LEDGER_MODE"
-        env:
-          LEDGER_MODE: live
+      - name: Describe changelog preview mode
+        run: echo "Changelog review is advisory."
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Check reviewed release note contract
+      - name: Preview changelog entries and Work Item links
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         uses: VeamStudios/.github/.github/actions/check-release-note@main
