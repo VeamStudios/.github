@@ -8,7 +8,7 @@ on:
         default: release-note
         type: string
       summary-title:
-        description: Heading for the changelog review summary
+        description: Heading for the advisory entry preview
         required: false
         default: Release announcement preview
         type: string
@@ -16,6 +16,21 @@ on:
         description: Optional explanation of the current changelog check behaviour
         required: false
         default: ''
+        type: string
+      coverage-mode:
+        description: Advisory entry preview or changelog format/link diagnostics (preview or deterministic)
+        required: false
+        default: preview
+        type: string
+      changelog-path:
+        description: One to 64 explicit relative CHANGELOG.md paths separated by newlines for deterministic diagnostics (no globs)
+        required: false
+        default: CHANGELOG.md
+        type: string
+      changelog-format:
+        description: Existing changelog style for deterministic diagnostics (categorized, flat or components)
+        required: false
+        default: categorized
         type: string
 permissions:
   contents: read
@@ -25,14 +40,21 @@ jobs:
     name: ${{ inputs.job-name }}
     runs-on: ubuntu-latest
     steps:
+      - name: Validate changelog mode
+        if: ${{ inputs.coverage-mode != 'preview' && inputs.coverage-mode != 'deterministic' }}
+        run: |
+          printf '%s\n' '::error::coverage-mode must be preview or deterministic.'
+          exit 1
       - name: Describe changelog preview mode
+        if: ${{ inputs.coverage-mode == 'preview' }}
         run: echo "Changelog review is advisory."
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
+          fetch-depth: ${{ inputs.coverage-mode == 'deterministic' && 1 || 0 }}
           persist-credentials: false
       - name: Preview changelog entries and Work Item links
+        if: ${{ inputs.coverage-mode == 'preview' }}
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         uses: VeamStudios/.github/.github/actions/check-release-note@main
@@ -40,6 +62,17 @@ jobs:
           body: ${{ github.event.pull_request.body }}
           head: ${{ github.event.pull_request.head.sha }}
           summary-title: ${{ inputs.summary-title }}
+
+      - name: Check changelog format and links
+        if: ${{ inputs.coverage-mode == 'deterministic' }}
+        # Pin the reviewed action so automatic draft-branch deletion cannot break it.
+        uses: VeamStudios/.github/.github/actions/check-changelog-coverage@7e6f22fde039d822b0f43836fadcee9ae0fd730d
+        with:
+          repository: ${{ github.repository }}
+          head: ${{ github.event.pull_request.head.sha }}
+          base: ${{ github.event.pull_request.base.sha }}
+          changelog-path: ${{ inputs.changelog-path }}
+          changelog-format: ${{ inputs.changelog-format }}
 
       - name: Describe this check
         if: ${{ always() && inputs.job-summary != '' }}
