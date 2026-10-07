@@ -14,7 +14,7 @@ on:
         default: ''
         type: string
       merge-method:
-        description: 'Merge method to use (merge, squash, rebase)'
+        description: 'Deprecated compatibility input; ignored. Developers decide when and how to merge.'
         required: false
         type: string
         default: 'squash'
@@ -209,41 +209,3 @@ jobs:
             core.info(
               `Set Project ${PROJECT_NUMBER} item ${itemId} to Not Started for ${context.repo.owner}/${context.repo.repo}#${pr.number}`,
             );
-
-  merge:
-    if: "github.event.label.name == 'bot: qa approved' && contains(github.event.pull_request.labels.*.name, 'bot: qa needed') && contains(github.event.pull_request.labels.*.name, 'bot: qa automerge')"
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-
-    steps:
-      - name: Validate QA bot configuration
-        run: |
-          if [ -z "${{ secrets.BOT_QA_PRIVATE_KEY }}" ]; then
-            echo "::error::Required workflow secret BOT_QA_PRIVATE_KEY is missing"
-            exit 1
-          fi
-
-      - name: Mint GitHub App token
-        id: app_token
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ inputs.bot-qa-client-id || vars.BOT_QA_CLIENT_ID }}
-          private-key: ${{ secrets.BOT_QA_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
-      - name: Merge PR
-        env:
-          GH_TOKEN: ${{ steps.app_token.outputs.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          echo "Merging PR #${PR_NUMBER}: ${PR_TITLE}"
-
-          gh pr merge "${PR_NUMBER}" \
-            --repo "${{ github.repository }}" \
-            --${{ inputs.merge-method }} \
-            --auto
-
-          echo "PR #${PR_NUMBER} merged successfully"

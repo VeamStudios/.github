@@ -222,7 +222,7 @@ jobs:
 | `remote-config-notion-sync.yml` | Mirror production Remote Config values and deployment/release state into Work Items |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
-| `qa-pipeline.yml` | PR governance: the required `Work Item gate` (a `Work Items:` link on `feat` PRs), `bot: qa needed` routing to QA Project 26 as `Not Started`, and label-gated QA auto-merge |
+| `qa-pipeline.yml` | PR governance: the required `Work Item gate` (a `Work Items:` link on `feat` PRs) and `bot: qa needed` routing to QA Project 26 as `Not Started`. Developers decide when to merge; QA labels never merge PRs or enable auto-merge |
 | `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
 
 ## Caller Templates
@@ -257,6 +257,10 @@ The new templates rely on secrets already configured at the org or repo level:
 ## Versioning
 
 All references use `@main` so repos pick up updates automatically. If you need stability, pin to a specific commit SHA.
+
+The QA workflow's legacy `merge-method` input is accepted but ignored. QA labels
+only coordinate QA; a developer chooses when and how to merge using the existing
+repository rules. The workflow does not change repository auto-merge settings.
 
 ### Work Item gate
 
