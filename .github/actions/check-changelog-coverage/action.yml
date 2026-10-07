@@ -1,5 +1,5 @@
 name: Changelog format and links
-description: Check exact-head CHANGELOG.md structure and link syntax without executing PR code.
+description: Report advisory exact-head changelog structure and link diagnostics without executing PR code.
 inputs:
   repository:
     description: Repository whose changelog is checked
@@ -10,6 +10,14 @@ inputs:
   base:
     description: Current PR base SHA
     required: true
+  changelog-path:
+    description: Trusted caller's one to 64 explicit relative CHANGELOG.md paths separated by newlines (no globs)
+    required: false
+    default: CHANGELOG.md
+  changelog-format:
+    description: Trusted caller's existing style (categorized, flat or components)
+    required: false
+    default: categorized
 runs:
   using: composite
   steps:
@@ -21,4 +29,6 @@ runs:
         CHANGELOG_REPOSITORY: ${{ inputs.repository }}
         CHANGELOG_HEAD_SHA: ${{ inputs.head }}
         CHANGELOG_BASE_SHA: ${{ inputs.base }}
+        CHANGELOG_PATH: ${{ inputs.changelog-path }}
+        CHANGELOG_FORMAT: ${{ inputs.changelog-format }}
       run: node "$CHANGELOG_SCRIPT"

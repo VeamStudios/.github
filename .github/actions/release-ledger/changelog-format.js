@@ -8,6 +8,7 @@ const {parseWorkItemLinks} = require('./work-item-links');
 // No category vocabulary or source-link requirement is imposed on entries.
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 const MAX_LINES = 50000;
+const MAX_INTRO_LINES = 20;
 const NOTION_HOST = /^(?:[a-z0-9-]+\.)?notion\.(?:so|site|com)$/i;
 const PAGE_ID = /^(?:[0-9a-f]{32}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i;
 const location = (startLine, endLine = startLine) => ({path: 'CHANGELOG.md', startLine, endLine});
@@ -39,6 +40,25 @@ function compareVersions(a, b) {
     if (left[index] !== right[index]) return left[index] > right[index] ? 1 : -1;
   }
   return 0;
+}
+
+function releaseVersion(value, ref) {
+  if (/^unreleased$/i.test(value)) return {version: 'Unreleased', kind: 'unreleased'};
+  if (/^deploy-[1-9]\d*$/.test(value)) {
+    requireFormat(Number.isSafeInteger(Number(value.slice(7))), 'version', 'A deployment section needs a safe positive integer deployment ID.', ref);
+    return {version: value, kind: 'deployment'};
+  }
+  return {version: versionParts(value, ref).join('.'), kind: 'numeric'};
+}
+
+function headingName(value, ref) {
+  const name = value.replace(/(?:^|\s+)#+\s*$/, '').trim();
+  requireFormat(Boolean(name), 'structure', 'A changelog heading needs a name.', ref);
+  return name;
+}
+
+function isProse(line) {
+  return /^\S/.test(line) && !/^[#>*+|`~-]/.test(line) && !/^\d+[.)]\s/.test(line) && !/^\[[^\]]+\]:/.test(line);
 }
 
 function normalUrl(raw, ref) {
@@ -127,26 +147,46 @@ function parseReferences(line, ref) {
 
 /**
  * Validate complete CHANGELOG.md text and retain source line ranges.
- * Supported structure: optional title/single-line HTML comments, descending
- * unique ## versions (legacy two-part versions allowed), optional first
- * Unreleased, nonempty ### categories, and - or * bullets with indented text.
+ * Supported structure: bounded preamble, unique ## numeric/deploy-ID versions
+ * descending within each numbering kind, and optional first Unreleased.
+ * Explicit profiles preserve the formats of existing repositories:
+ * categorized (default): ### categories and optional **launch subgroups**;
+ * flat: version introductions followed by bullets, without category headings;
+ * components: ### components, #### categories, or prose-only component notes.
+ * All profiles allow - or * bullets with indented continuations.
  * Existing rcValue/previewTag metadata is retained, never interpreted here.
- * Returns {sections, entries}; entries include ref, workItems and prRefs.
+ * Returns {sections, entries, preamble}; all retained text has real line refs.
+ * Entries include ref, workItems and prRefs. Preamble/intro text is retained
+ * separately and does not count as a bullet or establish release coverage.
  */
-function validateChangelog(text) {
+function validateChangelog(text, {format = 'categorized'} = {}) {
+  requireFormat(['categorized', 'flat', 'components'].includes(format), 'input', 'Use a supported changelog format: categorized, flat or components.');
   requireFormat(typeof text === 'string' && text.trim(), 'missing_changelog', 'CHANGELOG.md is missing or empty.');
   requireFormat(Buffer.byteLength(text, 'utf8') <= MAX_TEXT_BYTES && !text.includes('\0') && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(text), 'input', 'CHANGELOG.md exceeds the supported size or contains invalid text.');
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/), sections = [], entries = [], sourceLines = new Map();
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/), sections = [], entries = [], preamble = [], sourceLines = new Map();
   requireFormat(lines.length <= MAX_LINES, 'input', 'CHANGELOG.md exceeds the supported 50,000-line input limit.');
-  const versions = new Set(), categoryNames = new Set(), populatedCategories = new Map();
-  let section, heading = '', entry;
+  const versions = new Set(), categoryNames = new Set(), componentNames = new Set(), populated = new Set();
+  let section, category, component, group, entry;
+  const retainText = (list, line, ref, kind = 'paragraph') => {
+    requireFormat(list.length < MAX_INTRO_LINES, 'input', 'A changelog preamble or version introduction exceeds the supported 20-line limit.', ref);
+    list.push({kind, text: line, ref, ...parseReferences(line, ref)});
+  };
+  const addEntry = (summary, lineNumber, kind = 'bullet') => {
+    const item = {id: `CHANGELOG.md:${lineNumber}`, version: section.version, heading: category?.name || '', summary, kind, flagKeys: [], previewTag: '', startLine: lineNumber, endLine: lineNumber};
+    if (component) item.component = component.name;
+    if (group) item.group = group.name;
+    section.entries.push(item); entries.push(item);
+    for (const owner of [category, component, group]) if (owner) populated.add(owner);
+    sourceLines.set(item, [{text: summary, ref: location(lineNumber)}]);
+    return item;
+  };
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index], ref = location(index + 1);
     if (!line.trim()) continue;
     const release = line.match(/^##\s+(?:\[([^\]]+)\]|([^\s]+))(?:\s+-\s+(\d{4}-\d\d-\d\d))?\s*$/);
     if (release) {
       const raw = release[1] || release[2];
-      const version = /^unreleased$/i.test(raw) ? 'Unreleased' : versionParts(raw, ref).join('.');
+      const {version, kind} = releaseVersion(raw, ref);
       requireFormat(!versions.has(version), 'duplicate_version', 'CHANGELOG.md contains duplicate release versions.', ref);
       versions.add(version);
       if (release[3]) {
@@ -154,32 +194,61 @@ function validateChangelog(text) {
         requireFormat(Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === release[3], 'date', 'A changelog release date is invalid.', ref);
       }
       if (section) section.endLine = index;
-      section = {version, displayedVersion: raw.replace(/^v/i, ''), startLine: index + 1, endLine: lines.length, entries: [], headings: []};
-      sections.push(section); heading = ''; entry = null; categoryNames.clear();
-      populatedCategories.set(section, new Set());
+      section = {version, versionKind: kind, displayedVersion: raw.replace(/^v/i, ''), startLine: index + 1, endLine: lines.length, entries: [], headings: [], components: [], groups: [], intro: []};
+      sections.push(section); category = component = group = entry = null;
+      categoryNames.clear(); componentNames.clear();
       continue;
     }
     requireFormat(!/^##(?:\s|$)/.test(line), 'version', 'A changelog release heading is malformed.', ref);
     if (!section) {
-      requireFormat(/^#\s+\S/.test(line) || /^<!--[^\n]*-->\s*$/.test(line), 'structure', 'Unexpected text before the first changelog version.', ref);
+      const kind = /^#\s+\S/.test(line) ? 'title' : /^<!--[^\n]*-->\s*$/.test(line) ? 'comment' : isProse(line) ? 'paragraph' : null;
+      requireFormat(kind, 'structure', 'Unsupported preamble text before the first changelog version.', ref);
+      retainText(preamble, line, ref, kind);
       continue;
     }
-    const category = line.match(/^###\s+(.+?)\s*$/);
-    if (category) {
-      heading = category[1].replace(/(?:^|\s+)#+\s*$/, '').trim();
-      requireFormat(Boolean(heading), 'structure', 'A changelog category heading needs a name.', ref);
-      requireFormat(!categoryNames.has(heading.toLowerCase()), 'duplicate_category', 'A release contains duplicate category headings.', ref);
-      categoryNames.add(heading.toLowerCase());
-      section.headings.push({name: heading, line: index + 1}); entry = null;
+    const heading = line.match(/^(#{3,4})\s+(.+?)\s*$/);
+    if (heading) {
+      requireFormat(format !== 'flat', 'structure', 'Flat changelogs use version bullets without category headings.', ref);
+      const name = headingName(heading[2], ref), depth = heading[1].length;
+      parseReferences(name, ref);
+      if (format === 'components' && depth === 3) {
+        requireFormat(!componentNames.has(name.toLowerCase()), 'duplicate_component', 'A version contains duplicate component headings.', ref);
+        componentNames.add(name.toLowerCase());
+        component = {name, line: index + 1}; section.components.push(component);
+        category = group = entry = null;
+        continue;
+      }
+      requireFormat(depth === (format === 'components' ? 4 : 3), 'structure', 'Use a category heading at the configured changelog depth.', ref);
+      requireFormat(format !== 'components' || component, 'structure', 'A component changelog category needs a component heading first.', ref);
+      const key = `${component?.name.toLowerCase() || ''}\0${name.toLowerCase()}`;
+      requireFormat(!categoryNames.has(key), 'duplicate_category', 'A release contains duplicate category headings within the same component.', ref);
+      categoryNames.add(key);
+      category = {name, line: index + 1};
+      if (component) category.component = component.name;
+      section.headings.push(category); group = entry = null;
+      continue;
+    }
+    const subgroup = line.match(/^\*\*(.+?)\*\*$/);
+    if (subgroup && format === 'categorized') {
+      requireFormat(category, 'structure', 'A bold changelog subgroup needs a category heading first.', ref);
+      group = {name: subgroup[1].trim(), heading: category.name, line: index + 1};
+      requireFormat(group.name, 'structure', 'A changelog subgroup needs a name.', ref);
+      parseReferences(group.name, ref);
+      section.groups.push(group); entry = null;
       continue;
     }
     const bullet = line.match(/^[-*]\s+(.+?)\s*$/);
     if (bullet) {
-      requireFormat(Boolean(heading), 'structure', 'A changelog bullet needs a category heading.', ref);
-      entry = {id: `CHANGELOG.md:${index + 1}`, version: section.version, heading, summary: bullet[1], flagKeys: [], previewTag: '', startLine: index + 1, endLine: index + 1};
-      section.entries.push(entry); entries.push(entry);
-      populatedCategories.get(section).add(heading);
-      sourceLines.set(entry, [{text: bullet[1], ref}]);
+      requireFormat(format === 'flat' || category, 'structure', 'A changelog bullet needs a category heading.', ref);
+      entry = addEntry(bullet[1], index + 1);
+      continue;
+    }
+    if (isProse(line) && format === 'flat' && section.entries.length === 0) {
+      retainText(section.intro, line, ref);
+      continue;
+    }
+    if (isProse(line) && format === 'components' && component && !category) {
+      entry = addEntry(line, index + 1, 'paragraph');
       continue;
     }
     if (entry && /^\s+\S/.test(line) && !/^\s*(?:```|~~~|#{1,6}\s)/.test(line)) {
@@ -201,11 +270,18 @@ function validateChangelog(text) {
     throw new ChangelogFormatError('Unsupported changelog text; use a version, category, bullet or indented continuation.', {rule: 'structure', ref});
   }
   requireFormat(sections.length > 0, 'structure', 'CHANGELOG.md has no supported version sections.');
+  const previousByKind = new Map();
   for (let index = 0; index < sections.length; index++) {
-    const current = sections[index], previous = sections[index - 1];
+    const current = sections[index], previous = previousByKind.get(current.versionKind);
     requireFormat(current.version !== 'Unreleased' || index === 0, 'version_order', 'Unreleased must be the first changelog section.', location(current.startLine));
-    if (previous && previous.version !== 'Unreleased') requireFormat(compareVersions(previous.version, current.version) > 0, 'version_order', 'Changelog versions must be ordered newest to oldest.', location(current.startLine));
-    for (const category of current.headings) requireFormat(populatedCategories.get(current).has(category.name), 'empty_category', 'A changelog category has no entries.', location(category.line));
+    if (previous) {
+      const ordered = current.versionKind === 'deployment' ? Number(previous.version.slice(7)) > Number(current.version.slice(7)) : compareVersions(previous.version, current.version) > 0;
+      requireFormat(ordered, 'version_order', 'Changelog versions must be ordered newest to oldest within each numbering format.', location(current.startLine));
+    }
+    previousByKind.set(current.versionKind, current);
+    for (const category of current.headings) requireFormat(populated.has(category), 'empty_category', 'A changelog category has no entries.', location(category.line));
+    for (const component of current.components) requireFormat(populated.has(component), 'empty_component', 'A changelog component has no entries.', location(component.line));
+    for (const subgroup of current.groups) requireFormat(populated.has(subgroup), 'empty_subgroup', 'A changelog subgroup has no entries.', location(subgroup.line));
     requireFormat(current.entries.length > 0 || current.version === 'Unreleased', 'empty_version', 'A numbered changelog version has no entries.', location(current.startLine));
     current.ref = location(current.startLine, current.endLine);
   }
@@ -219,7 +295,7 @@ function validateChangelog(text) {
     }
     item.workItems = [...workItems].sort(); item.prRefs = [...prRefs.values()];
   }
-  return {sections, entries};
+  return {sections, entries, preamble};
 }
 
 module.exports = {ChangelogFormatError, validateChangelog};

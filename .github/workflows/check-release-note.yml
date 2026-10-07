@@ -18,9 +18,19 @@ on:
         default: ''
         type: string
       coverage-mode:
-        description: Advisory entry preview or SAP iOS format/link diagnostics (preview or deterministic)
+        description: Advisory entry preview or changelog format/link diagnostics (preview or deterministic)
         required: false
         default: preview
+        type: string
+      changelog-path:
+        description: One to 64 explicit relative CHANGELOG.md paths separated by newlines for deterministic diagnostics (no globs)
+        required: false
+        default: CHANGELOG.md
+        type: string
+      changelog-format:
+        description: Existing changelog style for deterministic diagnostics (categorized, flat or components)
+        required: false
+        default: categorized
         type: string
 permissions:
   contents: read
@@ -53,7 +63,7 @@ jobs:
           head: ${{ github.event.pull_request.head.sha }}
           summary-title: ${{ inputs.summary-title }}
 
-      - name: Check SAP iOS changelog format and links
+      - name: Check changelog format and links
         if: ${{ inputs.coverage-mode == 'deterministic' }}
         # Draft dependency: restore @main only after the shared check is merged.
         uses: VeamStudios/.github/.github/actions/check-changelog-coverage@ci/sap-changelogs-pilot-20261007
@@ -61,6 +71,8 @@ jobs:
           repository: ${{ github.repository }}
           head: ${{ github.event.pull_request.head.sha }}
           base: ${{ github.event.pull_request.base.sha }}
+          changelog-path: ${{ inputs.changelog-path }}
+          changelog-format: ${{ inputs.changelog-format }}
 
       - name: Describe this check
         if: ${{ always() && inputs.job-summary != '' }}

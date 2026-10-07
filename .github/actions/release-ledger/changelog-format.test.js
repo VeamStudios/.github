@@ -11,8 +11,8 @@ const UUID = '01234567-89ab-cdef-0123-456789abcdef';
 const workItem = `https://www.notion.so/Example-${ID}`;
 const sourcePr = 'https://github.com/ExampleOrg/ExampleRepo/pull/42';
 const oneNote = (note = 'Improved report formatting.') => `# Example\n\n## 1.2.0\n### Fixed\n- ${note}\n`;
-function fails(text, rule, line) {
-  assert.throws(() => validateChangelog(text), error => {
+function fails(text, rule, line, options) {
+  assert.throws(() => validateChangelog(text, options), error => {
     assert.ok(error instanceof ChangelogFormatError);
     assert.equal(error.code, 'invalid_changelog');
     assert.equal(error.details.rule, rule);
@@ -142,7 +142,7 @@ test('duplicate categories are detected without restricting category names', () 
 });
 
 test('every nonblank line must belong to the supported structure', () => {
-  fails('# Example\nUnexpected preamble.\n## 1.2.0\n### Fixed\n- Note.', 'structure', 2);
+  fails('# Example\n> Unsupported preamble block.\n## 1.2.0\n### Fixed\n- Note.', 'structure', 2);
   fails('## 1.2.0\n- No category.', 'structure', 2);
   for (const text of ['Unexpected paragraph.', '1. Numbered note.', '### ', '- ', '```js', '  ```js', '  ### Hidden heading']) {
     fails(`## 1.2.0\n### Fixed\n- A note.\n${text}`, 'structure', 4);
@@ -229,4 +229,109 @@ test('normal source fragments and trailing URL punctuation do not change mapping
   const entry = validateChangelog(oneNote(`${sourcePr}?view=1#discussion; ${workItem},`)).entries[0];
   assert.deepEqual(entry.workItems, [ID]);
   assert.deepEqual(entry.prRefs, [{repository: 'ExampleOrg/ExampleRepo', number: 42}]);
+});
+
+test('categorized changelogs retain bold launch subgroups without losing bullets or ranges', () => {
+  const parsed = validateChangelog([
+    '# Example', '## 1.0.0', '### New', '**Inspection Tools**',
+    '- Create reports.', '- Add photos.', '', '**Collaboration**',
+    '- Invite members.', '',
+  ].join('\n'));
+  assert.equal(parsed.entries.length, 3);
+  assert.deepEqual(parsed.entries.map(entry => entry.group), ['Inspection Tools', 'Inspection Tools', 'Collaboration']);
+  assert.deepEqual(parsed.sections[0].groups, [
+    {name: 'Inspection Tools', heading: 'New', line: 4},
+    {name: 'Collaboration', heading: 'New', line: 8},
+  ]);
+  assert.equal(parsed.entries[2].ref.startLine, 9);
+  fails('## 1.0.0\n### New\n- A note.\n**Empty group**\n### Fixed\n- Another note.', 'empty_subgroup', 4);
+  fails('## 1.0.0\n**No category**\n- A note.', 'structure', 2);
+  fails('## 1.0.0\n### New\n** **\n- A note.', 'structure', 3);
+  fails('## 1.0.0\n### New\n**Group [PR](https://evil.example/pull/1)**\n- A note.', 'source_pr_link', 3);
+});
+
+test('bounded prose preambles are retained and their claimed source links are checked', () => {
+  const text = '# Changelog\n\nNotes below are pending. Older notes are in [history](docs/CHANGELOG.md).\n\n## Unreleased\n### Internal\n- A note.';
+  const parsed = validateChangelog(text);
+  assert.equal(parsed.preamble.length, 2);
+  assert.equal(parsed.preamble[1].kind, 'paragraph');
+  assert.equal(parsed.preamble[1].ref.startLine, 3);
+  assert.equal(parsed.preamble[1].text, 'Notes below are pending. Older notes are in [history](docs/CHANGELOG.md).');
+  assert.equal(parsed.entries.length, 1);
+  fails('# Changelog\n' + 'Introductory text.\n'.repeat(20) + '## Unreleased', 'input', 21);
+  fails('# Changelog\n[Work Item](https://evil.example/not-a-page)\n## Unreleased', 'work_item_link', 2);
+  fails('# Changelog\n```text\n## Unreleased', 'structure', 2);
+});
+
+test('positive deploy-ID sections retain their opaque identifiers and numeric ordering', () => {
+  const parsed = validateChangelog('## Unreleased\n### Fixed\n- Pending.\n## deploy-37310880634\n### Changed\n- A note.\n## deploy-37310880633\n### Fixed\n- Older.');
+  assert.equal(parsed.sections[1].version, 'deploy-37310880634');
+  assert.equal(parsed.sections[1].versionKind, 'deployment');
+  assert.equal(parsed.entries[1].version, 'deploy-37310880634');
+  fails('## deploy-42\n### Fixed\n- First.\n## deploy-43\n### Fixed\n- Second.', 'version_order', 4);
+  fails('## deploy-42\n### Fixed\n- First.\n## deploy-42\n### Fixed\n- Second.', 'duplicate_version', 4);
+  for (const version of ['deploy-0', 'deploy-01', 'deploy--1', 'deploy-9007199254740992']) {
+    fails(`## ${version}\n### Fixed\n- A note.`, 'version', 1);
+  }
+});
+
+test('explicit flat profile supports Models lists and retained version introductions', () => {
+  const parsed = validateChangelog([
+    '# Changelog', '## 0.150.0', '- [Internal] Updated CI.', '',
+    '## 0.141.0', 'Models and validation changes.', '',
+    `- [Schema] Added a field. [Work Item](${workItem})`,
+    '- [Generated] Regenerated declarations.',
+  ].join('\n'), {format: 'flat'});
+  assert.equal(parsed.entries.length, 3);
+  assert.equal(parsed.entries[0].heading, '');
+  assert.equal(parsed.sections[1].intro[0].text, 'Models and validation changes.');
+  assert.equal(parsed.sections[1].intro[0].ref.startLine, 6);
+  assert.deepEqual(parsed.entries[1].workItems, [ID]);
+  assert.equal(parsed.entries[1].ref.startLine, 8);
+  fails('## 1.0.0\n- Flat note.', 'structure', 2);
+  fails('## 1.0.0\n### Fixed\n- Categorized note.', 'structure', 2, {format: 'flat'});
+  fails('## 1.0.0\nIntro only.', 'empty_version', 1, {format: 'flat'});
+  fails('## 1.0.0\n- A note.\nUnparsed text.', 'structure', 3, {format: 'flat'});
+});
+
+test('flat introductions remain bounded and source syntax stays strict in every profile', () => {
+  fails('## 1.0.0\n' + 'Introductory text.\n'.repeat(21) + '- A note.', 'input', 22, {format: 'flat'});
+  fails('## 1.0.0\nIntro [PR](https://wrong.example/Org/Repo/pull/1).\n- A note.', 'source_pr_link', 2, {format: 'flat'});
+  fails('## 1.0.0\n- [Internal] A note. [PR](https://github.com.evil.example/Org/Repo/pull/1)', 'source_pr_link', 2, {format: 'flat'});
+  fails(oneNote(), 'input', 1, {format: 'unknown'});
+});
+
+test('explicit component profile retains nested categories and prose-only component notes', () => {
+  const parsed = validateChangelog([
+    '# CHANGELOG', '## 1.2 - 2023-02-08', '### `main`', '#### New', '- Added an endpoint.',
+    '### `exporter`', '#### New', '- Improved export.', '#### Changed', '- Updated settings.',
+    '## 1.0 - 2020-06-15', '### `main`', 'Initial release.', '### `pdf`', 'Initial release.',
+  ].join('\n'), {format: 'components'});
+  assert.equal(parsed.entries.length, 5);
+  assert.deepEqual(parsed.entries.map(entry => entry.component), ['`main`', '`exporter`', '`exporter`', '`main`', '`pdf`']);
+  assert.deepEqual(parsed.entries.map(entry => entry.heading), ['New', 'New', 'Changed', '', '']);
+  assert.equal(parsed.entries[3].kind, 'paragraph');
+  assert.equal(parsed.entries[3].summary, 'Initial release.');
+  assert.equal(parsed.entries[3].ref.startLine, 13);
+  assert.equal(parsed.sections[0].components.length, 2);
+  assert.equal(parsed.sections[0].headings[1].component, '`exporter`');
+});
+
+test('component profiles reject missing/duplicate/empty structure with useful source lines', () => {
+  const options = {format: 'components'};
+  fails('## 1.0\n#### Fixed\n- A note.', 'structure', 2, options);
+  fails('## 1.0\n### main\n- Missing category.', 'structure', 3, options);
+  fails('## 1.0\n### main\n### exporter\nInitial release.', 'empty_component', 2, options);
+  fails('## 1.0\n### main\n#### Fixed\n#### New\n- A note.', 'empty_category', 3, options);
+  fails('## 1.0\n### main\nInitial release.\n### MAIN\nInitial release.', 'duplicate_component', 4, options);
+  fails('## 1.0\n### main\n#### Fixed\n- A note.\n#### fixed\n- Another note.', 'duplicate_category', 5, options);
+  fails('## 1.0\n### main\n#### Fixed\nUnparsed category prose.', 'structure', 4, options);
+  fails('## 1.0\n### main\nInitial release. [source](https://evil.example/no)', 'source_pr_link', 3, options);
+  fails('## 1.0\n### Component [Work Item](https://evil.example/id)\nInitial release.', 'work_item_link', 2, options);
+});
+
+test('known malformed histories remain explicit diagnostics instead of silently normalized', () => {
+  fails('##1.2.2\n### Fixed\n- A note.', 'structure', 1);
+  fails('## 3.2.1\n### New\n- First.\n### New\n- Second.', 'duplicate_category', 4);
+  fails('## 3.1.0 - Skipped\n### New\n- A note.', 'version', 1);
 });
