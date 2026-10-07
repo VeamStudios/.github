@@ -17,6 +17,11 @@ on:
         required: false
         default: ''
         type: string
+      coverage-mode:
+        description: Advisory preview, or SAP iOS pilot diagnostics (preview or pilot)
+        required: false
+        default: preview
+        type: string
 permissions:
   contents: read
   pull-requests: read
@@ -25,6 +30,11 @@ jobs:
     name: ${{ inputs.job-name }}
     runs-on: ubuntu-latest
     steps:
+      - name: Validate changelog mode
+        if: ${{ inputs.coverage-mode != 'preview' && inputs.coverage-mode != 'pilot' }}
+        run: |
+          printf '%s\n' '::error::coverage-mode must be preview or pilot.'
+          exit 1
       - name: Describe changelog preview mode
         run: echo "Changelog review is advisory."
       - uses: actions/checkout@v6
@@ -40,6 +50,15 @@ jobs:
           body: ${{ github.event.pull_request.body }}
           head: ${{ github.event.pull_request.head.sha }}
           summary-title: ${{ inputs.summary-title }}
+
+      - name: Collect SAP iOS coverage pilot diagnostics
+        if: ${{ inputs.coverage-mode == 'pilot' }}
+        # Draft dependency: restore @main only after the shared pilot is merged.
+        uses: VeamStudios/.github/.github/actions/check-changelog-coverage@ci/sap-changelogs-pilot-20261007
+        with:
+          repository: ${{ github.repository }}
+          head: ${{ github.event.pull_request.head.sha }}
+          base: ${{ github.event.pull_request.base.sha }}
 
       - name: Describe this check
         if: ${{ always() && inputs.job-summary != '' }}

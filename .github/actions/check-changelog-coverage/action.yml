@@ -1,0 +1,38 @@
+name: Changelog coverage pilot
+description: Collect exact-head changelog evidence and report pilot diagnostics without executing PR code.
+inputs:
+  repository:
+    description: Repository being assessed
+    required: true
+  head:
+    description: Exact reviewed PR head SHA
+    required: true
+  base:
+    description: Current PR base SHA
+    required: true
+  baseline-path:
+    description: Optional release baseline JSON produced by a trusted runner, never by the PR
+    required: false
+    default: ''
+  assessment-path:
+    description: Optional assessment JSON produced by an approved trusted assessor, never by the PR
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Report changelog coverage diagnostics
+      shell: bash
+      env:
+        COVERAGE_SCRIPT: ${{ github.action_path }}/../release-ledger/coverage-check.js
+        COVERAGE_WORKSPACE: ${{ github.workspace }}
+        COVERAGE_REPOSITORY: ${{ inputs.repository }}
+        COVERAGE_HEAD_SHA: ${{ inputs.head }}
+        COVERAGE_BASE_SHA: ${{ inputs.base }}
+        COVERAGE_MODE: pilot
+        COVERAGE_PR_NUMBER: ${{ github.event.pull_request.number }}
+        COVERAGE_PR_TITLE: ${{ github.event.pull_request.title }}
+        COVERAGE_PR_BODY: ${{ github.event.pull_request.body }}
+        COVERAGE_BASELINE_PATH: ${{ inputs.baseline-path }}
+        COVERAGE_ASSESSMENT_PATH: ${{ inputs.assessment-path }}
+      run: node "$COVERAGE_SCRIPT"
