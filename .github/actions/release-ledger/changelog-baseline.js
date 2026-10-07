@@ -70,26 +70,35 @@ function parseRow(row, repo, target) {
   const observedAt = folded?.observedAt || observation?.verification?.checkedAt || observation?.baseline?.checkedAt || p['Observed At']?.date?.start;
   return { row, manifest, observation, folded, releasedAt, observedAt };
 }
+// Changelog immutability starts when this exact build is downloadable. A valid
+// ACTIVE phased rollout has already shipped notes, even though the separate
+// release-completion gates still wait for COMPLETE/NONE.
+function distributedAppStore(observation, manifest) {
+  const v = observation?.verification, bundle = BUNDLES[`${manifest.repository}/${manifest.target}`];
+  return Boolean(v?.kind === 'app-store' && bundle && v.bundleId === bundle && v.platform === 'IOS' &&
+    typeof manifest.build === 'string' && manifest.build && v.build === manifest.build &&
+    v.version === manifest.version.replace(/^v/, '') && v.commit === manifest.commit && v.downloadable === true &&
+    ['READY_FOR_SALE', 'READY_FOR_DISTRIBUTION'].includes(v.state) &&
+    (observation.phase === 'rollout' && v.phasedReleaseState === 'ACTIVE' ||
+      observation.phase === 'live' && ['COMPLETE', 'NONE'].includes(v.phasedReleaseState)) &&
+    UUID.test(v.appStoreVersionId || '') && timestamp(v.checkedAt) && Date.parse(v.checkedAt) <= Date.now() + 60000 &&
+    v.evidence === `https://api.appstoreconnect.apple.com/v1/appStoreVersions/${v.appStoreVersionId}/build`);
+}
 function verified(candidate) {
   const { row, manifest: m, observation: o, folded, observedAt } = candidate;
   const p = row.properties;
   const ownerError = folded && text(p[OWNERS[folded.owner].error]);
   if (!o || o.verificationError || o.verificationStatus === 'error' || ownerError || !timestamp(observedAt) ||
-      Date.parse(observedAt) > Date.now() + 60000 || !deployedBaseline(row)) {
+      Date.parse(observedAt) > Date.now() + 60000 || (!deployedBaseline(row) && !distributedAppStore(o, m))) {
     fail('unverified', 'Latest released baseline lacks valid distribution evidence; repair/recheck it instead of using an earlier release.');
   }
   const b = o.baseline;
-  if (b?.kind === 'audited-production-baseline') {
-    if (!b.evidence.every(secureUrl) || Date.parse(b.checkedAt) > Date.now() + 60000) fail('unverified', 'Audited baseline evidence links or observation time are invalid.');
-  } else if (o.verification?.kind === 'app-store') {
-    const v = o.verification, bundle = BUNDLES[`${m.repository}/${m.target}`];
-    if (!bundle || v.bundleId !== bundle || v.platform !== 'IOS' || v.version !== m.version.replace(/^v/, '') ||
-        v.commit !== m.commit || v.build !== m.build || v.downloadable !== true ||
-        !['READY_FOR_SALE', 'READY_FOR_DISTRIBUTION'].includes(v.state) || !['COMPLETE', 'NONE'].includes(v.phasedReleaseState) ||
-        !UUID.test(v.appStoreVersionId || '') || !timestamp(v.checkedAt) || Date.parse(v.checkedAt) > Date.now() + 60000 ||
-        v.evidence !== `https://api.appstoreconnect.apple.com/v1/appStoreVersions/${v.appStoreVersionId}/build`) {
+  if (o.verification?.kind === 'app-store') {
+    if (!distributedAppStore(o, m)) {
       fail('unverified', 'Latest iOS baseline is not bound to the exact distributed bundle, version, build and commit.');
     }
+  } else if (b?.kind === 'audited-production-baseline') {
+    if (!b.evidence.every(secureUrl) || Date.parse(b.checkedAt) > Date.now() + 60000) fail('unverified', 'Audited baseline evidence links or observation time are invalid.');
   } else if (!secureUrl(o.verification?.evidence)) {
     fail('unverified', 'Latest shipped baseline evidence URL is invalid.');
   }

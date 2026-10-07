@@ -176,11 +176,23 @@ test('full SHA commit identities and a verified release baseline are mandatory',
   assert.throws(() => collectEvidence(f.config({head: f.git('rev-parse', 'synthetic-tag')})), /without peeling another object/);
 });
 
-test('a release snapshot outside the exact base ancestry is rejected, never substituted', t => {
-  const f = fixture(t); f.git('checkout', '--quiet', '-b', 'other-target'); f.write('other.txt', 'other branch\n');
-  const nonAncestor = f.commit('Synthetic unrelated release'); f.git('checkout', '--quiet', 'main');
-  f.write('App.js', 'head change\n'); f.commit('Synthetic head');
-  assert.throws(() => collectEvidence(f.config({releaseCommit: nonAncestor})), /Verified release ancestry/);
+test('verified released PR source remains exact after a squash merge and does not ship intervening main notes', t => {
+  const f = fixture(t); f.git('checkout', '--quiet', '-b', 'release-source');
+  f.write('CHANGELOG.md', upcoming('Actually shipped branch correction.')); f.write('released.js', 'distributed behaviour\n');
+  const releasedSource = f.commit('Synthetic independently verified released source');
+  f.git('checkout', '--quiet', 'main'); f.write('main-only.js', 'not distributed in that source\n'); f.commit('Synthetic intervening main work');
+  f.git('merge', '--squash', 'release-source');
+  const current = '# App\n\n## 1.2.0\n### Added\n- Unshipped main addition.\n\n' + upcoming('Actually shipped branch correction.').replace(/^# App\n\n/, '');
+  f.write('CHANGELOG.md', current); const base = f.commit('Synthetic squash merge retaining unreleased main note');
+  assert.throws(() => f.git('merge-base', '--is-ancestor', releasedSource, base));
+  assert.notEqual(f.git('rev-parse', `${releasedSource}^{tree}`), f.git('rev-parse', `${base}^{tree}`));
+  f.write('App.js', 'new PR change\n'); f.commit('Synthetic refreshed PR');
+  const evidence = collectEvidence(f.config({base, releaseCommit: releasedSource}));
+  assert.equal(evidence.releaseCommit, releasedSource);
+  assert.deepEqual(evidence.entries.map(entry => entry.eligible), [true, false, false]);
+  assert.equal(evidence.entries[0].text, '- Unshipped main addition.');
+  f.write('CHANGELOG.md', current.replace('Actually shipped branch correction.', 'PR rewrites the published wording.')); f.commit('Synthetic history rewrite');
+  assert.throws(() => collectEvidence(f.config({base, releaseCommit: releasedSource})), error => error.code === 'published_history_change');
 });
 
 test('stale or diverged PR heads fail before unrelated base changes can enter the evidence', t => {

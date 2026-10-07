@@ -101,7 +101,7 @@ function reader(cwd) {
     if (found !== sha) fail('invalid_commit', `${role} must identify the exact full commit, without peeling another object.`);
   }
   function ancestor(sha, base) {
-    git(['merge-base', '--is-ancestor', sha, base], 'Verified release ancestry');
+    git(['merge-base', '--is-ancestor', sha, base], 'Exact commit ancestry');
   }
   function blob(sha, mode, context) {
     if (!['100644', '100755'].includes(mode) || !SHA.test(sha) || sha === ZERO_SHA) {
@@ -225,7 +225,11 @@ function collectEvidence(input) {
   // rather than asking the assessor to judge that incomplete combined state.
   try { git.ancestor(config.base, config.head); }
   catch { fail('stale_base', 'Exact PR head must contain the current base commit and complete ancestry. Update the PR branch, fetch both exact histories and rerun; no changelog coverage was assessed.'); }
-  for (const commit of config.commits) { git.commit(commit, 'Release'); git.ancestor(commit, config.base); }
+  // Distribution is proved by the trusted caller's ledger evidence, not by
+  // Git ancestry. A released PR source can be squash-merged onto main without
+  // its commit becoming an ancestor. Keep its exact source and changelog;
+  // substituting the squash commit could classify unshipped main notes as live.
+  for (const commit of config.commits) git.commit(commit, 'Release');
   const files = git.changedFiles(config.base, config.head);
   const releasedNotes = new Set(), releasedFrontiers = new Map(), releasedSections = new Map(), releasedUnreleasedNotes = new Map();
   for (const filePath of config.changelogPaths) {

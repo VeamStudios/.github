@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { resolveBaseline, resolveBaselines, BaselineError } = require('./changelog-baseline');
-const { hash, rich } = require('./record');
+const { hash, rich, deployedBaseline } = require('./record');
 const repo = 'VeamStudios/SiteAuditPro-iOS';
 const target = 'ios-consumer';
 const releasesId = '8beb58ea-dd4f-4777-8799-b6694ade6317';
@@ -96,12 +96,55 @@ test('latest owned failed proof overrides stale positive shared Observation', as
   observation.verificationError = 'lookup failed'; owned(row, observation);
   await rejects([row], 'unverified');
 });
-test('latest rollout or withdrawal cannot select an older complete baseline', async () => {
+test('paused rollout or withdrawal cannot select an older complete baseline', async () => {
   for (const phase of ['rollout', 'withdrawn']) {
     const { row, observation } = fixture();
-    observation.phase = phase; observation.verification.phasedReleaseState = 'ACTIVE'; owned(row, observation);
+    observation.phase = phase; observation.verification.phasedReleaseState = phase === 'rollout' ? 'PAUSED' : 'ACTIVE'; owned(row, observation);
     await rejects([row], 'unverified');
   }
+});
+test('published exact-build ACTIVE phased rollout protects already-shipped changelog notes', async () => {
+  const cip = 'VeamStudios/ChecklistInspectorPro-iOS';
+  const { row, observation, manifest } = fixture({ repository: cip, version: 'v2.2.2', build: '7',
+    commit: '848c5afdf88d07f0f0e4057e81ae86cff747649c' });
+  observation.phase = 'rollout';
+  Object.assign(observation.verification, { bundleId: 'com.veamstudios.checklistinspectorpro', phasedReleaseState: 'ACTIVE',
+    appStoreVersionId: '10d12c5e-0816-47e7-b6ac-5e13cedc5485',
+    evidence: 'https://api.appstoreconnect.apple.com/v1/appStoreVersions/10d12c5e-0816-47e7-b6ac-5e13cedc5485/build' });
+  owned(row, observation);
+  assert.equal(deployedBaseline(row), false); // Existing release-completion gate is unchanged.
+  const { config } = fake([row]);
+  const result = await resolveBaseline({ ...config, repo: cip });
+  assert.equal(result.commit, manifest.commit);
+  assert.equal(result.version, 'v2.2.2');
+});
+test('ACTIVE phased rollout still rejects upload-only, failed or contradictory proof', async () => {
+  for (const patch of [{ phase: 'uploaded' }, { phase: 'prepare' }, { phase: 'live' },
+    { verificationError: 'lookup failed' }, { verificationStatus: 'error' },
+    { verification: { downloadable: false } }, { verification: { state: 'WAITING_FOR_REVIEW' } },
+    { verification: { build: '2' } }, { verification: { commit: 'b'.repeat(40) } },
+    { verification: { bundleId: 'com.other.app' } }, { verification: { evidence: 'https://example.com/proof' } }]) {
+    const { row, observation } = fixture();
+    observation.phase = 'rollout'; observation.verification.phasedReleaseState = 'ACTIVE';
+    const { verification, ...other } = patch;
+    Object.assign(observation, other); if (verification) Object.assign(observation.verification, verification);
+    owned(row, observation);
+    await rejects([row], 'unverified');
+  }
+  const { row, observation } = fixture();
+  observation.phase = 'rollout'; observation.verification.phasedReleaseState = 'ACTIVE'; owned(row, observation);
+  row.properties['App Store Error'] = rich('lookup failed');
+  await rejects([row], 'unverified');
+});
+test('retained audited baseline cannot mask contradictory current App Store build proof', async () => {
+  const { row, observation, manifest } = fixture();
+  observation.baseline = { kind: 'audited-production-baseline', manifestHash: hash(manifest), commit: manifest.commit,
+    repository: repo, target, build: manifest.build, checkedAt,
+    evidence: ['https://github.com/VeamStudios/SiteAuditPro-iOS/commit/' + manifest.commit, 'https://appstoreconnect.apple.com/apps/430234732'] };
+  observation.phase = 'rollout'; observation.verification.phasedReleaseState = 'ACTIVE'; observation.verification.build = '2';
+  owned(row, observation);
+  assert.equal(deployedBaseline(row), true); // Its audited-baseline path remains unchanged.
+  await rejects([row], 'unverified');
 });
 test('rejects latest unverified released candidate instead of earlier verified row', async () => {
   const latest = fixture({ version: 'v10.7.4', commit: 'c'.repeat(40) });

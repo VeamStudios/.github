@@ -19,6 +19,9 @@ inputs:
   cursor-api-key:
     required: true
     description: Existing Cursor integration credential
+  github-token:
+    required: false
+    description: Read-only workflow token for fetching exact evidence blobs
 runs:
   using: composite
   steps:
@@ -49,6 +52,7 @@ runs:
         PR_BASE_SHA: ${{ inputs.base }}
         NOTION_TOKEN: ${{ inputs.notion-token }}
         CURSOR_API_KEY: ${{ inputs.cursor-api-key }}
+        READ_GITHUB_TOKEN: ${{ inputs.github-token }}
         CURSOR_EXECUTABLE: ${{ env.CHANGELOG_CURSOR_EXECUTABLE }}
       run: node "$GITHUB_ACTION_PATH/../release-ledger/enforce-changelog.js"
     - name: Evaluate public synthetic policy cases

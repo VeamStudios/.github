@@ -29,8 +29,14 @@ It is available through the PR check's details link. The check keeps the existin
 
 The opt-in `enforce` mode collects complete changed before/after Git blobs from
 the exact base and head. It reads the verified Releases ledger for **every**
-production target sharing the changelog, checks baseline ancestry, and separates
-upcoming entries from shipped content. Collection rejects unsupported or
+production target sharing the changelog, checks current PR base ancestry, and
+separates upcoming entries from shipped content. A verified released source may
+be outside main's ancestry when its PR was squash merged; its exact deployed
+snapshot remains authoritative and is not replaced by the squash commit.
+Sparse checkout plus an explicit fetch of the required blobs avoids downloading
+all historical binary assets. The read-only GitHub credential is passed to Git
+only through temporary process environment, never persisted or sent to Cursor.
+Collection rejects unsupported or
 incomplete inputs instead of silently truncating them. Initially this includes
 binary changes, stale branches, permission-mode changes, missing historical
 changelog paths and oversized evidence; these

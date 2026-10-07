@@ -29,6 +29,7 @@ const cfg=JSON.parse(fs.readFileSync(path.join(process.env.CURSOR_CONFIG_DIR,'cl
 assert.equal(cfg.sandbox.readBoundary,'workspace');assert.equal(cfg.approvalMode,'allowlist');
 assert.deepEqual(cfg.permissions.deny,['Shell(*)','Write(**)','WebFetch(*)','Mcp(*:*)']);
 assert.ok(process.argv.includes('--mode=ask'));assert.ok(!process.argv.includes('--force'));
+assert.ok(process.argv.includes('--trust'));assert.ok(process.cwd().includes('changelog-assessment-'));
 assert.deepEqual(fs.readdirSync(process.cwd()),['.cursor','evidence.json']);
 assert.equal(cfg.sandbox.networkAccess,'user_config_only');
 assert.deepEqual(JSON.parse(fs.readFileSync('.cursor/sandbox.json')), {type:'workspace_readonly',networkPolicy:{default:'deny',deny:['*']},disableTmpWrite:true});

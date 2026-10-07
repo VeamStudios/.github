@@ -118,7 +118,9 @@ async function runAssessment(evidence, { executable, expectedVersion, model, api
         if (event.subtype !== 'init') throw Error('Unknown system event');
       } else if (event.type !== 'assistant' && event.type !== 'user') throw Error('Unknown event');
     };
-    await execute(executable, ['--print', '--mode=ask', '--sandbox', 'enabled', '--output-format', 'stream-json', '--model', model, '--workspace', workspace, `${prompt}\nRead the complete evidence.json in this workspace. Return only the requested JSON.`], { cwd: workspace, env: { ...env, CURSOR_API_KEY: apiKey }, timeoutMs, onLine });
+    // Trust only this newly created evidence directory and our own policy files,
+    // never the product checkout or any PR-supplied project configuration.
+    await execute(executable, ['--print', '--trust', '--mode=ask', '--sandbox', 'enabled', '--output-format', 'stream-json', '--model', model, '--workspace', workspace, `${prompt}\nRead the complete evidence.json in this workspace. Return only the requested JSON.`], { cwd: workspace, env: { ...env, CURSOR_API_KEY: apiKey }, timeoutMs, onLine });
     if (!terminal) throw new CursorAssessmentError('missing_terminal', 'Changelog assessment did not return a successful terminal result.');
     let assessment;
     try { assessment = JSON.parse(terminal.result); } catch { throw new CursorAssessmentError('policy_json', 'Changelog assessment did not return policy JSON.'); }
