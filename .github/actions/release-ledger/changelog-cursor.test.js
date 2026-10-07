@@ -98,7 +98,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs');
 assert.equal(process.env.CURSOR_API_KEY,undefined);assert.equal(process.env.GITHUB_TOKEN,undefined);
 assert.ok(process.argv.includes('--preflight-only'));
 const policy=JSON.parse(fs.readFileSync(process.argv[process.argv.indexOf('--policy')+1]));
-assert.equal(policy.sandbox.type,'workspace_readonly');assert.equal(policy.networkPolicy.default,'deny');
+assert.equal(policy.sandbox.type,'workspace_readonly');assert.equal(policy.sandbox.networkAccess,false);assert.equal(policy.networkPolicy,undefined);
 `, {mode:0o700});
   assert.deepEqual(await preflightSandbox(options.executable), {supported:true});
 });

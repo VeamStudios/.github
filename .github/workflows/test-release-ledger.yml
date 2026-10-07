@@ -53,6 +53,13 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
+      - name: Install root-owned sandbox fallback
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --yes --no-install-recommends bubblewrap
+          test "$(stat -c %u /usr/bin/bwrap)" = 0
+          test -x /usr/bin/bwrap
       - name: Check pinned sandbox helper without credentials or model calls
         shell: bash
         run: |

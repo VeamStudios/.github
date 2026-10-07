@@ -146,7 +146,7 @@ async function preflightSandbox(executable, { timeoutMs = 15000 } = {}) {
   try {
     const helper = path.join(path.dirname(executable), 'cursorsandbox');
     const policy = path.join(root, 'policy.json');
-    await fs.writeFile(policy, JSON.stringify({ sandbox: { type: 'workspace_readonly', cwd: root, readBoundary: 'workspace', hardcodedReadPaths: ['/bin', '/usr', '/lib', '/lib64', '/etc/ld.so.cache'], additionalReadonlyPaths: {}, networkAccess: false }, networkPolicy: { version: 1, default: 'deny', deny: ['*'] }, networkPolicyStrict: true }), { mode: 0o400 });
+    await fs.writeFile(policy, JSON.stringify({ sandbox: { type: 'workspace_readonly', cwd: root, readBoundary: 'workspace', hardcodedReadPaths: ['/bin', '/usr', '/lib', '/lib64', '/etc/ld.so.cache'], additionalReadonlyPaths: {}, networkAccess: false } }), { mode: 0o400 });
     await execute(helper, ['--policy', policy, '--preflight-only', '--', '/bin/true'], { cwd: root, env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' }, timeoutMs, stage: 'sandbox-preflight' });
     return { supported: true };
   } finally { await fs.rm(root, { recursive: true, force: true }); }
