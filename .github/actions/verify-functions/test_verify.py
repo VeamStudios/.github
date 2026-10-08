@@ -78,6 +78,17 @@ class Verification(unittest.TestCase):
         self.assertEqual(result[0][0], 'v1')
         self.assertEqual(result[0][1]['status'], 'ACTIVE')
 
+    def test_separate_codebase_ignored(self):
+        other = NAME.rsplit('/', 1)[0] + '/pilot'
+        def get(url, *args):
+            if '/v2/' in url:
+                return b'{}'
+            return json.dumps({'functions': [
+                {'name': NAME, 'status': 'ACTIVE', 'labels': {'deployment-tool': 'cli-firebase'}},
+                {'name': other, 'status': 'ACTIVE', 'labels': {'deployment-tool': 'cli-firebase', 'firebase-functions-codebase': 'pilot'}},
+            ]}).encode()
+        self.assertEqual([row['name'] for _, row in list_functions('checklistinspectorpro', '', get)], [NAME])
+
     def test_provider_error_not_suppressed(self):
         def get(*args):
             raise ValueError('Provider lookup failed: HTTP 403')

@@ -50,6 +50,8 @@ def list_functions(project, token, get=request):
             for row in result.get('functions', []):
                 if row.get('labels', {}).get('deployment-tool') != 'cli-firebase':
                     continue  # Firebase extensions have their own deployment lifecycle.
+                if 'firebase-functions-codebase' in row.get('labels', {}):
+                    continue  # Firebase labels only non-default codebases, which deploy outside the backend release.
                 name = row.get('name', '')
                 if not re.fullmatch(r'projects/' + re.escape(project) + r'/locations/[^/]+/functions/[^/]+', name):
                     raise ValueError('Malformed function identity')
