@@ -269,3 +269,10 @@ The required check is **`pr-governance / Work Item gate`**, run by this workflow
 The **Notion Work Item** check from VeamStudios Notion Bot (the PR Work Items worker in [NotionWorkers](https://github.com/VeamStudios/NotionWorkers)) is informational and offers creation. Feature PRs require a valid `Work Items:` URL list (legacy `Work Item:` remains accepted). Existing links produce a green check without buttons; missing links show **Missing · Open check to create** and a **Create work item** action inside the check. Existing items are linked by editing the PR description. Creation requires a reviewed draft and explicit confirmation.
 
 See the [deployment and recovery runbook](https://github.com/VeamStudios/NotionWorkers/blob/main/docs/native-pr-work-items.md).
+
+## Repository review cleanup proposal
+
+The [review cleanup plan](docs/repository-review-cleanup.md) records the proposed
+trust-based review configuration for 56 repositories. It includes exact API
+requests and a read-only validator; merging the proposal does not change live
+repository settings.
