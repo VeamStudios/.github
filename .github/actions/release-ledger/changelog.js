@@ -48,9 +48,9 @@ function newEntries(before,after){
 function internalFiles(files){return files.length>0 && files.every(f=> /^(?:\.github\/|\.release-notes\/|docs\/|README(?:\.|$)|LICENSE|.*\.md$)/.test(f.filename) && f.filename!=='CHANGELOG.md')}
 
 // patch-id pairs a commit with its cherry-picks; merges and empty commits have none.
-function patchIds(range) {
+function patchIds(...revs) {
   const {execFileSync}=require('node:child_process'),options={encoding:'utf8',maxBuffer:64*1024*1024};
-  const log=execFileSync('git',['log','-p','--no-color','--no-ext-diff','--format=commit %H',range],options);
+  const log=execFileSync('git',['log','-p','--no-color','--no-ext-diff','--format=commit %H',...revs],options);
   const out=execFileSync('git',['patch-id','--verbatim'],{...options,input:log});
   return new Map(out.split('\n').filter(Boolean).map(line=>{const [id,commit]=line.split(' ');return [commit,id]}));
 }
@@ -91,6 +91,17 @@ async function mergedWording(config,gh) {
   return {pr,file:merged,acceptance:{kind:'merged-pr',mergeCommit:pr.merge_commit_sha,mergedAt:pr.merged_at}};
 }
 
+// A fix copied onto a release branch has no PR of its own. Its subject must name
+// the merged PR, and its diff must equal that PR's reviewed merge commit.
+async function copiedPr(config,gh,commit,runGit=require('./record').git,ids=patchIds) {
+  const number=Number(runGit('log','-1','--format=%s',commit).match(/\(#(\d+)\)$/)?.[1]);
+  if(!number)return undefined;
+  try{
+    const pr=await gh(`/repos/${config.repo}/pulls/${number}`);
+    if(!pr.merged_at||pr.base?.repo?.full_name!==config.repo||!/^[a-f0-9]{40}$/.test(pr.merge_commit_sha||''))return undefined;
+    const id=ids('-1',commit).get(commit);return id&&id===ids('-1',pr.merge_commit_sha).get(pr.merge_commit_sha)?number:undefined;
+  }catch{return undefined}
+}
 async function buildChangelogManifest(config,gh,baseline,notion) {
   const {git,ancestor,reviewed,hash,releaseKey,provenanceMapping,text,allPages}=require('./record');
   const sha=git('rev-parse',`${config.commit}^{commit}`),issues=[],prs=[],changes=[];
@@ -100,8 +111,8 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   const validBaseline=Boolean(shaBaseline&&(ancestor(baseline,sha)||mapping||diverged));
   if(!validBaseline)issues.push('Missing verified production baseline. Record the previous deployed commit; no announcement is inferred.');
   const commits=diverged?diverged.commits:validBaseline?git('rev-list','--reverse',`${baseline}..${sha}`).split('\n').filter(Boolean):[];
-  const numbers=new Set(),unmapped=[],syncs=[],commitPrs=new Map();
-  for(const commit of commits){const associated=[];for(let page=1;;page++){const rows=await gh(`/repos/${config.repo}/commits/${commit}/pulls?per_page=100&page=${page}`);associated.push(...rows);if(rows.length<100)break};const included=associated.filter(p=>p.base?.repo?.full_name===config.repo && p.merged_at && p.merge_commit_sha && ancestor(p.merge_commit_sha,sha));const number=mapping?.commits[commit]||(included.length===1?included[0].number:undefined);if(number){numbers.add(number);commitPrs.set(commit,number)}else{const sync=config.target==='website'?await verifiedSync(config.repo,commit,gh,git):null;if(sync)syncs.push(sync);else unmapped.push(commit)}}
+  const numbers=new Set(),unmapped=[],syncs=[],commitPrs=new Map(),copied=new Set();
+  for(const commit of commits){const associated=[];for(let page=1;;page++){const rows=await gh(`/repos/${config.repo}/commits/${commit}/pulls?per_page=100&page=${page}`);associated.push(...rows);if(rows.length<100)break};const included=associated.filter(p=>p.base?.repo?.full_name===config.repo && p.merged_at && p.merge_commit_sha && ancestor(p.merge_commit_sha,sha));let number=mapping?.commits[commit]||(included.length===1?included[0].number:undefined);if(!number&&(number=await copiedPr(config,gh,commit,git)))copied.add(number);if(number){numbers.add(number);commitPrs.set(commit,number)}else{const sync=config.target==='website'?await verifiedSync(config.repo,commit,gh,git):null;if(sync)syncs.push(sync);else unmapped.push(commit)}}
   if(unmapped.length)issues.push(`Unmapped shipped commits: ${unmapped.join(', ')}. Confirm their source PRs before announcing this release.`);
   const read=ref=>readChangelog(ref,git);
   let wordingPr,supplement,wordingAcceptance;
@@ -114,7 +125,7 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   const contexts=[];
   for(const number of [...numbers].sort((a,b)=>a-b)) {
     const pr=await gh(`/repos/${config.repo}/pulls/${number}`),links=parseWorkItemLinks(pr.body),files=[];
-    if(!pr.merged_at || pr.base?.repo?.full_name!==config.repo || (!ancestor(pr.merge_commit_sha,sha)&&!mapping))throw new Error(`PR #${number} is not proven in the shipped commit`);
+    if(!pr.merged_at || pr.base?.repo?.full_name!==config.repo || (!ancestor(pr.merge_commit_sha,sha)&&!mapping&&!copied.has(number)))throw new Error(`PR #${number} is not proven in the shipped commit`);
     for(let page=1;;page++){const batch=await gh(`/repos/${config.repo}/pulls/${number}/files?per_page=100&page=${page}`);files.push(...batch);if(batch.length<100)break}
     const added=newEntries(read(`${pr.merge_commit_sha}^1`),read(pr.merge_commit_sha)),approved=await reviewed(gh,config.repo,pr);
     const warnings=links.invalidEntries.length?[`PR #${number}: fix the invalid Work Items link in the PR description.`]:[];

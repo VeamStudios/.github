@@ -110,3 +110,23 @@ test(`a diverged release-branch baseline ${name}`,async()=>{
   assert.deepEqual(m.changes.map(c=>c.summary),['Fix exports.']);assert.ok(!m.issues.some(i=>/baseline/.test(i)));
  }finally{process.chdir(cwd);if(dir)fs.rmSync(dir,{recursive:true,force:true})}
 });
+
+for(const [name,edit,complete] of [['maps to its reviewed PR when the diff is identical',null,true],['stays unmapped when the diff differs from the reviewed PR','three\n',false]])
+test(`a fix copied onto a release branch without its own PR ${name}`,async()=>{
+ const cwd=process.cwd(),dir=fs.mkdtempSync(path.join(os.tmpdir(),'changelog-copied-'));
+ try{
+  process.chdir(dir);const git=(...args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+  git('init','-b','main');git('config','user.name','Test');git('config','user.email','test@example.com');
+  const commit=message=>{git('add','.');git('commit','-m',message);return git('rev-parse','HEAD')};
+  fs.writeFileSync('CHANGELOG.md','## 1.0.0\n### Fixed\n- Old fix.\n');fs.writeFileSync('app.js','one\n');const baseline=commit('release 1.0.0');
+  fs.writeFileSync('app.js','one\ntwo\n');fs.writeFileSync('CHANGELOG.md','## 1.0.1\n### Fixed\n- Fix crash.\n\n## 1.0.0\n### Fixed\n- Old fix.\n');const merged=commit('fix: crash (#7)');
+  git('checkout','-q','-b','release/1.0.1',baseline);git('cherry-pick',merged);
+  if(edit){fs.writeFileSync('app.js','one\ntwo\n'+edit);git('commit','-q','-a','--amend','--no-edit')}
+  const shipped=git('rev-parse','HEAD'),repo='VeamStudios/Test';
+  const pr={number:7,merged_at:'2026-10-01',merge_commit_sha:merged,title:'fix: crash',base:{repo:{full_name:repo}},head:{sha:merged},user:{login:'author'},body:'',html_url:`https://github.com/${repo}/pull/7`};
+  const gh=async url=>url.includes('/commits/')?[]:url.includes('/reviews')?[{user:{type:'User',login:'reviewer'},state:'APPROVED',commit_id:merged}]:url.includes('/files')?[{filename:'CHANGELOG.md'}]:pr;
+  const m=await buildManifest({repo,product:'Site Audit Pro',target:'web',version:'v1.0.1',commit:shipped,event:'release',source:'https://github.com/run'},gh,baseline,notionStub);
+  assert.equal(m.provenanceComplete,complete);assert.deepEqual(m.prs.map(p=>p.number),complete?[7]:[]);
+  assert.equal(m.issues.some(i=>i.startsWith('Unmapped shipped commits')),!complete);
+ }finally{process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
+});
