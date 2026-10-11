@@ -1,7 +1,7 @@
 const fs=require('node:fs');
 const {clients,allPages,record,git,text,rich,hash}=require('./record');
 const {ownedOnly,previousObservation}=require('./ledger-columns');
-const {GooglePlayMonitor,snapshotBuilds,observePlay,resolveBuild,REPOSITORY}=require('./google-play');
+const {GooglePlayMonitor,snapshotBuilds,publishedBuilds,observePlay,resolveBuild,REPOSITORY}=require('./google-play');
 
 async function optional(gh,path) {try{return await gh(path)}catch(e){if(e.status===404)return null;throw e}}
 async function tagCommit(gh,repo,tag) {
@@ -44,11 +44,13 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
     await api.notion(`/pages/${row.id}`,'PATCH',{properties:ownedOnly('play',{Observation:rich(JSON.stringify({...previous,verification:null,verificationError:message,verificationAttempt:{at,source:config.source}})),Error:rich(message)},at,row.properties)});
   };
   try {snapshot=await play.snapshot();snapshotBuilds(snapshot)}
-  catch(e){for(const row of rows) {const m=JSON.parse(text(row.properties.Manifest)||'{}');if(m.target==='android-consumer'&&m.build)await invalidate(row,e.message)}throw e}
+  catch(e){for(const row of rows) {const m=JSON.parse(text(row.properties.Manifest)||'{}');if(m.target==='android-consumer'&&m.build&&!previousObservation(row.properties)?.replaced)await invalidate(row,e.message)}throw e}
   let builds=snapshotBuilds(snapshot);
+  const active=builds,newest=Math.max(0,...publishedBuilds(snapshot).map(Number));
   if(config.build){if(!builds.includes(config.build)){for(const row of rows){const m=JSON.parse(text(row.properties.Manifest)||'{}');if(m.build===config.build&&m.target==='android-consumer')await invalidate(row,'Requested build is absent from production lifecycle evidence')}throw Error('Requested build is absent from production lifecycle evidence')};builds=[config.build]}
   // Every returned active build is considered; never choose a maximum versionCode.
-  for(const build of builds) {
+  // Newest first, so a new release records its baseline before an older build can be invalidated.
+  for(const build of [...builds].sort((a,b)=>Number(b)-Number(a))) {
     const matching=rows.filter(row=>{const m=JSON.parse(text(row.properties.Manifest)||'{}');return m.target==='android-consumer'&&m.build===build});
     try {
       const identity=resolve(build),observation=observePlay(identity,snapshot);
@@ -79,6 +81,17 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
       }
       result.observations.push(entry);
     } catch(e) {for(const row of matching)await invalidate(row,e.message);result.errors.push({build,error:e.message})}
+  }
+  // A build that left production after a newer build was published is terminal: keep its
+  // recorded evidence, drop any stale error, and stop rechecking it.
+  for(const row of rows) {
+    const m=JSON.parse(text(row.properties.Manifest)||'{}'),previous=previousObservation(row.properties)||{};
+    if(m.target!=='android-consumer'||!m.build||active.includes(m.build)||!(Number(m.build)<newest)||(previous.replaced&&!previous.verificationError))continue;
+    const replaced={by:String(newest),at:snapshot.checkedAt,evidence:snapshot.evidence};
+    result.observations.push({repository:m.repository,target:m.target,version:m.version,build:m.build,phase:'replaced',recording:config.dryRun?'preview':'complete',pageId:row.id});
+    if(config.dryRun)continue;
+    const {verificationError,verificationAttempt,...kept}=previous,at=new Date().toISOString();
+    await api.notion(`/pages/${row.id}`,'PATCH',{properties:ownedOnly('play',{Observation:rich(JSON.stringify({...kept,replaced})),Error:rich('')},at,row.properties)});
   }
   return result;
 }

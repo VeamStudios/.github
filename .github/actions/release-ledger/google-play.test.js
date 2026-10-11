@@ -21,17 +21,18 @@ test('exact internal tag resolves marketing version; duplicates never pick highe
 test('monitor identity must differ from uploader and match configured account',()=>{
   assert.throws(()=>new GooglePlayMonitor({type:'service_account',client_email:'same',private_key:'key'},{expectedEmail:'same',uploaderEmail:'same'}),/dedicated/);
 });
-test('temporary edit is always deleted after failed read and is never committed',async()=>{
+for(const [status,attempts] of [[403,1],[503,3]])test(`temporary edit is always deleted and never committed; ${status} is tried ${attempts} time(s)`,async()=>{
   const calls=[];
-  const client=new GooglePlayMonitor({type:'service_account',client_email:'monitor',private_key:'key'},{expectedEmail:'monitor',uploaderEmail:'uploader',fetcher:async(url,options)=>{
+  const client=new GooglePlayMonitor({type:'service_account',client_email:'monitor',private_key:'key'},{expectedEmail:'monitor',uploaderEmail:'uploader',wait:async()=>{},fetcher:async(url,options)=>{
     calls.push([url,options.method]);
     if(url.endsWith('/tracks/production/releases'))return {ok:true,json:async()=>snapshot().lifecycle};
     if(url.endsWith('/edits'))return {ok:true,json:async()=>({id:'123'})};
     if(options.method==='DELETE')return {ok:true,status:204};
-    return {ok:false,status:403};
+    return {ok:false,status};
   }});
   client.token=async()=>'redacted';
-  await assert.rejects(()=>client.snapshot(),/403/);
+  await assert.rejects(()=>client.snapshot(),new RegExp(String(status)));
+  assert.equal(calls.filter(([url])=>url.endsWith('/edits')).length,attempts);
   assert.equal(calls.at(-1)[1],'DELETE');
   assert.equal(calls.some(([url])=>url.includes(':commit')),false);
 });
@@ -71,5 +72,17 @@ test('API failure invalidates pending availability and never calls recorder or p
   await assert.rejects(()=>monitor({repo:REPOSITORY,releasesId:'db',dryRun:false},api,{snapshot:async()=>{throw Error('API unavailable')}},{recorder:()=>assert.fail(),publish:()=>assert.fail()}),/unavailable/);
   assert.equal(updates.length,1);assert.match(JSON.stringify(updates[0]),/verification\\":null/);
   const owned=JSON.parse(text(updates[0].properties['Play Observation']));assert.equal(owned.observation.verification,null);assert.equal(text(updates[0].properties['Play Error']),'API unavailable');
+});
+test('a build replaced by a newer published build becomes terminal and later API failures leave it alone',async()=>{
+  const newer={...identity,version:'v4.0.3',build:'213024193',internalTag:'internal/4.0.3-213024193'},s=snapshot('PUBLISHED','inProgress');
+  s.lifecycle.releases[0].activeArtifacts[0].versionCode=213024193;s.rollout.releases[0].versionCodes=['213024193'];
+  const row={id:'page',properties:{Manifest:rich(JSON.stringify(identity)),'Play Observation':rich(JSON.stringify({owner:'play',observation:{phase:'live',verification:null,verificationError:'Play monitor GET failed (503); no availability inferred'}}))}};const updates=[];
+  const api={gh:github().gh,notion:async(path,method,body)=>{if(path.includes('/query'))return {results:[row]};updates.push(body);return {}}};
+  await monitor({repo:REPOSITORY,releasesId:'db',dryRun:false},api,{snapshot:async()=>s},{resolve:()=>newer,recorder:async()=>({pageId:'newer'})});
+  assert.equal(updates.length,1);const owned=JSON.parse(text(updates[0].properties['Play Observation'])).observation;
+  assert.equal(owned.replaced.by,newer.build);assert.equal(owned.verificationError,undefined);assert.equal(text(updates[0].properties['Play Error']),'');
+  row.properties['Play Observation']=updates[0].properties['Play Observation'];updates.length=0;
+  await assert.rejects(()=>monitor({repo:REPOSITORY,releasesId:'db',dryRun:false},api,{snapshot:async()=>{throw Error('API unavailable')}}),/unavailable/);
+  assert.equal(updates.length,0);
 });
 module.exports={identity,snapshot};
