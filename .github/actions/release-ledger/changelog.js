@@ -47,6 +47,31 @@ function newEntries(before,after){
 }
 function internalFiles(files){return files.length>0 && files.every(f=> /^(?:\.github\/|\.release-notes\/|docs\/|README(?:\.|$)|LICENSE|.*\.md$)/.test(f.filename) && f.filename!=='CHANGELOG.md')}
 
+// patch-id pairs a commit with its cherry-picks; merges and empty commits have none.
+function patchIds(range) {
+  const {execFileSync}=require('node:child_process'),options={encoding:'utf8',maxBuffer:64*1024*1024};
+  const log=execFileSync('git',['log','-p','--no-color','--no-ext-diff','--format=commit %H',range],options);
+  const out=execFileSync('git',['patch-id','--verbatim'],{...options,input:log});
+  return new Map(out.split('\n').filter(Boolean).map(line=>{const [id,commit]=line.split(' ');return [commit,id]}));
+}
+// A baseline built on a release branch is not an ancestor of the next release.
+// It still proves what shipped when every baseline-only commit has a
+// patch-equivalent commit in the shipped history; those commits are excluded.
+function divergedBaseline(baseline,sha,runGit=require('./record').git,ids=patchIds) {
+  let mergeBase;
+  try{mergeBase=runGit('merge-base',baseline,sha)}catch{return null}
+  if(!/^[a-f0-9]{40}$/.test(mergeBase)||mergeBase===baseline)return null;
+  // Symmetric ranges equal mergeBase..X and stay exact when history has several merge bases.
+  const baselineOnly=runGit('rev-list','--reverse',`${sha}..${baseline}`).split('\n').filter(Boolean);
+  const shipped=runGit('rev-list','--reverse',`${baseline}..${sha}`).split('\n').filter(Boolean);
+  const baselineIds=ids(`${sha}..${baseline}`),shippedIds=ids(`${baseline}..${sha}`),paired=new Set(),equivalents=[];
+  for(const commit of baselineOnly) {
+    const id=baselineIds.get(commit),match=id&&shipped.find(s=>!paired.has(s)&&shippedIds.get(s)===id);
+    if(!match)return null;
+    paired.add(match);equivalents.push({baseline:commit,shipped:match});
+  }
+  return {mergeBase,equivalents,commits:shipped.filter(s=>!paired.has(s))};
+}
 function readChangelog(ref,runGit=require('./record').git) {
   // An absent path is valid for early history; an unreadable Git object is not.
   if(!runGit('ls-tree',ref,'--','CHANGELOG.md').trim())return '';
@@ -70,9 +95,11 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   const {git,ancestor,reviewed,hash,releaseKey,provenanceMapping,text,allPages}=require('./record');
   const sha=git('rev-parse',`${config.commit}^{commit}`),issues=[],prs=[],changes=[];
   const mapping=await provenanceMapping(config,gh,sha,baseline);
-  const validBaseline=Boolean(baseline&&/^[a-f0-9]{40}$/.test(baseline)&&(ancestor(baseline,sha)||mapping));
+  const shaBaseline=Boolean(baseline&&/^[a-f0-9]{40}$/.test(baseline));
+  const diverged=shaBaseline&&!ancestor(baseline,sha)&&!mapping?divergedBaseline(baseline,sha,git):null;
+  const validBaseline=Boolean(shaBaseline&&(ancestor(baseline,sha)||mapping||diverged));
   if(!validBaseline)issues.push('Missing verified production baseline. Record the previous deployed commit; no announcement is inferred.');
-  const commits=validBaseline?git('rev-list','--reverse',`${baseline}..${sha}`).split('\n').filter(Boolean):[];
+  const commits=diverged?diverged.commits:validBaseline?git('rev-list','--reverse',`${baseline}..${sha}`).split('\n').filter(Boolean):[];
   const numbers=new Set(),unmapped=[],syncs=[],commitPrs=new Map();
   for(const commit of commits){const associated=[];for(let page=1;;page++){const rows=await gh(`/repos/${config.repo}/commits/${commit}/pulls?per_page=100&page=${page}`);associated.push(...rows);if(rows.length<100)break};const included=associated.filter(p=>p.base?.repo?.full_name===config.repo && p.merged_at && p.merge_commit_sha && ancestor(p.merge_commit_sha,sha));const number=mapping?.commits[commit]||(included.length===1?included[0].number:undefined);if(number){numbers.add(number);commitPrs.set(commit,number)}else{const sync=config.target==='website'?await verifiedSync(config.repo,commit,gh,git):null;if(sync)syncs.push(sync);else unmapped.push(commit)}}
   if(unmapped.length)issues.push(`Unmapped shipped commits: ${unmapped.join(', ')}. Confirm their source PRs before announcing this release.`);
@@ -141,6 +168,6 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   if(validBaseline && config.target==='website')changes.push(...websiteChanges(config,baseline,sha,contexts,syncs,git));
   const covered=new Set(changes.filter(c=>!c.blocked.length).flatMap(c=>c.sourcePrs));
   const warnings=issues.filter(message=>{const missing=message.match(/^PR #(\d+) has no new changelog entry/);return !missing||!covered.has(Number(missing[1]))});
-  return {schemaVersion:2,deliveryVersion:1,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs,changes,workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url,acceptance:wordingAcceptance}:null,issues:warnings,provenanceComplete:validBaseline&&unmapped.length===0,websiteSyncs:syncs,source:config.source};
+  return {schemaVersion:2,deliveryVersion:1,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs,changes,workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url,acceptance:wordingAcceptance}:null,issues:warnings,provenanceComplete:validBaseline&&unmapped.length===0,...(diverged?{divergedBaseline:{mergeBase:diverged.mergeBase,equivalents:diverged.equivalents}}:{}),websiteSyncs:syncs,source:config.source};
 }
 module.exports={parseChangelog,newEntries,renderChangelog,identity,buildChangelogManifest,internalFiles,readChangelog,mergedWording};
