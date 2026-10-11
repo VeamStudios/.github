@@ -75,3 +75,38 @@ test('a missing historical blob aborts comparison instead of announcing old note
   assert.throws(()=>newEntries(readChangelog(baseline,git),readChangelog('HEAD',git)),/Command failed/);
  }finally{process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
 });
+
+function divergedRepo(extraBaselineCommit) {
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'changelog-diverged-'));process.chdir(dir);
+ const git=(...args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+ git('init','-b','main');git('config','user.name','Test');git('config','user.email','test@example.com');
+ const commit=message=>{git('add','.');git('commit','-m',message);return git('rev-parse','HEAD')};
+ fs.writeFileSync('CHANGELOG.md','## 1.0.0\n### Fixed\n- Old fix.\n');fs.writeFileSync('app.js','one\n');const mergeBase=commit('release 1.0.0');
+ fs.writeFileSync('app.js','one\ntwo\n');fs.writeFileSync('CHANGELOG.md','## 1.0.1\n### Fixed\n- Fix crash.\n\n## 1.0.0\n### Fixed\n- Old fix.\n');const hotfix=commit('fix: crash');
+ fs.writeFileSync('feature.js','feature\n');fs.writeFileSync('CHANGELOG.md','## 1.1.0\n### Fixed\n- Fix exports.\n\n'+fs.readFileSync('CHANGELOG.md','utf8'));const feature=commit('fix: exports');
+ git('checkout','-q','-b','release/1.0.1',mergeBase);git('cherry-pick','-x',hotfix);
+ if(extraBaselineCommit){fs.writeFileSync('only-release.js','x\n');commit('release-only change')}
+ const baseline=git('rev-parse','HEAD');git('checkout','-q','main');
+ return {dir,git,mergeBase,hotfix,feature,baseline};
+}
+function divergedApi(repo,{hotfix,feature},queried=[]) {
+ const prs=[{number:7,merge_commit_sha:hotfix,title:'fix: crash'},{number:8,merge_commit_sha:feature,title:'fix: exports'}].map(pr=>({...pr,merged_at:'2026-10-01',base:{repo:{full_name:repo}},head:{sha:pr.merge_commit_sha},user:{login:'author'},body:'',html_url:`https://github.com/${repo}/pull/${pr.number}`}));
+ return async url=>{queried.push(url);if(url.includes('/commits/'))return [url.includes(hotfix)?prs[0]:prs[1]];const pr=url.includes('/pulls/7')?prs[0]:prs[1];if(url.includes('/reviews'))return [{user:{type:'User',login:'reviewer'},state:'APPROVED',commit_id:pr.head.sha}];if(url.includes('/files'))return [{filename:'CHANGELOG.md'}];return pr};
+}
+const notionStub=async()=>({results:[],has_more:false});
+
+for(const [name,extraBaselineCommit] of [['is verified when every baseline-only commit was cherry-picked from the shipped history',false],['still needs a reviewed provenance mapping when it has a release-only commit',true]])
+test(`a diverged release-branch baseline ${name}`,async()=>{
+ const cwd=process.cwd();let dir;
+ try{
+  const r=divergedRepo(extraBaselineCommit);dir=r.dir;const repo='VeamStudios/Test',queried=[];
+  assert.ok(!require('./record').ancestor(r.baseline,r.feature));
+  const m=await buildManifest({repo,product:'Site Audit Pro',target:'web',version:'v1.1.0',commit:r.feature,event:'release',source:'https://github.com/run'},divergedApi(repo,r,queried),r.baseline,notionStub);
+  assert.equal(m.baseline,r.baseline);
+  if(extraBaselineCommit){assert.equal(m.provenanceComplete,false);assert.equal(m.divergedBaseline,undefined);assert.deepEqual(m.changes,[]);assert.match(m.issues.join('\n'),/Missing verified production baseline/);return}
+  assert.equal(m.provenanceComplete,true);
+  assert.deepEqual(m.divergedBaseline,{mergeBase:r.mergeBase,equivalents:[{baseline:r.baseline,shipped:r.hotfix}]});
+  assert.deepEqual(m.prs.map(p=>p.number),[8]);assert.ok(!queried.some(url=>url.includes(r.hotfix)));
+  assert.deepEqual(m.changes.map(c=>c.summary),['Fix exports.']);assert.ok(!m.issues.some(i=>/baseline/.test(i)));
+ }finally{process.chdir(cwd);if(dir)fs.rmSync(dir,{recursive:true,force:true})}
+});

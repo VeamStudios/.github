@@ -67,13 +67,14 @@ async function verifiedSync(repo, commit, gh, git) {
   return { commit, path: file.path, repository: file.repository, sourceCommit: source.sha, version, evidence: `https://github.com/${repo}/commit/${commit}` };
 }
 
-function websiteChanges(config, baseline, sha, contexts, syncs, git) {
+// deployed: commits a cherry-picked baseline already shipped need no new evidence.
+function websiteChanges(config, baseline, sha, contexts, syncs, git, deployed = new Set()) {
   const changes = [];
   for (const file of WEBSITES[config.repo] || []) {
     const before = content(git, baseline, file.path), after = content(git, sha, file.path);
     if (before === after) continue;
     const versions = changedVersions(before, after);
-    const commits = git('log', '--format=%H', `${baseline}..${sha}`, '--', file.path).split('\n').filter(Boolean);
+    const commits = git('log', '--format=%H', `${baseline}..${sha}`, '--', file.path).split('\n').filter(commit => commit && !deployed.has(commit));
     const sources = contexts.filter(context => context.files.some(changed => changed.filename === file.path));
     const approvals = sources.filter(source => source.approved);
     const evidence = commits.map(commit => syncs.find(sync => sync.commit === commit)?.evidence || approvals.find(source => source.commits.includes(commit))?.pr.html_url);

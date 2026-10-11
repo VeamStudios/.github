@@ -39,4 +39,6 @@ test('one verified sync cannot approve another unreviewed change to that file',(
  const local=(cmd,...args)=>cmd==='show'?(args[0].endsWith(':'+file.path)?(args[0].startsWith(base)?before:after):''):sha+'\n'+source;
  const changes=websiteChanges({repo},base,sha,[],[{commit:sha,evidence:'https://github.com/proof'}],local);
  assert.equal(changes[0].approved,false);
+ // A commit the cherry-picked baseline already deployed needs no new evidence.
+ assert.equal(websiteChanges({repo},base,sha,[],[{commit:sha,evidence:'https://github.com/proof'}],local,new Set([source]))[0].approved,true);
 });
