@@ -5,33 +5,48 @@ const TRACK = 'production';
 const ROOT = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PACKAGE}`;
 const LIFECYCLE = 'RELEASE_LIFECYCLE_STATE_';
 const WAITING = ['DRAFT', 'NOT_SENT_FOR_REVIEW', 'IN_REVIEW', 'APPROVED_NOT_PUBLISHED', 'NOT_APPROVED'];
+const transient = status => status >= 500 || status === 429;
 const buildCode = value => /^[1-9]\d*$/.test(String(value)) && Number.isSafeInteger(Number(value));
 
 /** This client deliberately exposes no upload, track update or commit method.
  * A dedicated identity is mandatory: inserts invalidate that identity's old edit. */
 class GooglePlayMonitor {
-  constructor(credentials, {fetcher = fetch, expectedEmail, uploaderEmail} = {}) {
+  constructor(credentials, {fetcher = fetch, expectedEmail, uploaderEmail, wait = ms => new Promise(done => setTimeout(done, ms))} = {}) {
     if (credentials?.type !== 'service_account' || !credentials.private_key || !credentials.client_email ||
         !expectedEmail || credentials.client_email !== expectedEmail || !uploaderEmail || expectedEmail === uploaderEmail) {
       throw new Error('Configure a dedicated PLAY_MONITOR_SERVICE_ACCOUNT_JSON, PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL and PLAY_UPLOADER_SERVICE_ACCOUNT_EMAIL; monitor and uploader must differ');
     }
-    this.credentials = credentials; this.fetcher = fetcher;
+    this.credentials = credentials; this.fetcher = fetcher; this.wait = wait;
+  }
+  // Only 5xx, 429 and network failures are transient; 4xx means a real auth or permission problem.
+  async send(url, options) {
+    let response;
+    try { response = await this.fetcher(url, options); }
+    catch (error) { throw Object.assign(new Error(`Play monitor request failed (${error.name || 'network'}); no availability inferred`), {transient: true}); }
+    return response;
   }
   async token() {
     const now = Math.floor(Date.now() / 1000), encode = x => Buffer.from(JSON.stringify(x)).toString('base64url');
     const input = `${encode({alg:'RS256',typ:'JWT'})}.${encode({iss:this.credentials.client_email,scope:'https://www.googleapis.com/auth/androidpublisher',aud:'https://oauth2.googleapis.com/token',iat:now,exp:now+3600})}`;
     const assertion = `${input}.${crypto.sign('RSA-SHA256',Buffer.from(input),this.credentials.private_key).toString('base64url')}`;
-    const response = await this.fetcher('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion}),signal:AbortSignal.timeout(20000)});
-    if (!response.ok) throw new Error(`Play monitor authentication failed (${response.status})`);
+    const response = await this.send('https://oauth2.googleapis.com/token',{method:'POST',body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion}),signal:AbortSignal.timeout(20000)});
+    if (!response.ok) throw Object.assign(new Error(`Play monitor authentication failed (${response.status})`), {transient: transient(response.status)});
     const result = await response.json();
     if (!result.access_token) throw new Error('Play monitor token missing');
     return result.access_token;
   }
+  // Each retry takes a fresh snapshot, so the before/after lifecycle comparison stays exact.
   async snapshot() {
+    for (let attempt = 1; ; attempt++) {
+      try { return await this.inspect(); }
+      catch (error) { if (!error.transient || attempt >= 3) throw error; await this.wait(attempt * 5000); }
+    }
+  }
+  async inspect() {
     const token = await this.token();
     const call = async (path, method = 'GET') => {
-      const response = await this.fetcher(`${ROOT}${path}`,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(method==='POST'?{body:'{}'}:{}),signal:AbortSignal.timeout(20000)});
-      if (!response.ok) throw new Error(`Play monitor ${method} failed (${response.status}); no availability inferred`);
+      const response = await this.send(`${ROOT}${path}`,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(method==='POST'?{body:'{}'}:{}),signal:AbortSignal.timeout(20000)});
+      if (!response.ok) throw Object.assign(new Error(`Play monitor ${method} failed (${response.status}); no availability inferred`), {transient: transient(response.status)});
       return response.status===204?{}:response.json();
     };
     const before = await call('/tracks/production/releases');
@@ -60,6 +75,12 @@ function snapshotBuilds(snapshot) {
     }
   }
   return [...builds];
+}
+
+/** Builds that are fully published on production; any older consumer build has been replaced. */
+function publishedBuilds(snapshot) {
+  snapshotBuilds(snapshot);
+  return snapshot.lifecycle.releases.filter(r=>r.releaseLifecycleState===LIFECYCLE+'PUBLISHED').flatMap(r=>r.activeArtifacts.map(a=>String(a.versionCode)));
 }
 
 function observePlay(identity, snapshot) {
@@ -99,4 +120,4 @@ function resolveBuild(build, tags, resolve) {
   if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error('Internal tag does not resolve to an exact commit');
   return {repository:REPOSITORY,target:'android-consumer',version:`v${match[1]}`,build:String(build),commit,internalTag:matches[0]};
 }
-module.exports={GooglePlayMonitor,snapshotBuilds,observePlay,validGooglePlay,resolveBuild,PACKAGE,REPOSITORY,ROOT};
+module.exports={GooglePlayMonitor,snapshotBuilds,publishedBuilds,observePlay,validGooglePlay,resolveBuild,PACKAGE,REPOSITORY,ROOT};
