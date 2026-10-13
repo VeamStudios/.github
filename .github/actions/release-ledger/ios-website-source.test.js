@@ -10,11 +10,11 @@ function row(version = 'v2.2.2', build = '7') {
 }
 function api(rows) { return { notion: async path => path === '/data_sources/db' ? { properties: { Target: { type: 'rich_text' }, Products: { type: 'relation', relation: { data_source_id: '30c06908-3a03-80ca-bd1b-000b2bbce6d8' } } } } : { results: rows, has_more: false } }; }
 function apple({ state = 'READY_FOR_DISTRIBUTION', phase = 'ACTIVE', downloadable = true, build = '7' } = {}) {
-  return { findAppByBundleId: async () => ({ id: 'app', attributes: { bundleId } }), get: async (path, params) => {
-    if (path.endsWith('/build')) return { data: { attributes: { version: build } } };
-    if (path.includes('/relationships/')) return { data: phase === 'NONE' ? null : { id: 'phase', type: 'appStoreVersionPhasedReleases' } };
-    if (path.endsWith('/appStoreVersionPhasedRelease')) return { data: { id: 'phase', type: 'appStoreVersionPhasedReleases', attributes: { phasedReleaseState: phase } } };
-    return { data: [{ id: 'asc-version', attributes: { versionString: params['filter[versionString]'], platform: 'IOS', appVersionState: state, downloadable } }] };
+  return { findAppByBundleId: async () => ({ id: 'app', attributes: { bundleId } }), get: async (path, params, validate = value => value) => {
+    if (path.endsWith('/build')) return validate({ data: { attributes: { version: build } } });
+    if (path.includes('/relationships/')) return validate({ data: phase === 'NONE' ? null : { id: 'phase', type: 'appStoreVersionPhasedReleases' } });
+    if (path.endsWith('/appStoreVersionPhasedRelease')) return validate({ data: { id: 'phase', type: 'appStoreVersionPhasedReleases', attributes: { phasedReleaseState: phase } } });
+    return validate({ data: [{ id: 'asc-version', attributes: { versionString: params['filter[versionString]'], platform: 'IOS', appVersionState: state, downloadable } }] });
   } };
 }
 const config = { repo, bundleId, releasesId: 'db' };
@@ -57,11 +57,11 @@ function sapRecovery() {
 const sapConfig={repo:'VeamStudios/SiteAuditPro-iOS',bundleId:'com.veamstudios.iaudit',releasesId:'db'};
 function sapApple({phase='COMPLETE',buildId='a4fc9694-2155-4bed-b5e7-dcc7499e7cb6'}={}) {
  const base=apple({phase,build:'1'});
- return {findAppByBundleId:async()=>({id:'430234732',attributes:{bundleId:sapConfig.bundleId}}),get:async(path,params)=>{
-  if(path.endsWith('/build'))return {data:{id:buildId,type:'builds',attributes:{version:'1'}}};
+ return {findAppByBundleId:async()=>({id:'430234732',attributes:{bundleId:sapConfig.bundleId}}),get:async(path,params,validate=x=>x)=>{
+  if(path.endsWith('/build'))return validate({data:{id:buildId,type:'builds',attributes:{version:'1'}}});
   const result=await base.get(path,params);
-  if(params)result.data[0].id='db645b65-b744-4e45-bc2f-5f5e7f661b6f';
-  return result;
+  if(params?.['filter[versionString]'])result.data[0].id='db645b65-b744-4e45-bc2f-5f5e7f661b6f';
+  return validate(result);
  }};
 }
 test('attested SAP10.7.3 historical recovery supplies exact fresh source without changing suppression',async()=>{
