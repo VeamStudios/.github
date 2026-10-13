@@ -115,7 +115,7 @@ for (const endpoint of ['relationship', 'phased']) {
 }
 test('non-live versions do not query rollout; bundle and build mismatches still fail', async () => {
   const pending = fixture({ state: 'WAITING_FOR_REVIEW' });
-  assert.equal(await observeStore(manifest, 'com.test.app', pending), null);
+  assert.equal((await observeStore(manifest, 'com.test.app', pending)).phase, 'uploaded');
   assert.ok(!pending.calls.includes(relationshipPath));
   await assert.rejects(observeStore(manifest, 'com.test.app', fixture({ build: '124' })), /build differs/);
   await assert.rejects(observeStore(manifest, 'com.test.app', fixture({ bundleId: 'other' })), /bundle identity/);
@@ -132,15 +132,15 @@ test('monitor retains failed records and continues recording verified releases',
   } }, fixture());
   assert.equal(result.observed, 1);
   assert.equal(result.errors.length, 1);
-  assert.match(result.errors[0], /bad: App Store build differs/);
+  assert.match(result.errors[0], /bad: App Store verification conflict: App Store build differs/);
   assert.deepEqual(writes.map(x => x.path), ['/pages/bad', '/pages/good']);
   const failure = owned(writes[0].body.properties).observation;
   assert.equal(failure.phase, 'uploaded');
   assert.equal(failure.verification, undefined);
   assert.match(failure.verificationError, /build differs/);
 });
-test('a store version not created after TestFlight upload remains pending',async()=>{const apple=fixture();const get=apple.get;apple.get=async path=>path==='/apps/app/appStoreVersions'?{data:[]}:get(path);assert.equal(await observeStore(manifest,'com.test.app',apple),null)});
-test('non-live version without an assigned build remains pending',async()=>{const apple=fixture({state:'PREPARE_FOR_SUBMISSION'});const get=apple.get;apple.get=async path=>{if(path.endsWith('/build'))throw new Error('404');return get(path)};assert.equal(await observeStore(manifest,'com.test.app',apple),null);assert.ok(!apple.calls.some(p=>p.endsWith('/build')))});
+test('a store version not created after TestFlight upload remains pending',async()=>{const apple=fixture();const get=apple.get;apple.get=async path=>path==='/apps/app/appStoreVersions'?{data:[]}:get(path);assert.equal((await observeStore(manifest,'com.test.app',apple)).phase,'uploaded')});
+test('non-live version without an assigned build remains pending',async()=>{const apple=fixture({state:'PREPARE_FOR_SUBMISSION'});const get=apple.get;apple.get=async path=>{if(path.endsWith('/build'))throw new Error('404');return get(path)};assert.equal((await observeStore(manifest,'com.test.app',apple)).phase,'uploaded');assert.ok(!apple.calls.some(p=>p.endsWith('/build')))});
 test('malformed version query is still actionable',async()=>{const apple=fixture();apple.get=async()=>({});await assert.rejects(observeStore(manifest,'com.test.app',apple),/malformed/)});
 test('malformed manifest or observation does not abort sibling records',async()=>{const m={...manifest,key:'good',repository:monitorConfig.repo,target:monitorConfig.target};const row={id:'good',properties:{Manifest:rich(JSON.stringify(m)),'Manifest Hash':rich(hash(m))}};const rows=[{id:'bad-json',properties:{Manifest:rich('{')}},{...row,id:'bad-observation',properties:{...row.properties,Observation:rich('{')}},row];const writes=[];const api={notion:async(path,method,body)=>{if(path==='/data_sources/releases')return {properties:{Target:{type:'rich_text'},Products:{type:'relation',relation:{data_source_id:'30c06908-3a03-80ca-bd1b-000b2bbce6d8'}}}};if(method==='PATCH'){writes.push(path);return {}};return {results:rows,has_more:false}}};const result=await monitor(monitorConfig,api,fixture());assert.equal(result.errors.length,2);assert.equal(result.observed,1);assert.deepEqual(writes,['/pages/good'])});
 
@@ -278,7 +278,7 @@ for (const phase of ['live', 'rollout']) {
       assert.equal(failed.phase, previous.phase);
       assert.equal(failed.releasedAt, firstSeen);
       assert.ok(failed.verificationError);
-      assert.equal(failed.verificationStatus, 'error');
+      assert.equal(failed.verificationStatus, failure === 'missing-version' ? 'unavailable' : failure === 'http-error' ? 'error' : 'conflict');
       assert.equal(text(properties['App Store Error']), failed.verificationError);
       assert.equal(failed.verificationAttempt.at, now());
       assert.equal(owned(properties).releasedAt, undefined);
@@ -313,6 +313,36 @@ test('successful recheck clears its own error and leaves worker-owned history al
   assert.equal(text(properties['App Store Error']), '');
   assert.equal(properties['Operations Receipt'], undefined);
   assert.equal(properties.Error, undefined);
+});
+
+test('a valid pending check clears an old failure without inventing release evidence', async () => {
+  for (const empty of [false, true]) {
+    const previous = { phase: 'uploaded', source: 'https://testflight.apple.com', releasedAt: firstSeen, verificationStatus: 'error', verificationError: 'HTTP 503' };
+    const { api, writes } = monitorFixture([{ m: current, observation: previous }]);
+    const apple = fixture({ state: 'WAITING_FOR_REVIEW' });
+    if (empty) apple.get = async () => ({ data: [] });
+    const result = await monitor(monitorConfig, api, apple, now);
+    assert.equal(result.errors.length, 0);
+    assert.equal(writes.length, 1);
+    const pending = owned(writes[0].body.properties).observation;
+    assert.equal(pending.phase, 'uploaded');
+    assert.equal(pending.verificationError, undefined);
+    assert.equal(pending.verificationStatus, undefined);
+    assert.equal(pending.releasedAt, undefined);
+    assert.equal(pending.verification.checkedAt, now());
+    assert.equal(pending.verification.build, undefined);
+    assert.equal(text(writes[0].body.properties['App Store Error']), '');
+  }
+});
+
+test('a Notion persistence failure is not recorded as failed Apple verification', async () => {
+  const { api, writes } = monitorFixture([{ m: current, observation: await releasedObservation() }]);
+  const notion = api.notion;
+  api.notion = async (path, method, body) => { if (method === 'PATCH') { writes.push(body); throw new Error('Notion unavailable'); } return notion(path, method, body); };
+  const result = await monitor(monitorConfig, api, fixture(), now);
+  assert.match(result.errors.join(' '), /Notion unavailable/);
+  assert.equal(writes.length, 1);
+  assert.equal(owned(writes[0].properties).observation.verificationError, undefined);
 });
 
 test('a successful store refresh preserves unrelated delivery errors', async () => {

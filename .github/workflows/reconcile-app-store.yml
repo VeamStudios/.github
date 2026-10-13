@@ -27,6 +27,7 @@ permissions:
 jobs:
   reconcile:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: prod
     steps:
       - uses: actions/create-github-app-token@v3
