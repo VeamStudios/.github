@@ -25,11 +25,21 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
   if (app.attributes.bundleId !== bundleId) throw new AppStoreVerificationError(`App Store bundle identity differs: expected ${bundleId}, received ${app.attributes.bundleId}`, 'conflict');
   // Exact filtered version + platform, then its related build. Never infer a build from the latest upload.
   const versionString = normalizeVersion(manifest.version).split('-')[0];
-  const result = await apple.get(`/apps/${app.id}/appStoreVersions`, { 'filter[versionString]': versionString, 'filter[platform]': 'IOS', limit: 200 });
-  if (!Array.isArray(result?.data)) throw new AppStoreVerificationError('App Store version evidence is malformed');
-  const versions = result.data.filter(v => v?.attributes?.versionString === versionString && v.attributes?.platform === 'IOS');
-  if (result.links?.next) throw new AppStoreVerificationError('App Store version query is incomplete');
-  if (versions.length > 1) throw new AppStoreVerificationError('App Store version is ambiguous', 'conflict');
+  const result = await apple.get(`/apps/${app.id}/appStoreVersions`, { 'filter[versionString]': versionString, 'filter[platform]': 'IOS', limit: 200 }, result => {
+    if (!Array.isArray(result?.data) || result.data.some(v => !v?.attributes?.versionString || !v.attributes.platform)) throw new AppStoreVerificationError('App Store version evidence is malformed');
+    if (result.links?.next) throw new AppStoreVerificationError('App Store version query is incomplete');
+    const versions = result.data.filter(v => v.attributes.versionString === versionString && v.attributes.platform === 'IOS');
+    if (versions.length > 1) throw new AppStoreVerificationError('App Store version is ambiguous', 'conflict');
+    if (!versions.length && result.data.length) throw new AppStoreVerificationError('App Store version evidence does not match the requested version/platform', 'conflict');
+    const version = versions[0];
+    if (version) {
+      if (typeof version.id !== 'string' || !version.id.trim()) throw new AppStoreVerificationError('App Store version identity is missing');
+      const state = version.attributes.appVersionState ?? version.attributes.appStoreState;
+      if (typeof state !== 'string' || !state) throw new AppStoreVerificationError('App Store version state is missing');
+    }
+    return result;
+  });
+  const version = result.data.find(v => v.attributes.versionString === versionString && v.attributes.platform === 'IOS');
   const source = `https://appstoreconnect.apple.com/apps/${app.id}/distribution/ios/version/inflight`;
   const pending = version => ({ phase: 'uploaded', source, verification: {
     kind: 'app-store', bundleId, appId: app.id, version: versionString, platform: 'IOS',
@@ -38,18 +48,15 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
   } });
   // An uploaded TestFlight build can precede creation of its store version.
   // A successful, explicitly empty query means waiting, never live evidence.
-  if (!versions.length && !result.data.length) return pending();
-  if (result.data.some(v => !v?.attributes?.versionString || !v.attributes.platform)) throw new AppStoreVerificationError('App Store version evidence is malformed');
-  if (!versions.length) throw new AppStoreVerificationError('App Store version evidence does not match the requested version/platform', 'conflict');
-  const version = versions[0];
-  if (typeof version.id !== 'string' || !version.id.trim()) throw new AppStoreVerificationError('App Store version identity is missing');
+  if (!version) return pending();
   // Prefer Apple's current state field; retain both raw fields for auditing.
   const state = version.attributes.appVersionState ?? version.attributes.appStoreState;
-  if (typeof state !== 'string' || !state) throw new AppStoreVerificationError('App Store version state is missing');
   if (!DISTRIBUTION_STATES.includes(state) && !WITHDRAWN_STATES.includes(state) && state !== SUPERSEDED_STATE) return pending(version);
-  const build = await apple.get(`/appStoreVersions/${version.id}/build`);
-  if (!build?.data?.attributes?.version) throw new AppStoreVerificationError('App Store build evidence is missing or malformed');
-  if (String(build.data.attributes.version) !== manifest.build) throw new AppStoreVerificationError(`App Store build differs from recorded shipped build: expected ${manifest.build}, received ${build.data.attributes.version}`, 'conflict');
+  await apple.get(`/appStoreVersions/${version.id}/build`, {}, build => {
+    if (!build?.data?.attributes?.version) throw new AppStoreVerificationError('App Store build evidence is missing or malformed');
+    if (String(build.data.attributes.version) !== manifest.build) throw new AppStoreVerificationError(`App Store build differs from recorded shipped build: expected ${manifest.build}, received ${build.data.attributes.version}`, 'conflict');
+    return build;
+  });
   const verification = {
     kind: 'app-store', version: versionString, platform: 'IOS', build: manifest.build, commit: manifest.commit,
     bundleId, appId: app.id, appStoreVersionId: version.id, state,
@@ -68,7 +75,11 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
   }
   // The related resource can return 404 when no phased release exists. Only an
   // explicit null relationship proves absence; failed lookups remain errors.
-  const relationship = await apple.get(`/appStoreVersions/${version.id}/relationships/appStoreVersionPhasedRelease`);
+  const relationship = await apple.get(`/appStoreVersions/${version.id}/relationships/appStoreVersionPhasedRelease`, {}, relationship => {
+    const linked = relationship?.data;
+    if (linked !== null && (linked?.type !== 'appStoreVersionPhasedReleases' || typeof linked.id !== 'string' || !linked.id.trim())) throw new AppStoreVerificationError('App Store phased-release relationship is missing or malformed');
+    return relationship;
+  });
   let limited = false;
   if (relationship?.data === null) {
     // NONE is our explicit absence marker, never an Apple phased state inferred from HTTP 404.
@@ -77,14 +88,13 @@ async function observeStore(manifest, bundleId, apple, now = () => new Date().to
     verification.phasedReleaseEvidence = `https://api.appstoreconnect.apple.com/v1/appStoreVersions/${version.id}/relationships/appStoreVersionPhasedRelease`;
   } else {
     const linked = relationship?.data;
-    if (linked?.type !== 'appStoreVersionPhasedReleases' || typeof linked.id !== 'string' || !linked.id.trim()) {
-      throw new AppStoreVerificationError('App Store phased-release relationship is missing or malformed');
-    }
-    const phased = await apple.get(`/appStoreVersions/${version.id}/appStoreVersionPhasedRelease`);
+    const phased = await apple.get(`/appStoreVersions/${version.id}/appStoreVersionPhasedRelease`, {}, phased => {
+      const data = phased?.data, phasedState = data?.attributes?.phasedReleaseState;
+      if (!data?.id || !data.type || typeof phasedState !== 'string' || !phasedState.trim()) throw new AppStoreVerificationError('App Store phased-release evidence is missing or inconsistent');
+      if (data.id !== linked.id || data.type !== linked.type) throw new AppStoreVerificationError('App Store phased-release evidence is missing or inconsistent', 'conflict');
+      return phased;
+    });
     const phasedState = phased?.data?.attributes?.phasedReleaseState;
-    if (phased?.data?.id !== linked.id || phased.data.type !== linked.type || typeof phasedState !== 'string' || !phasedState.trim()) {
-      throw new AppStoreVerificationError('App Store phased-release evidence is missing or inconsistent');
-    }
     limited = phasedState !== 'COMPLETE';
     Object.assign(verification, presentFields(phased.data.attributes, ['phasedReleaseState', 'currentDayNumber', 'totalPauseDuration', 'startDate']), {
       phasedReleaseId: linked.id,

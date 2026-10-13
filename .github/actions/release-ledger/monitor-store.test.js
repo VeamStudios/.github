@@ -54,14 +54,14 @@ test('historical baselines with exact builds remain eligible for verification; d
 
 function fixture({ relationship = { data: null }, phased = { data: { ...linked, attributes: { phasedReleaseState: 'COMPLETE' } } }, state = 'READY_FOR_DISTRIBUTION', build = '123', bundleId = 'com.test.app', attributes = {} } = {}) {
   const calls = [];
-  return { calls, findAppByBundleId: async () => ({ id: 'app', attributes: { bundleId } }), get: async path => {
+  return { calls, findAppByBundleId: async () => ({ id: 'app', attributes: { bundleId } }), get: async (path, _params, validate = value => value) => {
     calls.push(path);
-    if (path === '/apps/app/appStoreVersions') return { data: [{ id: 'version', attributes: { versionString: '1.2.3', platform: 'IOS', appStoreState: state, ...attributes } }] };
-    if (path === '/appStoreVersions/version/build') return { data: { attributes: { version: build } } };
+    if (path === '/apps/app/appStoreVersions') return validate({ data: [{ id: 'version', attributes: { versionString: '1.2.3', platform: 'IOS', appStoreState: state, ...attributes } }] });
+    if (path === '/appStoreVersions/version/build') return validate({ data: { attributes: { version: build } } });
     const response = path === relationshipPath ? relationship : path === resourcePath ? phased : undefined;
     if (response instanceof Error) throw response;
     if (response === undefined) throw new Error(`Unexpected request: ${path}`);
-    return response;
+    return validate(response);
   } };
 }
 
@@ -139,9 +139,9 @@ test('monitor retains failed records and continues recording verified releases',
   assert.equal(failure.verification, undefined);
   assert.match(failure.verificationError, /build differs/);
 });
-test('a store version not created after TestFlight upload remains pending',async()=>{const apple=fixture();const get=apple.get;apple.get=async path=>path==='/apps/app/appStoreVersions'?{data:[]}:get(path);assert.equal((await observeStore(manifest,'com.test.app',apple)).phase,'uploaded')});
-test('non-live version without an assigned build remains pending',async()=>{const apple=fixture({state:'PREPARE_FOR_SUBMISSION'});const get=apple.get;apple.get=async path=>{if(path.endsWith('/build'))throw new Error('404');return get(path)};assert.equal((await observeStore(manifest,'com.test.app',apple)).phase,'uploaded');assert.ok(!apple.calls.some(p=>p.endsWith('/build')))});
-test('malformed version query is still actionable',async()=>{const apple=fixture();apple.get=async()=>({});await assert.rejects(observeStore(manifest,'com.test.app',apple),/malformed/)});
+test('a store version not created after TestFlight upload remains pending',async()=>{const apple=fixture();const get=apple.get;apple.get=async(path,params,validate=x=>x)=>path==='/apps/app/appStoreVersions'?validate({data:[]}):get(path,params,validate);assert.equal((await observeStore(manifest,'com.test.app',apple)).phase,'uploaded')});
+test('non-live version without an assigned build remains pending',async()=>{const apple=fixture({state:'PREPARE_FOR_SUBMISSION'});const get=apple.get;apple.get=async(path,params,validate)=>{if(path.endsWith('/build'))throw new Error('404');return get(path,params,validate)};assert.equal((await observeStore(manifest,'com.test.app',apple)).phase,'uploaded');assert.ok(!apple.calls.some(p=>p.endsWith('/build')))});
+test('malformed version query is still actionable',async()=>{const apple=fixture();apple.get=async(_path,_params,validate)=>validate({});await assert.rejects(observeStore(manifest,'com.test.app',apple),/malformed/)});
 test('malformed manifest or observation does not abort sibling records',async()=>{const m={...manifest,key:'good',repository:monitorConfig.repo,target:monitorConfig.target};const row={id:'good',properties:{Manifest:rich(JSON.stringify(m)),'Manifest Hash':rich(hash(m))}};const rows=[{id:'bad-json',properties:{Manifest:rich('{')}},{...row,id:'bad-observation',properties:{...row.properties,Observation:rich('{')}},row];const writes=[];const api={notion:async(path,method,body)=>{if(path==='/data_sources/releases')return {properties:{Target:{type:'rich_text'},Products:{type:'relation',relation:{data_source_id:'30c06908-3a03-80ca-bd1b-000b2bbce6d8'}}}};if(method==='PATCH'){writes.push(path);return {}};return {results:rows,has_more:false}}};const result=await monitor(monitorConfig,api,fixture());assert.equal(result.errors.length,2);assert.equal(result.observed,1);assert.deepEqual(writes,['/pages/good'])});
 
 for (const state of ['ACTIVE', 'COMPLETE', 'PAUSED', 'FUTURE_STATE']) {
@@ -266,7 +266,7 @@ for (const phase of ['live', 'rollout']) {
       const previous = await releasedObservation(phase);
       const { api, writes } = monitorFixture([{ m: current, observation: previous }]);
       const apple = fixture({ ...(failure === 'http-error' ? { relationship: new Error('HTTP 403') } : {}), ...(failure === 'non-live' ? { state: 'WAITING_FOR_REVIEW' } : {}), ...(failure === 'wrong-build' ? { build: '124' } : {}) });
-      if (failure === 'missing-version') { const get = apple.get; apple.get = async path => path === '/apps/app/appStoreVersions' ? { data: [] } : get(path); }
+      if (failure === 'missing-version') { const get = apple.get; apple.get = async (path,params,validate=x=>x) => path === '/apps/app/appStoreVersions' ? validate({ data: [] }) : get(path,params,validate); }
       const result = await monitor(monitorConfig, api, apple, now);
       assert.equal(result.observed, 0);
       assert.equal(result.errors.length, 1);
@@ -320,7 +320,7 @@ test('a valid pending check clears an old failure without inventing release evid
     const previous = { phase: 'uploaded', source: 'https://testflight.apple.com', releasedAt: firstSeen, verificationStatus: 'error', verificationError: 'HTTP 503' };
     const { api, writes } = monitorFixture([{ m: current, observation: previous }]);
     const apple = fixture({ state: 'WAITING_FOR_REVIEW' });
-    if (empty) apple.get = async () => ({ data: [] });
+    if (empty) apple.get = async (_path,_params,validate) => validate({ data: [] });
     const result = await monitor(monitorConfig, api, apple, now);
     assert.equal(result.errors.length, 0);
     assert.equal(writes.length, 1);

@@ -2,6 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const crypto=require('node:crypto');
 const {AppStoreConnectClient,createAppStoreConnectJwt}=require('./app-store-client');
+const {observeStore}=require('./monitor-store');
 const {privateKey,publicKey}=crypto.generateKeyPairSync('ec',{namedCurve:'prime256v1'});
 const key=privateKey.export({format:'pem',type:'pkcs8'});
 test('App Store client signs valid ES256 claims after notifier removal',()=>{
@@ -28,6 +29,24 @@ test('Apple GETs recover within a bounded retry budget and keep useful failure d
   let attempts=0;const client=clientFor(async()=>{attempts++;return new Response('Apple diagnostic',{status,headers:{'retry-after':'0'}})});
   await assert.rejects(client.get('/apps'),e=>e.statusCode===status&&e.verificationStatus==='unavailable'&&/Apple diagnostic/.test(e.message)&&/\/apps/.test(e.message));
   assert.equal(attempts,[429,503].includes(status)?3:1);
+ }
+});
+test('incomplete successful Apple responses retry before recording a release failure',async()=>{
+ const responses={
+  '/apps':{data:[app]},
+  '/apps/app/appStoreVersions':{data:[{id:'version',attributes:{versionString:'1.2.3',platform:'IOS',appVersionState:'READY_FOR_DISTRIBUTION',downloadable:true}}]},
+  '/appStoreVersions/version/build':{data:{attributes:{version:'7'}}},
+  '/appStoreVersions/version/relationships/appStoreVersionPhasedRelease':{data:{id:'phase',type:'appStoreVersionPhasedReleases'}},
+  '/appStoreVersions/version/appStoreVersionPhasedRelease':{data:{id:'phase',type:'appStoreVersionPhasedReleases',attributes:{phasedReleaseState:'COMPLETE'}}},
+ };
+ for(const endpoint of Object.keys(responses).slice(1))for(const recover of [true,false]){
+  let attempts=0;const client=clientFor(async url=>{
+   const path=new URL(url).pathname.replace(/^\/v1/,'');
+   return Response.json(path===endpoint&&++attempts&&(attempts===1||!recover)?{}:responses[path]);
+  });
+  const read=observeStore({version:'v1.2.3',build:'7',commit:'a'.repeat(40)},app.attributes.bundleId,client);
+  if(recover)assert.equal((await read).phase,'live');else await assert.rejects(read,e=>e.verificationStatus==='unavailable');
+  assert.equal(attempts,recover?2:3);
  }
 });
 test('Apple timeout covers both response headers and a stalled response body',async()=>{
