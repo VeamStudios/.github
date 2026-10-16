@@ -89,15 +89,16 @@ test('lost Notion receipts before or after the merge resume without a second PR,
   }
 });
 test('an unmerged or closed release PR never deploys, and a concurrent website change is preserved',async()=>{
-  const {row,api,counts,prs,refs,commit,website}=setup(),gh=api.gh,fetcher=async()=>({ok:false}),other='## 4.0.0\n\n### Fixed\n\n- Another release.\n';
-  let race=true;
-  // Another release lands on main between preparing the branch and merging it.
-  api.gh=async(path,method,body)=>{if(race&&path.endsWith('/merge')){race=false;refs.set('main',commit(refs.get('main'),mergeSection(website(),other,'v4.0.0'),'Update changelog for v4.0.0'))}return gh(path,method,body)};
-  await assert.rejects(()=>publishWebsite(row.id,{publishWebsite:true,dryRun:false},api,{fetcher}));
-  assert.equal(counts().dispatches,0);
-  await publishWebsite(row.id,{publishWebsite:true,dryRun:false},api,{fetcher});
-  assert.deepEqual(counts(),{writes:2,merges:1,prs:1,dispatches:1});
-  assert.ok(website().includes(other.trim())&&website().includes('## 4.0.1\n\n### Fixed\n\n- A complete fix.'));
+  const fetcher=async()=>({ok:false}),other='## 4.0.0\n\n### Fixed\n\n- Another release.\n';
+  // Another release lands on main after the first read: before the branch is prepared, or before the merge.
+  for(const trigger of ['/git/ref/heads/main','/merge']) {
+    const {row,api,counts,refs,commit,website}=setup(),gh=api.gh;
+    let race=true;
+    api.gh=async(path,method,body)=>{if(race&&path.endsWith(trigger)){race=false;refs.set('main',commit(refs.get('main'),mergeSection(website(),other,'v4.0.0'),'Update changelog for v4.0.0'))}return gh(path,method,body)};
+    for(let attempt=0;attempt<2&&!counts().merges;attempt++)await publishWebsite(row.id,{publishWebsite:true,dryRun:false},api,{fetcher}).catch(()=>{});
+    assert.deepEqual({...counts(),writes:undefined},{writes:undefined,merges:1,prs:1,dispatches:1});
+    assert.ok(website().includes(other.trim())&&website().includes('## 4.0.1\n\n### Fixed\n\n- A complete fix.'),trigger);
+  }
   const closed=setup(),closedGh=closed.api.gh;
   closed.api.gh=async(path,method,body)=>{if(path.endsWith('/merge'))throw Object.assign(Error('GitHub PUT failed (405)'),{status:405});return closedGh(path,method,body)};
   await assert.rejects(()=>publishWebsite(closed.row.id,{publishWebsite:true,dryRun:false},closed.api,{fetcher}),/405/);

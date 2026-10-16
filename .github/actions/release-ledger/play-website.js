@@ -60,7 +60,7 @@ async function releasePr(api,branch,number) {
   if(prs.length>1)throw Error('Duplicate website notes pull requests; reconcile explicitly');
   return prs[0];
 }
-async function prepareBranch(api,branch,content,message) {
+async function prepareBranch(api,branch,source,version,message) {
   // The branch is bot-owned: it always holds exactly current main plus this release's notes.
   const main=(await api.gh(`/repos/${WEBSITE}/git/ref/heads/main`)).object.sha;
   let ref;
@@ -72,7 +72,9 @@ async function prepareBranch(api,branch,content,message) {
   }
   const file=await api.gh(`/repos/${WEBSITE}/contents/${DESTINATION}?ref=${encodeURIComponent(branch)}`);
   if(file.encoding!=='base64')throw Error('Website content unavailable');
-  if(decode(file)===content)return (await api.gh(`/repos/${WEBSITE}/git/ref/heads/${branch}`)).object.sha;
+  // Build from the branch's own base, never an earlier main snapshot, so concurrent notes are kept.
+  const current=decode(file),content=mergeSection(current,source.section,version);
+  if(content===current)return (await api.gh(`/repos/${WEBSITE}/git/ref/heads/${branch}`)).object.sha;
   // The blob SHA is a compare-and-swap against concurrent branch updates.
   const updated=await api.gh(`/repos/${WEBSITE}/contents/${DESTINATION}`,'PUT',{message,content:Buffer.from(content).toString('base64'),sha:file.sha,branch});
   return updated.commit.sha;
@@ -123,7 +125,7 @@ async function publishWebsite(pageId,config,api,{fetcher=fetch}={}) {
     } else if(pr?.state==='closed') {
       return finish({...receipt,pullRequest:pr.number,state:'held',reason:'Website notes pull request was closed without merging; review before republishing'});
     } else if(content!==before) {
-      const head=await prepareBranch(api,branch,content,`${title}\n\n${trailers}`);
+      const head=await prepareBranch(api,branch,source,m.version,`${title}\n\n${trailers}`);
       const opened=pr||await openPr(api,branch,title,m,source);
       receipt.pullRequest=opened.number;
       await publicationReceipt(row,api,receipt);
