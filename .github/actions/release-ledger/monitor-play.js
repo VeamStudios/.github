@@ -72,7 +72,7 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
           try {entry.website=await publish(entry.pageId,config,api)}
           catch(e) {
             entry.website={state:'failed',reason:e.message};
-            result.errors.push({build,stage:'website',error:e.message});
+            result.errors.push({build,stage:'website',error:e.message,...(e.requestId?{requestId:e.requestId}:{})});
             // A website outage does not invalidate verified Play availability or Slack receipts.
             if(!config.dryRun){const row=await api.notion(`/pages/${entry.pageId}`);const previous=previousObservation(row.properties)||{};await require('./play-website').publicationReceipt(row,api,{...previous.website,...entry.website})}
           }
