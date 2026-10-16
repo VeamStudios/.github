@@ -49,6 +49,52 @@ async function publicationReceipt(row,api,value) {
   // Readers fold this owned column into the observation; the shared Observation is no longer written.
   await api.notion(`/pages/${row.id}`,'PATCH',{properties:{[WEBSITE_RECEIPT]:rich(JSON.stringify(value))}});
 }
+const decode=file=>Buffer.from(file.content,'base64').toString('utf8');
+async function releasePr(api,branch,number) {
+  if(number) {
+    const pr=await api.gh(`/repos/${WEBSITE}/pulls/${number}`);
+    if(pr.head?.ref!==branch||pr.base?.ref!=='main')throw Error('Website receipt references a different pull request');
+    return pr;
+  }
+  const prs=(await api.gh(`/repos/${WEBSITE}/pulls?state=all&base=main&head=${WEBSITE.split('/')[0]}:${encodeURIComponent(branch)}&per_page=100`)).filter(p=>p.head?.ref===branch&&p.base?.ref==='main');
+  if(prs.length>1)throw Error('Duplicate website notes pull requests; reconcile explicitly');
+  return prs[0];
+}
+async function prepareBranch(api,branch,content,message) {
+  // The branch is bot-owned: it always holds exactly current main plus this release's notes.
+  const main=(await api.gh(`/repos/${WEBSITE}/git/ref/heads/main`)).object.sha;
+  let ref;
+  try {ref=await api.gh(`/repos/${WEBSITE}/git/ref/heads/${branch}`)}catch(e){if(e.status!==404)throw e}
+  if(!ref)await api.gh(`/repos/${WEBSITE}/git/refs`,'POST',{ref:`refs/heads/${branch}`,sha:main});
+  else if(ref.object.sha!==main) {
+    const cmp=await api.gh(`/repos/${WEBSITE}/compare/${main}...${ref.object.sha}`);
+    if(cmp.behind_by||cmp.ahead_by!==1||cmp.files?.length!==1||cmp.files[0].filename!==DESTINATION)await api.gh(`/repos/${WEBSITE}/git/refs/heads/${branch}`,'PATCH',{sha:main,force:true});
+  }
+  const file=await api.gh(`/repos/${WEBSITE}/contents/${DESTINATION}?ref=${encodeURIComponent(branch)}`);
+  if(file.encoding!=='base64')throw Error('Website content unavailable');
+  if(decode(file)===content)return (await api.gh(`/repos/${WEBSITE}/git/ref/heads/${branch}`)).object.sha;
+  // The blob SHA is a compare-and-swap against concurrent branch updates.
+  const updated=await api.gh(`/repos/${WEBSITE}/contents/${DESTINATION}`,'PUT',{message,content:Buffer.from(content).toString('base64'),sha:file.sha,branch});
+  return updated.commit.sha;
+}
+async function openPr(api,branch,title,m,source) {
+  const body=`Automated Android release notes for ${m.version} (versionCode ${m.build}), verified live on Google Play.\n\n- Source: https://github.com/${m.repository}/blob/${source.sourceCommit}/CHANGELOG.md\n- Shipped commit: ${m.commit}\n- Notes hash: \`${source.sectionHash}\`\n\nThe release bot squash-merges this PR with the exact title and source trailers, then deploys through \`publish-release-notes.yml\`.`;
+  try {return await api.gh(`/repos/${WEBSITE}/pulls`,'POST',{title,head:branch,base:'main',body})}
+  catch(e) {
+    // A lost create response leaves the PR in place; reuse it rather than opening a second one.
+    if(e.status!==422)throw e;
+    const pr=await releasePr(api,branch);
+    if(!pr||pr.state!=='open')throw e;
+    return pr;
+  }
+}
+async function mergedNotes(api,commit,pageId,source,version) {
+  if(!/^[a-f0-9]{40}$/.test(commit||''))return false;
+  const metadata=await api.gh(`/repos/${WEBSITE}/commits/${commit}`),message=metadata.commit?.message||'';
+  if(!message.includes(`Release-Ledger-Page: ${pageId}`)||!message.includes(`Release-Notes-Hash: ${source.sectionHash}`))return false;
+  const file=await api.gh(`/repos/${WEBSITE}/contents/${DESTINATION}?ref=${commit}`);
+  return file.encoding==='base64'&&sectionMap(decode(file)).get(version.replace(/^v/,''))===source.section.trim();
+}
 async function publishWebsite(pageId,config,api,{fetcher=fetch}={}) {
   if(!config.publishWebsite)return {state:'disabled'};
   const row=await api.notion(`/pages/${pageId}`);
@@ -62,21 +108,37 @@ async function publishWebsite(pageId,config,api,{fetcher=fetch}={}) {
   }
   const file=await api.gh(`/repos/${WEBSITE}/contents/${DESTINATION}?ref=main`);
   if(file.encoding!=='base64')throw Error('Website content unavailable');
-  const before=Buffer.from(file.content,'base64').toString('utf8'),content=mergeSection(before,source.section,m.version);
+  const before=decode(file),content=mergeSection(before,source.section,m.version);
   const receipt={...previous,state:'pending',repository:WEBSITE,path:DESTINATION,releasePage:pageId,sourceCommit:source.sourceCommit,shippedCommit:m.commit,sectionHash:source.sectionHash,sourceHash:source.sourceHash,manifestHash:source.originalHash,version:m.version};
   if(config.dryRun)return {...receipt,state:'preview',contentChanged:content!==before};
-  if(content!==before) {
-    const message=`Update changelog for ${m.version}\n\nRelease-Source-Repository: ${m.repository}\nRelease-Source-Commit: ${source.sourceCommit}\nRelease-Source-Path: CHANGELOG.md\nRelease-Shipped-Commit: ${m.commit}\nRelease-Version-Code: ${m.build}\nRelease-Notes-Hash: ${source.sectionHash}\nRelease-Ledger-Page: ${pageId}\nRelease-Manifest-Hash: ${source.originalHash}`;
-    // GitHub content update uses the existing blob SHA as a compare-and-swap.
-    const updated=await api.gh(`/repos/${WEBSITE}/contents/${DESTINATION}`,'PUT',{message,content:Buffer.from(content).toString('base64'),sha:file.sha,branch:'main'});
-    receipt.commit=updated.commit.sha;
-    await publicationReceipt(row,api,receipt);
-  } else if(!receipt.commit) {
-    // Recover a committed update whose Notion receipt write was interrupted.
-    const commits=await api.gh(`/repos/${WEBSITE}/commits?path=${encodeURIComponent(DESTINATION)}&per_page=1`);
-    const latest=commits[0];
-    if(!latest?.commit?.message?.includes(`Release-Ledger-Page: ${pageId}`)||!latest.commit.message.includes(`Release-Notes-Hash: ${source.sectionHash}`))return finish({...receipt,state:'held',reason:'Existing notes lack the expected source receipt; review their provenance'});
-    receipt.commit=latest.sha;
+  if(content!==before||!receipt.commit) {
+    // Website main requires squash-merged pull requests: one bot-owned branch and PR per exact release identity.
+    const branch=`release-notes/android/${m.version}-${m.build}`,trailers=`Release-Source-Repository: ${m.repository}\nRelease-Source-Commit: ${source.sourceCommit}\nRelease-Source-Path: CHANGELOG.md\nRelease-Shipped-Commit: ${m.commit}\nRelease-Version-Code: ${m.build}\nRelease-Notes-Hash: ${source.sectionHash}\nRelease-Ledger-Page: ${pageId}\nRelease-Manifest-Hash: ${source.originalHash}`;
+    const title=`Update changelog for ${m.version}`,pr=await releasePr(api,branch,receipt.pullRequest);
+    if(pr?.merged_at) {
+      // Recover a merge whose response or Notion receipt was lost; validate what actually landed.
+      if(content!==before)return finish({...receipt,pullRequest:pr.number,state:'held',reason:'Merged website notes are no longer on main; review a correction'});
+      if(!await mergedNotes(api,pr.merge_commit_sha,pageId,source,m.version))return finish({...receipt,pullRequest:pr.number,state:'held',reason:'Merged website notes lack the expected source receipt; review their provenance'});
+      Object.assign(receipt,{pullRequest:pr.number,commit:pr.merge_commit_sha});
+    } else if(pr?.state==='closed') {
+      return finish({...receipt,pullRequest:pr.number,state:'held',reason:'Website notes pull request was closed without merging; review before republishing'});
+    } else if(content!==before) {
+      const head=await prepareBranch(api,branch,content,`${title}\n\n${trailers}`);
+      const opened=pr||await openPr(api,branch,title,m,source);
+      receipt.pullRequest=opened.number;
+      await publicationReceipt(row,api,receipt);
+      // The exact title and trailers keep the squash commit recognisable as a verified release sync.
+      const merged=await api.gh(`/repos/${WEBSITE}/pulls/${opened.number}/merge`,'PUT',{merge_method:'squash',commit_title:title,commit_message:trailers,sha:head});
+      if(!merged.merged||!/^[a-f0-9]{40}$/.test(merged.sha))throw Error('Website notes pull request did not merge');
+      receipt.commit=merged.sha;
+    } else {
+      if(pr)return finish({...receipt,pullRequest:pr.number,state:'held',reason:'Website main already contains these notes outside their pull request; review their provenance'});
+      // Recover notes committed before PR publication, or merged by normal review with the source trailers.
+      const commits=await api.gh(`/repos/${WEBSITE}/commits?path=${encodeURIComponent(DESTINATION)}&per_page=100`);
+      const match=commits.find(c=>c.commit?.message?.includes(`Release-Ledger-Page: ${pageId}`)&&c.commit.message.includes(`Release-Notes-Hash: ${source.sectionHash}`));
+      if(!match)return finish({...receipt,state:'held',reason:'Existing notes lack the expected source receipt; review their provenance'});
+      receipt.commit=match.sha;
+    }
     await publicationReceipt(row,api,receipt);
   }
   try {
@@ -88,7 +150,7 @@ async function publishWebsite(pageId,config,api,{fetcher=fetch}={}) {
         // Normal release handling can deploy a descendant containing these exact notes.
         const comparison=await api.gh(`/repos/${WEBSITE}/compare/${receipt.commit}...${info.commit}`);
         const deployedFile=await api.gh(`/repos/${WEBSITE}/contents/${DESTINATION}?ref=${info.commit}`);
-        deployed=comparison.status==='ahead'&&deployedFile.encoding==='base64'&&sectionMap(Buffer.from(deployedFile.content,'base64').toString('utf8')).get(m.version.replace(/^v/,''))===source.section.trim();
+        deployed=comparison.status==='ahead'&&deployedFile.encoding==='base64'&&sectionMap(decode(deployedFile)).get(m.version.replace(/^v/,''))===source.section.trim();
       }
       if(deployed) {
         const page=await fetcher(`${URL}/releasenotes/android?revision=${Date.now()}`,{cache:'no-store',signal:AbortSignal.timeout(20000)});

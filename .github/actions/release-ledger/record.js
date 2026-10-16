@@ -49,7 +49,12 @@ async function request(url, token, method = 'GET', body, notion = false) {
     if(r.ok)return r.status===204?{}:r.json();
     const delay=Number(r.headers.get('retry-after')||0)*1000;
     if(safe&&attempt<3&&[429,500,502,503,504,529].includes(r.status)&&delay<=20000){await new Promise(resolve=>setTimeout(resolve,Math.max(delay,500*2**attempt)));continue}
-    const e=new Error(`${notion?'Notion':'GitHub'} ${method} failed (${r.status})`);e.status=r.status;throw e;
+    // Keep the service's reason (e.g. a ruleset rejection), bounded and without credentials; the per-call request ID stays
+    // off the message so hourly Notion errors stay stable.
+    let reason='';try{const body=await r.json();reason=String(body?.message||body?.code||'')}catch{}
+    reason=reason.replace(/\b(?:gh[pousr]_|github_pat_|ntn_|secret_)[A-Za-z0-9_]+/g,'[redacted]').replace(/\s+/g,' ').trim().slice(0,200);
+    const id=String(r.headers?.get?.(notion?'x-request-id':'x-github-request-id')||'').replace(/[^A-Za-z0-9:._-]/g,'').slice(0,64);
+    const e=new Error(`${notion?'Notion':'GitHub'} ${method} failed (${r.status})${reason?`: ${reason}`:''}`);e.status=r.status;e.requestId=id||undefined;throw e;
   }
 }
 function propertyValue(p) {
