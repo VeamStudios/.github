@@ -134,7 +134,7 @@ jobs:
 
 ### `update-changelog-website.yml`
 
-Copies a `CHANGELOG.md` from the caller repo to a marketing website repo.
+Copies a `CHANGELOG.md` from the caller repo to a marketing website repo. The copy lands through a bot-owned branch and a squash-merged pull request opened as the Release Bot, because default branches reject direct pushes.
 
 ```yaml
 jobs:
@@ -150,7 +150,7 @@ jobs:
     secrets: inherit
 ```
 
-Without `reviewers`, the release bot pushes the copy straight to the destination's `main`. With `reviewers`, it opens (or updates) a pull request on a bot-owned `changelog-sync/...` branch and requests their review. Merging that PR does not deploy the website.
+With `reviewers`, the Release Bot leaves the pull request open and requests their review instead of squash-merging it. They approve the final commit and squash-merge it themselves. Merging does not deploy the website.
 
 ### `web-tests.yml`
 
