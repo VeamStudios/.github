@@ -14,9 +14,10 @@ async function tagCommit(gh,repo,tag) {
   if(object?.type!=='commit'||!/^[a-f0-9]{40}$/.test(object.sha))throw Error('Production tag is not an unambiguous commit');
   return object.sha;
 }
-// Customer notes from CHANGELOG.md at the shipped commit. Missing or invalid notes never block a verified release.
+// Plain-text customer notes from CHANGELOG.md at the shipped commit. Missing or invalid notes never block a verified release.
+const plain=summary=>summary.replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/<[^>]+>|[*_`~#>|]/g,'').replace(/https?:\/\/\S+/g,'').replace(/\s+/g,' ').trim();
 async function releaseNotes(identity,gh) {
-  try {const file=await optional(gh,`/repos/${identity.repository}/contents/CHANGELOG.md?ref=${identity.commit}`);return file?.encoding==='base64'?renderChangelog(customerEntries(Buffer.from(file.content,'base64').toString('utf8'),identity.version)):''}
+  try {const file=await optional(gh,`/repos/${identity.repository}/contents/CHANGELOG.md?ref=${identity.commit}`);return file?.encoding==='base64'?renderChangelog(customerEntries(Buffer.from(file.content,'base64').toString('utf8'),identity.version).map(e=>({...e,summary:plain(e.summary)}))):''}
   catch{return ''}
 }
 async function ensureRelease(identity,gh,dryRun) {
@@ -25,7 +26,8 @@ async function ensureRelease(identity,gh,dryRun) {
   const path=`/repos/${identity.repository}/releases/tags/${encodeURIComponent(identity.version)}`;
   const release=await optional(gh,path);
   if(release) {
-    if(!sha || release.draft || release.prerelease || release.tag_name!==identity.version || !new RegExp(`\\*\\*versionCode:\\*\\*\\s*${identity.build}(?:\\s|$)`).test(release.body||''))throw Error('Existing GitHub release conflicts with this exact production build');
+    // Only the header identifies the build; customer notes follow the first blank line.
+    if(!sha || release.draft || release.prerelease || release.tag_name!==identity.version || !new RegExp(`\\*\\*versionCode:\\*\\*\\s*${identity.build}(?:\\s|$)`).test((release.body||'').split('\n\n')[0]))throw Error('Existing GitHub release conflicts with this exact production build');
     return {state:'complete',url:release.html_url};
   }
   if(dryRun)return {state:'planned',tag:identity.version,commit:identity.commit};

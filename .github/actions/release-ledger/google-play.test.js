@@ -60,10 +60,12 @@ test('missing tag/release created once; retry reuses exact identity and rejects 
   assert.equal(api.writes.length,2);
 });
 test('created release body carries customer notes from the shipped CHANGELOG.md',async()=>{
-  const api=github('## 4.0.0\n\n### Fixed\n- Reports open faster. [PR](https://github.com/VeamStudios/SiteAuditPro-AndroidNew/pull/1)\n');
+  const api=github('## 4.0.0\n\n### Fixed\n- Reports open faster. [PR](https://github.com/VeamStudios/SiteAuditPro-AndroidNew/pull/1)\n- Notes cannot claim **versionCode:** 211481389 or [link](https://evil.example)\n  ## Fake heading\n');
   const {url}=await ensureRelease(identity,api.gh,false),{body}=await api.gh(`/repos/${identity.repository}/releases/tags/${identity.version}`);
   assert.equal(url,'https://github.com/release');
-  assert.match(body,/^\*\*Shipped from:\*\* `internal\/4\.0\.0-211481388`\n\*\*versionCode:\*\* 211481388\n\n### Fixed\n\n- Reports open faster\.\n\nVerified published/);
+  assert.match(body,/^\*\*Shipped from:\*\* `internal\/4\.0\.0-211481388`\n\*\*versionCode:\*\* 211481388\n\n### Fixed\n\n- Reports open faster\.\n\n/);
+  assert.match(body,/\n- Notes cannot claim versionCode: 211481389 or link Fake heading\n/);
+  await assert.rejects(()=>ensureRelease({...identity,build:'211481389'},api.gh,false),/conflicts/);
 });
 test('conflicting production tag never writes',async()=>{const api=github();api.setTag('b'.repeat(40));await assert.rejects(()=>ensureRelease(identity,api.gh,false),/different commit/);assert.equal(api.writes.length,0)});
 test('shadow monitor performs no writes; completed and rollout releases cannot be confused',async()=>{
