@@ -290,6 +290,56 @@ jobs:
             exit 1
           fi
 
+  app-store-whats-new:
+    # Independent of the release jobs, so the text is ready even if a later job fails.
+    name: App Store What's New
+    needs: [resolve-hotfix, build-cloud]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout hotfix commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve-hotfix.outputs.hotfix_sha }}
+          sparse-checkout: |
+            CHANGELOG.md
+            .github/scripts/release_notes.py
+          sparse-checkout-cone-mode: false
+
+      - name: Check for release notes script
+        id: release_notes_script
+        run: |
+          if [ -f .github/scripts/release_notes.py ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipped App Store What's New because .github/scripts/release_notes.py is not in this repo."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate App Store What's New from CHANGELOG.md
+        if: ${{ steps.release_notes_script.outputs.enabled == 'true' }}
+        env:
+          MARKETING_VERSION: ${{ needs.build-cloud.outputs.marketing_version }}
+        run: |
+          NOTES_FILE="app-store-whats-new-${MARKETING_VERSION}.txt"
+          python3 -B .github/scripts/release_notes.py --version "$MARKETING_VERSION" --app-store "$NOTES_FILE"
+          {
+            echo "## App Store What's New for ${MARKETING_VERSION}"
+            echo ""
+            echo "Paste into App Store Connect. Generated from CHANGELOG.md at the hotfix commit; also attached as the \`app-store-whats-new-${MARKETING_VERSION}\` artifact."
+            echo ""
+            echo '```text'
+            cat "$NOTES_FILE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload App Store What's New
+        if: ${{ steps.release_notes_script.outputs.enabled == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-store-whats-new-${{ needs.build-cloud.outputs.marketing_version }}
+          path: app-store-whats-new-${{ needs.build-cloud.outputs.marketing_version }}.txt
+          if-no-files-found: error
+
   create-release:
     name: Create Hotfix Release
     runs-on: ubuntu-latest
