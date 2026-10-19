@@ -18,7 +18,8 @@ async function ensureRelease(identity,gh,dryRun) {
   const path=`/repos/${identity.repository}/releases/tags/${encodeURIComponent(identity.version)}`;
   const release=await optional(gh,path);
   if(release) {
-    if(!sha || release.draft || release.prerelease || release.tag_name!==identity.version || !new RegExp(`\\*\\*versionCode:\\*\\*\\s*${identity.build}(?:\\s|$)`).test(release.body||''))throw Error('Existing GitHub release conflicts with this exact production build');
+    // Only the header identifies the build; GitHub's generated PR list follows the first blank line.
+    if(!sha || release.draft || release.prerelease || release.tag_name!==identity.version || !new RegExp(`\\*\\*versionCode:\\*\\*\\s*${identity.build}(?:\\s|$)`).test((release.body||'').split('\n\n')[0]))throw Error('Existing GitHub release conflicts with this exact production build');
     return {state:'complete',url:release.html_url};
   }
   if(dryRun)return {state:'planned',tag:identity.version,commit:identity.commit};
@@ -26,9 +27,9 @@ async function ensureRelease(identity,gh,dryRun) {
     try {await gh(`/repos/${identity.repository}/git/refs`,'POST',{ref:`refs/tags/${identity.version}`,sha:identity.commit})}
     catch(e){if(await tagCommit(gh,identity.repository,identity.version)!==identity.commit)throw e}
   }
-  const body=`**Shipped from:** \`${identity.internalTag}\`\n**versionCode:** ${identity.build}\n\nVerified published and completed on Google Play production. Customer release notes are maintained in the release ledger.`;
+  const body=`**Shipped from:** \`${identity.internalTag}\`\n**versionCode:** ${identity.build}\n\nVerified published and completed on Google Play production.`;
   try {
-    const created=await gh(`/repos/${identity.repository}/releases`,'POST',{tag_name:identity.version,target_commitish:identity.commit,name:identity.version,body,draft:false,prerelease:false});
+    const created=await gh(`/repos/${identity.repository}/releases`,'POST',{tag_name:identity.version,target_commitish:identity.commit,name:identity.version,body,generate_release_notes:true,draft:false,prerelease:false});
     return {state:'complete',url:created.html_url};
   }catch(e){const found=await optional(gh,path);if(!found)throw e;return ensureRelease(identity,gh,true)}
 }

@@ -41,10 +41,10 @@ test('lifecycle changes during inspection are rejected',async()=>{
   const client=new GooglePlayMonitor({type:'service_account',client_email:'monitor',private_key:'key'},{expectedEmail:'monitor',uploaderEmail:'uploader',fetcher:async(url,options)=>({ok:true,status:options.method==='DELETE'?204:200,json:async()=>url.endsWith('/releases')?snapshot(++count===1?'PUBLISHED':'IN_REVIEW').lifecycle:url.endsWith('/edits')?{id:'123'}:snapshot().rollout})});client.token=async()=>'';
   await assert.rejects(()=>client.snapshot(),/changed during/);
 });
-function github() {
+function github(generated='') {
   let tag=null,release=null;const writes=[];
   const gh=async(path,method='GET',body)=>{
-    if(method==='POST'){writes.push(path);if(path.endsWith('/git/refs')){tag=body.sha;return {}};if(path.endsWith('/releases')){release={...body,html_url:'https://github.com/release'};return release}}
+    if(method==='POST'){writes.push(path);if(path.endsWith('/git/refs')){tag=body.sha;return {}};if(path.endsWith('/releases')){release={...body,body:body.generate_release_notes&&generated?`${body.body}\n\n${generated}`:body.body,html_url:'https://github.com/release'};return release}}
     if(path.includes('/git/ref/tags/')){if(tag)return {object:{type:'commit',sha:tag}}}
     else if(path.includes('/releases/tags/')&&release)return release;
     throw Object.assign(Error('not found'),{status:404});
@@ -57,6 +57,14 @@ test('missing tag/release created once; retry reuses exact identity and rejects 
   assert.equal(api.writes.length,2);
   await assert.rejects(()=>ensureRelease({...identity,build:'211481389'},api.gh,false),/conflicts/);
   assert.equal(api.writes.length,2);
+});
+test('release keeps the build header above GitHub generated notes',async()=>{
+  const api=github('## What\'s Changed\n* fix: claims **versionCode:** 211481389 by @dev');
+  await ensureRelease(identity,api.gh,false);
+  const {body,generate_release_notes}=await api.gh(`/repos/${identity.repository}/releases/tags/${identity.version}`);
+  assert.equal(generate_release_notes,true);
+  assert.match(body,/^\*\*Shipped from:\*\* `internal\/4\.0\.0-211481388`\n\*\*versionCode:\*\* 211481388\n\nVerified published and completed on Google Play production\.\n\n## What's Changed/);
+  await assert.rejects(()=>ensureRelease({...identity,build:'211481389'},api.gh,false),/conflicts/);
 });
 test('conflicting production tag never writes',async()=>{const api=github();api.setTag('b'.repeat(40));await assert.rejects(()=>ensureRelease(identity,api.gh,false),/different commit/);assert.equal(api.writes.length,0)});
 test('shadow monitor performs no writes; completed and rollout releases cannot be confused',async()=>{
