@@ -170,6 +170,7 @@ jobs:
           git checkout -b "$branch"
           git commit -m "$COMMIT_MESSAGE" -m "$trailers"
           git push --force origin "HEAD:refs/heads/$branch"
+          head_sha="$(git rev-parse HEAD)"
 
           pr="$(gh pr list --repo "$DESTINATION_REPO" --head "$branch" --state open --json number --jq '.[0].number // empty')"
           if [ -z "$pr" ]; then
@@ -178,5 +179,6 @@ jobs:
 
           $trailers" | grep -oE '[0-9]+$')"
           fi
-          gh pr merge "$pr" --repo "$DESTINATION_REPO" --squash --delete-branch \
+          # Pin the head so an overlapping run that force-pushed the same branch cannot be merged under this run's trailers.
+          gh pr merge "$pr" --repo "$DESTINATION_REPO" --squash --delete-branch --match-head-commit "$head_sha" \
             --subject "$COMMIT_MESSAGE" --body "$trailers"
