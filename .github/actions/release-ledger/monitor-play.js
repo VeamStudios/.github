@@ -36,7 +36,7 @@ async function ensureRelease(identity,gh,dryRun) {
     catch(e){if(await tagCommit(gh,identity.repository,identity.version)!==identity.commit)throw e}
   }
   const notes=await releaseNotes(identity,gh);
-  const body=`**Shipped from:** \`${identity.internalTag}\`\n**versionCode:** ${identity.build}\n\n${notes?`${notes}\n\n`:''}Verified published and completed on Google Play production. Customer release notes are maintained in the release ledger.`;
+  const body=`**Shipped from:** \`${identity.internalTag}\`\n**versionCode:** ${identity.build}\n\n${notes?`${notes}\n\n`:''}Verified published and completed on Google Play production.`;
   try {
     const created=await gh(`/repos/${identity.repository}/releases`,'POST',{tag_name:identity.version,target_commitish:identity.commit,name:identity.version,body,draft:false,prerelease:false});
     return {state:'complete',url:created.html_url};
