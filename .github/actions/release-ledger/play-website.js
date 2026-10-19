@@ -90,6 +90,14 @@ async function openPr(api,branch,title,m,source) {
     return pr;
   }
 }
+async function unresolvedThreads(api,number) {
+  const [owner,name]=WEBSITE.split('/'),query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved}}}}}';
+  const result=await api.gh('/graphql','POST',{query,variables:{owner,name,number}});
+  // GraphQL answers 200 with `errors`, so a failed query must not read as zero open threads.
+  const threads=result.data?.repository?.pullRequest?.reviewThreads?.nodes;
+  if(result.errors?.length||!threads)throw Error(`Could not read review threads on website pull request #${number}`);
+  return threads.filter(t=>!t.isResolved).length;
+}
 async function mergedNotes(api,commit,pageId,source,version) {
   if(!/^[a-f0-9]{40}$/.test(commit||''))return false;
   const metadata=await api.gh(`/repos/${WEBSITE}/commits/${commit}`),message=metadata.commit?.message||'';
@@ -129,6 +137,9 @@ async function publishWebsite(pageId,config,api,{fetcher=fetch}={}) {
       const opened=pr||await openPr(api,branch,title,m,source);
       receipt.pullRequest=opened.number;
       await publicationReceipt(row,api,receipt);
+      // The website ruleset requires resolved review threads. The bot never resolves another reviewer's thread: it holds, and the next run resumes this PR.
+      const open=await unresolvedThreads(api,opened.number);
+      if(open)return finish({...receipt,pullRequest:opened.number,state:'held',reason:`Website notes pull request #${opened.number} has ${open} unresolved review thread${open===1?'':'s'}; resolve ${open===1?'it':'them'} so the release bot can merge https://github.com/${WEBSITE}/pull/${opened.number}`});
       // The exact title and trailers keep the squash commit recognisable as a verified release sync.
       const merged=await api.gh(`/repos/${WEBSITE}/pulls/${opened.number}/merge`,'PUT',{merge_method:'squash',commit_title:title,commit_message:trailers,sha:head});
       if(!merged.merged||!/^[a-f0-9]{40}$/.test(merged.sha))throw Error('Website notes pull request did not merge');

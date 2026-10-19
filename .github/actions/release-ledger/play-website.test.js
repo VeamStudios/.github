@@ -14,7 +14,7 @@ function setup(){
   const v={kind:'google-play',packageName:'com.veamstudios.siteauditpro',track:'production',repository:m.repository,commit:sha,build:'222',versionCode:'222',lifecycle:'RELEASE_LIFECYCLE_STATE_PUBLISHED',rolloutStatus:'completed',checkedAt:new Date().toISOString(),evidence:`${ROOT}/tracks/production/releases`,rolloutEvidence:`${ROOT}/edits/123/tracks/production`};
   const row={id:'abc',properties:{Manifest:rich(JSON.stringify(m)),'Manifest Hash':rich(hash(m)),Observation:rich(JSON.stringify({phase:'live',verification:v})),Announcements:rich(JSON.stringify({version:1,batches:[{key:'already sent',state:'Sent'}]}))}};
   // In-memory website repository: main accepts changes only through squash-merged pull requests, as its ruleset does.
-  const W=`/repos/${WEBSITE}`,commits=new Map(),refs=new Map(),prs=[];let writes=0,dispatches=0,merges=0,n=0;
+  const W=`/repos/${WEBSITE}`,commits=new Map(),refs=new Map(),prs=[];let writes=0,dispatches=0,merges=0,n=0;const threads={unresolved:0};
   const commit=(parent,content,message)=>{const id=hash([parent,content,message,n++]).slice(0,40);commits.set(id,{parent,content,message});return id};
   const fail=(status,message)=>Object.assign(Error(`GitHub failed (${status}): ${message}`),{status});
   const resolve=ref=>refs.get(decodeURIComponent(ref))||ref;
@@ -31,6 +31,7 @@ function setup(){
     if(route.startsWith(`${W}/compare/`)){const [a,b]=route.slice(`${W}/compare/`.length).split('...'),ahead=ancestor(a,b);return {status:ahead>0?'ahead':ahead===0?'identical':'behind',ahead_by:Math.max(ahead,0),behind_by:ahead<0?1:0,files:ahead>0?[{filename:DESTINATION}]:[]}}
     if(route===`${W}/pulls`&&method==='GET')return prs.filter(p=>`${WEBSITE.split('/')[0]}:${p.head.ref}`===q.get('head'));
     if(route===`${W}/pulls`&&method==='POST'){if(prs.some(p=>p.head.ref===body.head&&p.state==='open'))throw fail(422,'A pull request already exists');const pr={number:prs.length+1,state:'open',title:body.title,head:{ref:body.head},base:{ref:body.base},merged_at:null,merge_commit_sha:null};prs.push(pr);return structuredClone(pr)}
+    if(route==='/graphql')return {data:{repository:{pullRequest:{reviewThreads:{nodes:[{isResolved:true},...Array.from({length:threads.unresolved},()=>({isResolved:false}))]}}}}};
     if(/\/pulls\/\d+\/merge$/.test(route)){const pr=prs.find(p=>p.number===Number(route.split('/').at(-2))),head=refs.get(pr.head.ref);if(pr.state!=='open'||body.sha!==head)throw fail(409,'Head branch was modified');if(commits.get(head).parent!==refs.get('main'))throw fail(405,'Pull Request is not mergeable');if(body.merge_method!=='squash')throw fail(405,'Merge method not allowed');merges++;const id=commit(refs.get('main'),commits.get(head).content,`${body.commit_title}\n\n${body.commit_message}`);refs.set('main',id);refs.delete(pr.head.ref);Object.assign(pr,{state:'closed',merged_at:new Date().toISOString(),merge_commit_sha:id});return {merged:true,sha:id}}
     if(/\/pulls\/\d+$/.test(route))return structuredClone(prs.find(p=>p.number===Number(route.split('/').at(-1))));
     if(route===`${W}/commits`){const list=[];for(let c=refs.get('main');c;c=commits.get(c).parent)list.push({sha:c,commit:{message:commits.get(c).message}});return list}
@@ -40,7 +41,7 @@ function setup(){
     throw Error(`Unexpected ${method} ${path}`);
   }};
   const main=()=>commits.get(refs.get('main'));
-  return {row,m,api,prs,refs,commits,commit,counts:()=>({writes,merges,prs:prs.length,dispatches}),website:()=>main().content,main};
+  return {row,m,api,prs,refs,commits,commit,threads,counts:()=>({writes,merges,prs:prs.length,dispatches}),website:()=>main().content,main};
 }
 test('customer projection excludes unreleased/internal/metadata and preserves all historical bytes',()=>{
   assert.equal(customerSection(raw,'v4.0.1'),section);
@@ -57,9 +58,14 @@ test('partial/halted/wrong evidence and unreviewed wording cannot sync',async()=
   }
 });
 test('publication squash-merges one release PR without writing main, verifies rendered content, persists receipt without touching announcements',async()=>{
-  const {row,api,counts,website,refs,main}=setup(),announcements=text(row.properties.Announcements);
+  const {row,api,counts,website,refs,main,threads}=setup(),announcements=text(row.properties.Announcements);
   let live=false;
   const fetcher=async url=>url.includes('release-info')?{ok:true,json:async()=>({repository:WEBSITE,commit:live?refs.get('main'):'c'.repeat(40)})}:{ok:true,text:async()=>'<h2>4.0.1</h2><li>A <strong>complete</strong> fix.</li>'};
+  // An unresolved review thread on the bot PR blocks the ruleset: hold without merging, then resume the same PR.
+  threads.unresolved=2;
+  const held=await publishWebsite(row.id,{publishWebsite:true,dryRun:false},api,{fetcher});
+  assert.equal(held.state,'held');assert.match(held.reason,/pull request #1 has 2 unresolved review threads/);assert.deepEqual(counts(),{writes:1,merges:0,prs:1,dispatches:0});
+  threads.unresolved=0;
   const first=await publishWebsite(row.id,{publishWebsite:true,dryRun:false},api,{fetcher});
   assert.equal(first.state,'pending');assert.equal(first.commit,refs.get('main'));assert.equal(first.pullRequest,1);
   assert.deepEqual(counts(),{writes:1,merges:1,prs:1,dispatches:1});
