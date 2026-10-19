@@ -146,8 +146,11 @@ jobs:
       destination_repo: VeamStudios/example.com
       destination_folder: src/assets/changelog
       version: v${{ inputs.version }}
+      reviewers: octocat # optional
     secrets: inherit
 ```
+
+Without `reviewers`, the release bot pushes the copy straight to the destination's `main`. With `reviewers`, it opens (or updates) a pull request on a bot-owned `changelog-sync/...` branch and requests their review. Merging that PR does not deploy the website.
 
 ### `web-tests.yml`
 

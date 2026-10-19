@@ -31,6 +31,10 @@ on:
         description: "Version string used in the changelog sync commit message"
         required: true
         type: string
+      reviewers:
+        description: 'Optional comma-separated GitHub usernames. When set, opens a pull request for them to review instead of pushing to main'
+        type: string
+        default: ''
     secrets:
       NOTION_TOKEN:
         required: false
@@ -132,6 +136,10 @@ jobs:
           DESTINATION_FILE: ${{ inputs.destination_file }}
           COMMIT_MESSAGE: ${{ steps.commit_message.outputs.value }}
           SOURCE_COMMIT: ${{ steps.commit_message.outputs.source_commit }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          REVIEWERS: ${{ inputs.reviewers }}
+          DESTINATION_REPO: ${{ inputs.destination_repo }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
           set -euo pipefail
 
@@ -161,4 +169,27 @@ jobs:
           git commit -m "$COMMIT_MESSAGE" -m "Release-Source-Repository: $GITHUB_REPOSITORY
           Release-Source-Commit: $SOURCE_COMMIT
           Release-Source-Path: $SOURCE_FILE"
-          git push origin HEAD:main
+
+          if [ -z "$REVIEWERS" ]; then
+            git push origin HEAD:main
+            exit 0
+          fi
+
+          [[ "$REVIEWERS" =~ ^[A-Za-z0-9-]+(,[A-Za-z0-9-]+)*$ ]] || { echo "::error::reviewers must be comma-separated GitHub usernames"; exit 1; }
+
+          # Bot-owned branch: a re-run rebuilds it from current main.
+          branch="changelog-sync/${DESTINATION_FOLDER//\//-}/${RELEASE_VERSION}"
+          git push --force origin "HEAD:refs/heads/${branch}"
+
+          existing="$(gh pr list --repo "$DESTINATION_REPO" --head "$branch" --base main --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --repo "$DESTINATION_REPO" --add-reviewer "$REVIEWERS"
+            echo "Updated pull request #$existing"
+            exit 0
+          fi
+
+          body="Automated changelog sync for ${RELEASE_VERSION} from ${GITHUB_REPOSITORY}@${SOURCE_COMMIT} (${SOURCE_FILE}).
+
+          Review the wording, then squash-merge. Merging does not deploy: the website changes only after a production deploy."
+          gh pr create --repo "$DESTINATION_REPO" --base main --head "$branch" \
+            --title "$COMMIT_MESSAGE" --body "$body" --reviewer "$REVIEWERS"
