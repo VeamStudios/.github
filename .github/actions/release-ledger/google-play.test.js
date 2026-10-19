@@ -41,10 +41,11 @@ test('lifecycle changes during inspection are rejected',async()=>{
   const client=new GooglePlayMonitor({type:'service_account',client_email:'monitor',private_key:'key'},{expectedEmail:'monitor',uploaderEmail:'uploader',fetcher:async(url,options)=>({ok:true,status:options.method==='DELETE'?204:200,json:async()=>url.endsWith('/releases')?snapshot(++count===1?'PUBLISHED':'IN_REVIEW').lifecycle:url.endsWith('/edits')?{id:'123'}:snapshot().rollout})});client.token=async()=>'';
   await assert.rejects(()=>client.snapshot(),/changed during/);
 });
-function github() {
+function github(changelog) {
   let tag=null,release=null;const writes=[];
   const gh=async(path,method='GET',body)=>{
     if(method==='POST'){writes.push(path);if(path.endsWith('/git/refs')){tag=body.sha;return {}};if(path.endsWith('/releases')){release={...body,html_url:'https://github.com/release'};return release}}
+    if(changelog&&path===`/repos/${identity.repository}/contents/CHANGELOG.md?ref=${identity.commit}`)return {encoding:'base64',content:Buffer.from(changelog).toString('base64')};
     if(path.includes('/git/ref/tags/')){if(tag)return {object:{type:'commit',sha:tag}}}
     else if(path.includes('/releases/tags/')&&release)return release;
     throw Object.assign(Error('not found'),{status:404});
@@ -57,6 +58,12 @@ test('missing tag/release created once; retry reuses exact identity and rejects 
   assert.equal(api.writes.length,2);
   await assert.rejects(()=>ensureRelease({...identity,build:'211481389'},api.gh,false),/conflicts/);
   assert.equal(api.writes.length,2);
+});
+test('created release body carries customer notes from the shipped CHANGELOG.md',async()=>{
+  const api=github('## 4.0.0\n\n### Fixed\n- Reports open faster. [PR](https://github.com/VeamStudios/SiteAuditPro-AndroidNew/pull/1)\n');
+  const {url}=await ensureRelease(identity,api.gh,false),{body}=await api.gh(`/repos/${identity.repository}/releases/tags/${identity.version}`);
+  assert.equal(url,'https://github.com/release');
+  assert.match(body,/^\*\*Shipped from:\*\* `internal\/4\.0\.0-211481388`\n\*\*versionCode:\*\* 211481388\n\n### Fixed\n\n- Reports open faster\.\n\nVerified published/);
 });
 test('conflicting production tag never writes',async()=>{const api=github();api.setTag('b'.repeat(40));await assert.rejects(()=>ensureRelease(identity,api.gh,false),/different commit/);assert.equal(api.writes.length,0)});
 test('shadow monitor performs no writes; completed and rollout releases cannot be confused',async()=>{

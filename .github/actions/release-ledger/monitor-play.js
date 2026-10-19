@@ -2,6 +2,8 @@ const fs=require('node:fs');
 const {clients,allPages,record,git,text,rich,hash}=require('./record');
 const {ownedOnly,previousObservation}=require('./ledger-columns');
 const {GooglePlayMonitor,snapshotBuilds,publishedBuilds,observePlay,resolveBuild,REPOSITORY}=require('./google-play');
+const {customerEntries}=require('./customer-notes');
+const {renderChangelog}=require('./changelog');
 
 async function optional(gh,path) {try{return await gh(path)}catch(e){if(e.status===404)return null;throw e}}
 async function tagCommit(gh,repo,tag) {
@@ -11,6 +13,11 @@ async function tagCommit(gh,repo,tag) {
   for(let n=0;object?.type==='tag'&&n<5;n++)object=(await gh(`/repos/${repo}/git/tags/${object.sha}`)).object;
   if(object?.type!=='commit'||!/^[a-f0-9]{40}$/.test(object.sha))throw Error('Production tag is not an unambiguous commit');
   return object.sha;
+}
+// Customer notes from CHANGELOG.md at the shipped commit. Missing or invalid notes never block a verified release.
+async function releaseNotes(identity,gh) {
+  try {const file=await optional(gh,`/repos/${identity.repository}/contents/CHANGELOG.md?ref=${identity.commit}`);return file?.encoding==='base64'?renderChangelog(customerEntries(Buffer.from(file.content,'base64').toString('utf8'),identity.version)):''}
+  catch{return ''}
 }
 async function ensureRelease(identity,gh,dryRun) {
   const sha=await tagCommit(gh,identity.repository,identity.version);
@@ -26,7 +33,8 @@ async function ensureRelease(identity,gh,dryRun) {
     try {await gh(`/repos/${identity.repository}/git/refs`,'POST',{ref:`refs/tags/${identity.version}`,sha:identity.commit})}
     catch(e){if(await tagCommit(gh,identity.repository,identity.version)!==identity.commit)throw e}
   }
-  const body=`**Shipped from:** \`${identity.internalTag}\`\n**versionCode:** ${identity.build}\n\nVerified published and completed on Google Play production. Customer release notes are maintained in the release ledger.`;
+  const notes=await releaseNotes(identity,gh);
+  const body=`**Shipped from:** \`${identity.internalTag}\`\n**versionCode:** ${identity.build}\n\n${notes?`${notes}\n\n`:''}Verified published and completed on Google Play production. Customer release notes are maintained in the release ledger.`;
   try {
     const created=await gh(`/repos/${identity.repository}/releases`,'POST',{tag_name:identity.version,target_commitish:identity.commit,name:identity.version,body,draft:false,prerelease:false});
     return {state:'complete',url:created.html_url};
