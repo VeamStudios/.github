@@ -1,1 +1,3 @@
 .DS_Store
+# Written to the working directory by record.js (uploaded as a workflow artefact); the tests create it too.
+/release-manifest.json
