@@ -201,6 +201,15 @@ jobs:
             exit 0
           fi
 
+          # The destination ruleset requires resolved review threads. Never resolve another reviewer's thread: stop with a clear message so a person can, then re-run.
+          unresolved="$(gh api graphql -F owner="${DESTINATION_REPO%%/*}" -F name="${DESTINATION_REPO#*/}" -F number="$pr" \
+            -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved}}}}}' \
+            --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length')"
+          if [ "$unresolved" -gt 0 ]; then
+            echo "::error::Changelog pull request https://github.com/$DESTINATION_REPO/pull/$pr has $unresolved unresolved review thread(s), which blocks the bot's squash-merge. Resolve them, then re-run this job."
+            exit 1
+          fi
+
           # Pin the head so an overlapping run that force-pushed the same branch cannot be merged under this run's trailers.
           gh pr merge "$pr" --repo "$DESTINATION_REPO" --squash --delete-branch --match-head-commit "$head_sha" \
             --subject "$COMMIT_MESSAGE" --body "$trailers"
