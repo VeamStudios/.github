@@ -307,11 +307,13 @@ jobs:
 
       - name: Check for release notes script
         id: release_notes_script
+        env:
+          HOTFIX_SHA: ${{ needs.resolve-hotfix.outputs.hotfix_sha }}
         run: |
           if [ -f .github/scripts/release_notes.py ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::Skipped App Store What's New because .github/scripts/release_notes.py is not in this repo."
+            echo "::notice::Skipped App Store What's New: .github/scripts/release_notes.py is not in hotfix commit ${HOTFIX_SHA}. It arrives with the next release from main; copy the App Store text by hand for this hotfix."
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
