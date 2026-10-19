@@ -134,7 +134,7 @@ jobs:
 
 ### `update-changelog-website.yml`
 
-Copies a `CHANGELOG.md` from the caller repo to a marketing website repo.
+Copies a `CHANGELOG.md` from the caller repo to a marketing website repo. The copy lands through a bot-owned branch and a squash-merged pull request opened as the Release Bot, because default branches reject direct pushes.
 
 ```yaml
 jobs:
