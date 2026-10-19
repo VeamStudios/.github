@@ -2,8 +2,6 @@ const fs=require('node:fs');
 const {clients,allPages,record,git,text,rich,hash}=require('./record');
 const {ownedOnly,previousObservation}=require('./ledger-columns');
 const {GooglePlayMonitor,snapshotBuilds,publishedBuilds,observePlay,resolveBuild,REPOSITORY}=require('./google-play');
-const {customerEntries}=require('./customer-notes');
-const {renderChangelog}=require('./changelog');
 
 async function optional(gh,path) {try{return await gh(path)}catch(e){if(e.status===404)return null;throw e}}
 async function tagCommit(gh,repo,tag) {
@@ -14,19 +12,13 @@ async function tagCommit(gh,repo,tag) {
   if(object?.type!=='commit'||!/^[a-f0-9]{40}$/.test(object.sha))throw Error('Production tag is not an unambiguous commit');
   return object.sha;
 }
-// Plain-text customer notes from CHANGELOG.md at the shipped commit. Missing or invalid notes never block a verified release.
-const plain=summary=>summary.replace(/!?\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/<[^>]+>|[*_`~#>|]/g,'').replace(/https?:\/\/\S+/g,'').replace(/\s+/g,' ').trim();
-async function releaseNotes(identity,gh) {
-  try {const file=await optional(gh,`/repos/${identity.repository}/contents/CHANGELOG.md?ref=${identity.commit}`);return file?.encoding==='base64'?renderChangelog(customerEntries(Buffer.from(file.content,'base64').toString('utf8'),identity.version).map(e=>({...e,summary:plain(e.summary)}))):''}
-  catch{return ''}
-}
 async function ensureRelease(identity,gh,dryRun) {
   const sha=await tagCommit(gh,identity.repository,identity.version);
   if(sha && sha!==identity.commit)throw Error('Marketing version already belongs to a different commit; use a new version');
   const path=`/repos/${identity.repository}/releases/tags/${encodeURIComponent(identity.version)}`;
   const release=await optional(gh,path);
   if(release) {
-    // Only the header identifies the build; customer notes follow the first blank line.
+    // Only the header identifies the build; GitHub's generated PR list follows the first blank line.
     if(!sha || release.draft || release.prerelease || release.tag_name!==identity.version || !new RegExp(`\\*\\*versionCode:\\*\\*\\s*${identity.build}(?:\\s|$)`).test((release.body||'').split('\n\n')[0]))throw Error('Existing GitHub release conflicts with this exact production build');
     return {state:'complete',url:release.html_url};
   }
@@ -35,10 +27,9 @@ async function ensureRelease(identity,gh,dryRun) {
     try {await gh(`/repos/${identity.repository}/git/refs`,'POST',{ref:`refs/tags/${identity.version}`,sha:identity.commit})}
     catch(e){if(await tagCommit(gh,identity.repository,identity.version)!==identity.commit)throw e}
   }
-  const notes=await releaseNotes(identity,gh);
-  const body=`**Shipped from:** \`${identity.internalTag}\`\n**versionCode:** ${identity.build}\n\n${notes?`${notes}\n\n`:''}Verified published and completed on Google Play production.`;
+  const body=`**Shipped from:** \`${identity.internalTag}\`\n**versionCode:** ${identity.build}\n\nVerified published and completed on Google Play production.`;
   try {
-    const created=await gh(`/repos/${identity.repository}/releases`,'POST',{tag_name:identity.version,target_commitish:identity.commit,name:identity.version,body,draft:false,prerelease:false});
+    const created=await gh(`/repos/${identity.repository}/releases`,'POST',{tag_name:identity.version,target_commitish:identity.commit,name:identity.version,body,generate_release_notes:true,draft:false,prerelease:false});
     return {state:'complete',url:created.html_url};
   }catch(e){const found=await optional(gh,path);if(!found)throw e;return ensureRelease(identity,gh,true)}
 }
