@@ -8,7 +8,8 @@ function check(body,sha,read=ref=>execFileSync('git',['show',ref],{encoding:'utf
   if(links.invalidEntries.length)warnings.push('Fix invalid Work Items links in the PR description.');
   let current='',previous='';try{current=read(`${sha}:CHANGELOG.md`)}catch{warnings.push('CHANGELOG.md is missing; a release PR can supply the customer-facing notes.');}
   try{previous=read(`${base}:CHANGELOG.md`)}catch{warnings.push('Cannot compare the changelog baseline; release-time verification will check the exact shipped range.');}
-  const entries=newEntries(previous,current);
+  // Play holds the Google Play-only summary; the customer notes come from the other headings.
+  const entries=newEntries(previous,current).filter(e=>!/^play$/i.test(e.heading));
   if(current&&!entries.length)warnings.push('No new changelog entry in this PR. Internal-only changes need no customer note; customer-facing changes need one before announcement.');
   if(entries.some(e=>!/^fixed?$|^fixes$|^bug fixes$|^security$|^internal$/i.test(e.heading))&&!links.ids.length)warnings.push('Feature changelog entries need Work Items links.');
   return {warnings,changelog:renderChangelog(entries),workItems:links.ids};
