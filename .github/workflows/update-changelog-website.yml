@@ -31,6 +31,10 @@ on:
         description: "Version string used in the changelog sync commit message"
         required: true
         type: string
+      reviewers:
+        description: 'Optional comma-separated GitHub usernames. When set, opens a pull request for them to review instead of pushing to main'
+        type: string
+        default: ''
     secrets:
       NOTION_TOKEN:
         required: false
@@ -133,6 +137,7 @@ jobs:
           COMMIT_MESSAGE: ${{ steps.commit_message.outputs.value }}
           SOURCE_COMMIT: ${{ steps.commit_message.outputs.source_commit }}
           RELEASE_VERSION: ${{ inputs.version }}
+          REVIEWERS: ${{ inputs.reviewers }}
           DESTINATION_REPO: ${{ inputs.destination_repo }}
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
@@ -167,6 +172,17 @@ jobs:
           Release-Source-Commit: $SOURCE_COMMIT
           Release-Source-Path: $SOURCE_FILE"
 
+          if [ -n "$REVIEWERS" ]; then
+            [[ "$REVIEWERS" =~ ^[A-Za-z0-9-]+(,[A-Za-z0-9-]+)*$ ]] || { echo "::error::reviewers must be comma-separated GitHub usernames"; exit 1; }
+            body="Automated changelog copy from $GITHUB_REPOSITORY for review. Approve the final commit, then squash-merge. Merging does not deploy: the website changes only after a production deploy.
+
+          $trailers"
+          else
+            body="Automated changelog copy from $GITHUB_REPOSITORY.
+
+          $trailers"
+          fi
+
           git checkout -b "$branch"
           git commit -m "$COMMIT_MESSAGE" -m "$trailers"
           git push --force origin "HEAD:refs/heads/$branch"
@@ -175,10 +191,16 @@ jobs:
           pr="$(gh pr list --repo "$DESTINATION_REPO" --head "$branch" --state open --json number --jq '.[0].number // empty')"
           if [ -z "$pr" ]; then
             pr="$(gh pr create --repo "$DESTINATION_REPO" --base main --head "$branch" \
-              --title "$COMMIT_MESSAGE" --body "Automated changelog copy from $GITHUB_REPOSITORY.
-
-          $trailers" | grep -oE '[0-9]+$')"
+              --title "$COMMIT_MESSAGE" --body "$body" | grep -oE '[0-9]+$')"
           fi
+
+          if [ -n "$REVIEWERS" ]; then
+            # Left open: the reviewers approve and squash-merge it themselves.
+            gh pr edit "$pr" --repo "$DESTINATION_REPO" --add-reviewer "$REVIEWERS"
+            echo "Pull request #$pr is waiting for review by $REVIEWERS"
+            exit 0
+          fi
+
           # Pin the head so an overlapping run that force-pushed the same branch cannot be merged under this run's trailers.
           gh pr merge "$pr" --repo "$DESTINATION_REPO" --squash --delete-branch --match-head-commit "$head_sha" \
             --subject "$COMMIT_MESSAGE" --body "$trailers"

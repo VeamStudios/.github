@@ -146,8 +146,11 @@ jobs:
       destination_repo: VeamStudios/example.com
       destination_folder: src/assets/changelog
       version: v${{ inputs.version }}
+      reviewers: octocat # optional
     secrets: inherit
 ```
+
+With `reviewers`, the Release Bot leaves the pull request open and requests their review instead of squash-merging it. They approve the final commit and squash-merge it themselves. Merging does not deploy the website.
 
 ### `web-tests.yml`
 
