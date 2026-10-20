@@ -21,20 +21,6 @@ function workItems(body) {
   return ids;
 }
 
-function validateNote(note, ids) {
-  if (!note || !['feature', 'fix', 'internal'].includes(note.kind)) throw new Error('Release note kind must be feature, fix or internal.');
-  for (const key of ['summary', 'audience', 'limitations', 'scope']) {
-    if (typeof note[key] !== 'string' || (key !== 'limitations' && !note[key].trim())) throw new Error(`Release note requires ${key}.`);
-  }
-  if (note.summary.length > 400 || /[\r\n]/.test(note.summary)) throw new Error('Release summary must be one line, at most 400 characters.');
-  if (!Array.isArray(note.workItems) || hash([...new Set(note.workItems)].sort()) !== hash(ids)) throw new Error('Committed workItems must match the PR Work Items: links.');
-  if (note.kind === 'feature' && ids.length === 0) throw new Error('Feature release note requires explicit Work Items: links.');
-  if (!Array.isArray(note.requiredReleaseKeys) || note.requiredReleaseKeys.some(x => typeof x !== 'string' || !x)) throw new Error('requiredReleaseKeys must be an explicit array (empty is allowed).');
-  if (!Array.isArray(note.targets) || note.targets.length === 0 || note.targets.some(x => typeof x !== 'string' || !/^[a-z0-9][a-z0-9.-]+$/.test(x))) throw new Error('Release note requires explicit targets.');
-  if (typeof note.audienceGate !== 'boolean') throw new Error('Release note must explicitly set audienceGate.');
-  if (note.developmentComplete !== undefined && typeof note.developmentComplete !== 'boolean') throw new Error('developmentComplete must be a boolean when supplied.');
-  return { kind: note.kind, summary: note.summary.trim(), audience: note.audience, limitations: note.limitations, scope: note.scope, targets: [...new Set(note.targets)].sort(), audienceGate: note.audienceGate, requiredReleaseKeys: [...new Set(note.requiredReleaseKeys)].sort(), workItems: ids, ...(note.developmentComplete === undefined ? {} : { developmentComplete: note.developmentComplete }) };
-}
 function releaseKey(repo, target, version, event = 'release') {
   return `${repo}/${target}/${event}/${version}`;
 }
@@ -95,54 +81,8 @@ async function provenanceMapping(config, gh, sha, baseline) {
   if (mapping.baseline !== baseline || !mapping.commits || Object.entries(mapping.commits).some(([commit, number]) => !SHA.test(commit) || !Number.isSafeInteger(number) || number <= 0)) throw new Error('Invalid provenance map or baseline');
   return { ...mapping, evidence: pr.html_url };
 }
-async function buildLegacyManifest(config, gh, baseline) {
-  const sha = git('rev-parse', `${config.commit}^{commit}`);
-  if (!SHA.test(sha)) throw new Error('Cannot resolve exact deployed commit.');
-  const issues = [];
-  const mappingEvidence = await provenanceMapping(config, gh, sha, baseline);
-  const validBaseline = Boolean(baseline && SHA.test(baseline) && (ancestor(baseline, sha) || mappingEvidence));
-  if (!baseline || !SHA.test(baseline) || !validBaseline) issues.push('Missing or non-ancestor successful production baseline; prepare an explicitly reviewed mapping.');
-  const commits = issues.length ? [] : git('rev-list', '--reverse', `${baseline}..${sha}`).split('\n').filter(Boolean);
-  const numbers = new Set(); const unmapped = [];
-  const mapping = mappingEvidence?.commits || {};
-  for (const commit of commits) {
-    const associated = [];
-    for (let page = 1;; page++) { const rows = await gh(`/repos/${config.repo}/commits/${commit}/pulls?per_page=100&page=${page}`); associated.push(...rows); if (rows.length < 100) break; }
-    const prs = associated.filter(pr => pr.base?.repo?.full_name === config.repo && (pr.merged_at ? pr.merge_commit_sha && ancestor(pr.merge_commit_sha, sha) : pr.head?.sha && ancestor(pr.head.sha, sha)));
-    if (mapping[commit]) numbers.add(Number(mapping[commit]));
-    else if (prs.length === 1) numbers.add(prs[0].number);
-    else unmapped.push(commit);
-  }
-  if (unmapped.length) issues.push(`Unmapped or ambiguous commits: ${unmapped.join(', ')}. Supply a reviewed provenance map; no title guessing is used.`);
-  const prs = []; const changes = [];
-  for (const number of [...numbers].sort((a, b) => a - b)) {
-    const pr = await gh(`/repos/${config.repo}/pulls/${number}`);
-    if (pr.base?.repo?.full_name !== config.repo || (!pr.merged_at && (!pr.head?.sha || !ancestor(pr.head.sha, sha)))) throw new Error(`PR #${number} is not proven in the shipped repository commit.`);
-    // Preserve discovered links and the PR in the manifest even when validation
-    // fails. Its error must block approval without aborting sibling PR scans.
-    const { ids } = parseWorkItemLinks(pr.body);
-    const path = String(pr.body).match(/^Release note:\s*(\.release-notes\/[A-Za-z0-9_-]+\.json)\s*$/m)?.[1];
-    let approved = false; let noteHash = ''; let note;
-    try {
-      workItems(pr.body);
-      if (!path) throw new Error('Add Release note: .release-notes/<change>.json to the PR body.');
-      const files = [];
-      for (let page = 1;; page++) { const rows = await gh(`/repos/${config.repo}/pulls/${number}/files?per_page=100&page=${page}`); files.push(...rows); if (rows.length < 100) break; }
-      if (!files.some(file => file.filename === path && file.status === 'added')) throw new Error('Each PR must add its own unique release note file; existing notes cannot be relabelled.');
-      const frozen = git('show', `${sha}:${path}`);
-      const merged = git('show', `${pr.merged_at ? pr.merge_commit_sha : pr.head.sha}:${path}`);
-      if (hash(JSON.parse(frozen)) !== hash(JSON.parse(merged))) throw new Error('Release note changed after its originating PR merged.');
-      note = validateNote(JSON.parse(frozen), ids); noteHash = hash(note);
-      approved = await reviewed(gh, config.repo, pr);
-      if (!approved) issues.push(`PR #${number}: release wording has no current-head human review; approve the frozen manifest before publication.`);
-      if (note.targets.includes(config.target)) changes.push({ ...note, pr: number, noteHash });
-    } catch (error) { issues.push(`PR #${number}: ${error.message}`); }
-    prs.push({ number, url: pr.html_url, mergeCommit: pr.merged_at ? pr.merge_commit_sha : null, headCommit: pr.head.sha, workItems: ids, noteHash, approved });
-  }
-  return { schemaVersion: 1, key: releaseKey(config.repo, config.target, config.version, config.event), repository: config.repo, product: config.product, target: config.target, version: config.version, build: config.build || '', commit: sha, baseline: baseline || '', event: config.event || 'release', prs, changes, issues, provenanceComplete: unmapped.length === 0 && validBaseline, provenanceMapping: mappingEvidence, source: config.source };
-}
 async function buildManifest(config, gh, baseline, notion) {
-  return config.legacy ? buildLegacyManifest(config,gh,baseline) : require('./changelog').buildChangelogManifest(config,gh,baseline,notion);
+  return require('./changelog').buildChangelogManifest(config,gh,baseline,notion);
 }
 function validCloudRun(v,commit,repository){try{return Boolean(require('./cloud-run').validateCloudRun(v,commit,repository))}catch{return false}}
 function workItemRelation(ids, previous) {
@@ -299,5 +239,5 @@ async function main() {
   console.log(JSON.stringify({ key: result.key || result.manifest.key, url: result.url, hash: result.hash, dryRun: config.dryRun }));
   if(config.verificationError)throw new Error(config.verificationError);
 }
-module.exports = { workItemRelation, verificationProperties, canonical, hash, rich, text, select, workItems, validateNote, releaseKey, request, clients, allPages, buildManifest, buildLegacyManifest, record, git, ancestor, reviewed, provenanceMapping, deployedBaseline };
+module.exports = { workItemRelation, verificationProperties, canonical, hash, rich, text, select, workItems, releaseKey, request, clients, allPages, buildManifest, record, git, ancestor, reviewed, provenanceMapping, deployedBaseline };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { fakeState } = require('./automation-state.test-helper');
 const { readState, writeState } = require('./automation-state');
 const { completeDevelopment, REPOSITORIES } = require('./complete-development');
-const { rich, text, select, validateNote } = require('./record');
+const { rich, text, select } = require('./record');
 const wi = 'a'.repeat(32), repo = 'VeamStudios/SiteAuditPro-Web';
 function fixture() {
   const config = { repo, number: 7, mode: 'live', lifecycleWrites: true, workItemsId: 'workitems' };
@@ -95,14 +95,6 @@ test('older merge delivered after a newer completion cannot reset status', async
   const f = fixture(); await writeState(f.api.notion,wi,'development-Web',{ repository: repo, pr: 8, mergedAt: '2026-09-08T11:00:00Z' });
   await completeDevelopment(f.config, f.api); assert.equal(f.patches.length, 0);
 });
-test('legacy release-note declarations cannot prevent merge-driven Done', async () => {
-  const f = fixture(); f.pr.body += '\n\nRelease note: .release-notes/part-one.json';
-  const note = { kind: 'feature', summary: 'Export reports', scope: 'export-v1', workItems: [wi], targets: ['web'], audience: 'All', limitations: '', requiredReleaseKeys: [], audienceGate: false, developmentComplete: false };
-  f.api.gh = async path => path.includes('/contents/') ? { encoding: 'base64', content: Buffer.from(JSON.stringify(note)).toString('base64') } : f.pr;
-  const result = await completeDevelopment(f.config, f.api); assert.equal(result.changes[0].to, 'Done'); assert.equal(f.patches.length, 1);
-  assert.throws(() => validateNote({ ...note, developmentComplete: 'false' }, [wi]), /boolean/);
-});
-
 test('Product Ops skips platform completion even when it spans products', async () => {
   const f = fixture(); f.row.properties.Type = select('Product Ops');
   f.row.properties.Product.relation.push({ id: REPOSITORIES['VeamStudios/ChecklistInspectorPro-Web'].product });
