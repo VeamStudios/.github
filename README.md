@@ -225,7 +225,7 @@ jobs:
 | `remote-config-notion-sync.yml` | Mirror production Remote Config values and deployment/release state into Work Items |
 | `pr-ios-build.yml` | Build iOS app on pull requests |
 | `pr-spm-package-update.yml` | Auto-update SPM package dependencies |
-| `qa-pipeline.yml` | PR governance: the required `Work Item gate` (a `Work Items:` link on `feat` PRs) and `bot: qa needed` routing to QA Project 26 as `Not Started`. Developers decide when to merge; QA labels never merge PRs or enable auto-merge |
+| `qa-pipeline.yml` | PR governance: the required `Work Item gate` (a `Work Items:` link on `feat` PRs) and QA board status on Project 26: `bot: qa needed` sets `Not Started` and `bot: qa approved` sets `QA Approved`. Developers decide when to merge; QA labels never merge PRs or enable auto-merge |
 | `issue-cursor-agent.yml` | Triage GitHub issues with an AI agent |
 
 ## Caller Templates
