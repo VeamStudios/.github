@@ -36,6 +36,14 @@ for (const state of ['Available', 'Released', 'Superseded', 'Withdrawn']) {
   });
 }
 
+test('a lower-phase retry cannot regress the observation or overwrite edited wording', async () => {
+  const { config, api, row } = fixture('Available');
+  row.properties.Changelog = rich('Edited after approval');
+  const result = await record({ ...config, phase: 'uploaded' }, api);
+  assert.equal(result.properties['Deploy Observation'], undefined);
+  assert.equal(result.properties.Changelog, undefined);
+});
+
 // The worker derives State from the observation phase, so the recorder only reports evidence.
 test('Released label cannot hide explicit withdrawal or a failed verification', async () => {
   const { config, api, manifest } = fixture('Released');

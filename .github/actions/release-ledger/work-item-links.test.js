@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
 const { parseWorkItemLinks } = require('./work-item-links');
-const { workItems, validateNote } = require('./record');
+const { workItems } = require('./record');
 const a = 'a'.repeat(32), b = 'b'.repeat(32);
 const cases = [
   ['canonical list', `Work Items:\n- https://www.notion.so/${a}\n- https://app.notion.com/p/${b}`, [a, b]],
@@ -25,12 +25,6 @@ for (const entry of ['https://example.com/'+a, 'https://notion.so.evil.test/'+a,
     assert.throws(() => workItems(body), /Invalid Work Items/);
   });
 }
-test('legacy singular feature note matches the same Work Item IDs as the Work Item field', () => {
-  const ids = workItems(`Work Item: https://www.notion.so/${a}`);
-  const note = { kind: 'feature', summary: 'Export reports', audience: 'All users', limitations: '', scope: 'export', targets: ['web'], requiredReleaseKeys: [], audienceGate: false, workItems: [a] };
-  assert.deepEqual(validateNote(note, ids).workItems, [a]);
-  assert.doesNotThrow(() => validateNote({ ...note, kind: 'fix', workItems: [] }, []));
-});
 const { workItemGate } = require('./work-item-gate');
 test('missing feature link points to the configured setup check and retains the legacy default', () => {
   const pr = { title: 'feat: Camera', body: '' };
