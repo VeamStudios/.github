@@ -83,6 +83,16 @@ function publishedBuilds(snapshot) {
   return snapshot.lifecycle.releases.filter(r=>r.releaseLifecycleState===LIFECYCLE+'PUBLISHED').flatMap(r=>r.activeArtifacts.map(a=>String(a.versionCode)));
 }
 
+function pendingReplacement(build, snapshot) {
+  snapshotBuilds(snapshot);
+  const own = snapshot.lifecycle.releases.filter(r=>r.activeArtifacts.some(a=>String(a.versionCode)===build));
+  if (own.length!==1 || own[0].releaseLifecycleState!==LIFECYCLE+'PUBLISHED') return null;
+  if (snapshot.rollout.releases.some(r=>Array.isArray(r.versionCodes)&&r.versionCodes.map(String).includes(build))) return null;
+  const waiting = new Set(snapshot.lifecycle.releases.filter(r=>WAITING.map(x=>LIFECYCLE+x).includes(r.releaseLifecycleState)).flatMap(r=>r.activeArtifacts.map(a=>String(a.versionCode))));
+  const next = snapshot.rollout.releases.filter(r=>r.status==='completed'&&Array.isArray(r.versionCodes)&&r.versionCodes.length>0&&r.versionCodes.map(String).every(code=>waiting.has(code)&&Number(code)>Number(build)));
+  return next.length===1 ? next[0].versionCodes.map(String).join(',') : null;
+}
+
 function observePlay(identity, snapshot) {
   snapshotBuilds(snapshot);
   if (identity.repository!==REPOSITORY || identity.target!=='android-consumer' || !buildCode(identity.build) || !/^[a-f0-9]{40}$/.test(identity.commit)) throw new Error('Unsupported Android release identity');
@@ -120,4 +130,4 @@ function resolveBuild(build, tags, resolve) {
   if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error('Internal tag does not resolve to an exact commit');
   return {repository:REPOSITORY,target:'android-consumer',version:`v${match[1]}`,build:String(build),commit,internalTag:matches[0]};
 }
-module.exports={GooglePlayMonitor,snapshotBuilds,publishedBuilds,observePlay,validGooglePlay,resolveBuild,PACKAGE,REPOSITORY,ROOT};
+module.exports={GooglePlayMonitor,snapshotBuilds,publishedBuilds,pendingReplacement,observePlay,validGooglePlay,resolveBuild,PACKAGE,REPOSITORY,ROOT};
