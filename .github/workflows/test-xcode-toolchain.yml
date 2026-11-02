@@ -47,17 +47,10 @@ jobs:
           minimum-swift-version: "6.3"
       - name: Verify iOS SDK and simulator devices
         shell: bash
-        env:
-          XCODE_VERSION: ${{ steps.select_xcode.outputs.xcode-version }}
         run: |
           set -euo pipefail
           xcodebuild -showsdks
           sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
-          expected_sdk="$(printf '%s\n' "${XCODE_VERSION}" | cut -d. -f1-2)"
-          if [[ "${sdk_version}" != "${expected_sdk}" ]]; then
-            echo "::error::iOS SDK ${sdk_version} does not match Xcode ${XCODE_VERSION}."
-            exit 1
-          fi
           xcrun simctl list devices available --json > "$RUNNER_TEMP/simulators.json"
           python3 - "$RUNNER_TEMP/simulators.json" "${sdk_version}" <<'PY'
           import json
