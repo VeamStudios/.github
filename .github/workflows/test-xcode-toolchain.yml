@@ -6,7 +6,6 @@ on:
       - ".github/actions/select-xcode/**"
       - ".github/workflows/test-xcode-toolchain.yml"
       - ".github/workflows/pr-ios-build.yml"
-      - ".github/workflows/ios-tests.yml"
       - ".github/workflows/deploy-ios-testflight.yml"
       - ".github/workflows/hotfix-deploy.yml"
       - ".github/workflows/pr-spm-package-update.yml"

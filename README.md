@@ -171,21 +171,6 @@ jobs:
     #   coverage_artifact_path: "coverage"
 ```
 
-### `ios-tests.yml`
-
-Runs `xcodebuild test` on a scheme against a simulator destination. Uses the Release Bot App for SwiftPM private deps, same as `pr-ios-build.yml`.
-
-```yaml
-jobs:
-  tests:
-    uses: VeamStudios/.github/.github/workflows/ios-tests.yml@main
-    with:
-      scheme: "SiteAuditPro"
-      project: "SiteAuditPro.xcodeproj"
-    secrets:
-      BOT_RELEASE_PRIVATE_KEY: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
-```
-
 ### `dependency-review.yml`
 
 Blocks PRs that add known-vulnerable packages (GHSA advisories) or disallowed licenses. Thin wrapper around `actions/dependency-review-action`.
@@ -241,10 +226,10 @@ The `caller-templates/` directory contains example workflow files that repos can
 
 | Repo | Templates to copy |
 |---|---|
-| `ChecklistInspectorPro-iOS` | `qa.yml`, `checklistinspectorpro-ios-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `ChecklistInspectorPro-iOS` | `qa.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
 | `ChecklistInspectorPro-Web` | `qa.yml`, `web-ci.yml`, `web-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
 | `ChecklistInspectorPro-Backend` | `qa.yml`, `web-tests.yml` (if Node), `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
-| `SiteAuditPro-iOS` | `qa.yml`, `siteauditpro-ios-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `SiteAuditPro-iOS` | `qa.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
 | `SiteAuditPro-Web` | `qa.yml`, `web-ci.yml`, `web-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
 | `SiteAuditPro-Backend` | `qa.yml`, `web-tests.yml` (if Node), `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
 
@@ -256,7 +241,6 @@ The new templates rely on secrets already configured at the org or repo level:
 |---|---|---|
 | `qa.yml` | `BOT_QA_PRIVATE_KEY`, org `vars.BOT_QA_CLIENT_ID` | Caller for `qa-pipeline.yml`; the QA GitHub App needs Organization Projects write access |
 | `web-tests.yml` | none beyond `GITHUB_TOKEN` | `packages: read` is granted by the caller |
-| `ios-tests.yml` | `BOT_RELEASE_PRIVATE_KEY`, org `vars.BOT_RELEASE_CLIENT_ID` | Same Release Bot App used by `pr-ios-build.yml` |
 | `remote-config-notion-sync.yml` | `NOTION_TOKEN`, `SERVICE_ACCOUNT_BASE64` | `SERVICE_ACCOUNT_BASE64` is only required when reading Firebase Remote Config; use `github_environment` when it is environment-scoped |
 | `dependency-review.yml` | `GITHUB_TOKEN` | None required; uses `actions/dependency-review-action` |
 | `stale.yml` | `GITHUB_TOKEN` | `issues: write`, `pull-requests: write` granted by reusable |
