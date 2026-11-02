@@ -3,9 +3,9 @@ description: Select and verify an Xcode installation on a macOS runner.
 
 inputs:
   xcode-version:
-    description: "Exact Xcode version or latest-stable"
+    description: "Exact Xcode version or latest-stable; callers normally pass vars.XCODE_VERSION"
     required: false
-    default: latest-stable
+    default: ""
   minimum-swift-version:
     description: "Minimum accepted Swift compiler version (for example: 6.3)"
     required: false
@@ -29,6 +29,17 @@ outputs:
 runs:
   using: composite
   steps:
+    # An empty semver range matches any installed Xcode, so stop before setup-xcode.
+    - name: Check requested Xcode version
+      shell: bash
+      env:
+        REQUESTED_XCODE_VERSION: ${{ inputs.xcode-version }}
+      run: |
+        if [[ -z "${REQUESTED_XCODE_VERSION}" ]]; then
+          echo "::error::No Xcode version requested. Set the XCODE_VERSION organisation variable or pass xcode-version."
+          exit 1
+        fi
+
     # setup-xcode filters out beta installations for release version requests.
     # A numeric Xcode_27.0.app symlink can otherwise point to a beta bundle.
     - name: Select stable Xcode

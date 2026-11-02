@@ -6,18 +6,23 @@ Shared GitHub Actions workflows, composite actions, and organisation defaults fo
 
 ### `select-xcode`
 
-Selects either an exact stable Xcode release or `latest-stable` (the action default), verifies the resolved Xcode and Swift versions, and publishes them in the job summary. Beta installations are excluded even when a numeric application symlink exists.
+Selects either an exact stable Xcode release or `latest-stable`, verifies the resolved Xcode and Swift versions, and publishes them in the job summary. Beta installations are excluded even when a numeric application symlink exists. The action fails when no version is requested.
 
-Shared workflows default to Xcode `27.0`; direct callers pin `27.0` explicitly. The action default remains runner-relative so existing direct callers can migrate independently.
+The Xcode version and runner come from two organisation variables:
 
-Xcode 27 jobs use `xcode-27` or `xcode-27-xlarge`; `macos-26` images contain Xcode 26 only. Shared build, test, and deployment workflows retain the macOS 26 runner when a caller explicitly requests `26.x`, allowing caller PRs to land after the shared update. `latest-stable` selects from the Xcode 27 image.
+| Variable | Example | Used for |
+|---|---|---|
+| `XCODE_VERSION` | `27.0` | `xcode-version`, matched exactly against `xcodebuild -version` |
+| `XCODE_RUNNER` | `xcode-27` | `runs-on`; deploy jobs append `-xlarge` |
 
-The [20260912.0186 runner image](https://github.com/actions/runner-images/releases/tag/xcode-27-arm64/20260912.0186), published on 2026-09-17, includes Xcode 27.0 build `27A266a`, matching [Apple's September 14 release](https://developer.apple.com/news/releases/), despite retaining a `Release_Candidate` application directory. The image is still rolling out, so require the Xcode toolchain checks on both runner sizes before merging. Merge the shared change before the SAP, CIP, Annotator, and ImageCaching caller updates.
+Shared workflows read both variables; their `xcode_version` and `xcode_runner` inputs override them for one caller, for example a hotfix that must build with an older Xcode. Direct callers pass the variables themselves. A repository variable with the same name overrides the organisation value for that repository.
+
+To change Xcode, run **Test Xcode Toolchain** manually with the new `xcode_version` (and `xcode_runner` for a new major), check both runner sizes pass, then update the organisation variables.
 
 ```yaml
 - uses: VeamStudios/.github/.github/actions/select-xcode@main
   with:
-    xcode-version: "27.0"
+    xcode-version: "${{ vars.XCODE_VERSION }}"
     minimum-swift-version: "6.3"
 ```
 
@@ -166,21 +171,6 @@ jobs:
     #   coverage_artifact_path: "coverage"
 ```
 
-### `ios-tests.yml`
-
-Runs `xcodebuild test` on a scheme against a simulator destination. Uses the Release Bot App for SwiftPM private deps, same as `pr-ios-build.yml`.
-
-```yaml
-jobs:
-  tests:
-    uses: VeamStudios/.github/.github/workflows/ios-tests.yml@main
-    with:
-      scheme: "SiteAuditPro"
-      project: "SiteAuditPro.xcodeproj"
-    secrets:
-      BOT_RELEASE_PRIVATE_KEY: ${{ secrets.BOT_RELEASE_PRIVATE_KEY }}
-```
-
 ### `dependency-review.yml`
 
 Blocks PRs that add known-vulnerable packages (GHSA advisories) or disallowed licenses. Thin wrapper around `actions/dependency-review-action`.
@@ -236,10 +226,10 @@ The `caller-templates/` directory contains example workflow files that repos can
 
 | Repo | Templates to copy |
 |---|---|
-| `ChecklistInspectorPro-iOS` | `qa.yml`, `checklistinspectorpro-ios-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `ChecklistInspectorPro-iOS` | `qa.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
 | `ChecklistInspectorPro-Web` | `qa.yml`, `web-ci.yml`, `web-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
 | `ChecklistInspectorPro-Backend` | `qa.yml`, `web-tests.yml` (if Node), `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
-| `SiteAuditPro-iOS` | `qa.yml`, `siteauditpro-ios-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
+| `SiteAuditPro-iOS` | `qa.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
 | `SiteAuditPro-Web` | `qa.yml`, `web-ci.yml`, `web-tests.yml`, `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
 | `SiteAuditPro-Backend` | `qa.yml`, `web-tests.yml` (if Node), `dependency-review.yml`, `stale.yml`, `auto-assign-reviewers.yml` |
 
@@ -251,7 +241,6 @@ The new templates rely on secrets already configured at the org or repo level:
 |---|---|---|
 | `qa.yml` | `BOT_QA_PRIVATE_KEY`, org `vars.BOT_QA_CLIENT_ID` | Caller for `qa-pipeline.yml`; the QA GitHub App needs Organization Projects write access |
 | `web-tests.yml` | none beyond `GITHUB_TOKEN` | `packages: read` is granted by the caller |
-| `ios-tests.yml` | `BOT_RELEASE_PRIVATE_KEY`, org `vars.BOT_RELEASE_CLIENT_ID` | Same Release Bot App used by `pr-ios-build.yml` |
 | `remote-config-notion-sync.yml` | `NOTION_TOKEN`, `SERVICE_ACCOUNT_BASE64` | `SERVICE_ACCOUNT_BASE64` is only required when reading Firebase Remote Config; use `github_environment` when it is environment-scoped |
 | `dependency-review.yml` | `GITHUB_TOKEN` | None required; uses `actions/dependency-review-action` |
 | `stale.yml` | `GITHUB_TOKEN` | `issues: write`, `pull-requests: write` granted by reusable |
