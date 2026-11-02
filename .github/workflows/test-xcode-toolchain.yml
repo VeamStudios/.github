@@ -11,49 +11,72 @@ on:
       - ".github/workflows/hotfix-deploy.yml"
       - ".github/workflows/pr-spm-package-update.yml"
   workflow_dispatch:
+    inputs:
+      xcode_version:
+        description: "Xcode version to trial; defaults to the XCODE_VERSION org variable"
+        required: false
+        default: ""
+        type: string
+      xcode_runner:
+        description: "Runner label to trial; defaults to the XCODE_RUNNER org variable"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   toolchain:
-    name: Xcode 27 (${{ matrix.runner }})
+    name: Xcode toolchain (${{ matrix.runner }})
     strategy:
       fail-fast: false
       matrix:
-        runner: [xcode-27, xcode-27-xlarge]
+        runner:
+          - ${{ inputs.xcode_runner || vars.XCODE_RUNNER }}
+          - ${{ format('{0}-xlarge', inputs.xcode_runner || vars.XCODE_RUNNER) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-      - name: Select stable Xcode 27
+      - name: Select Xcode
+        id: select_xcode
         uses: ./.github/actions/select-xcode
         with:
-          xcode-version: "27.0"
+          xcode-version: "${{ inputs.xcode_version || vars.XCODE_VERSION }}"
           minimum-swift-version: "6.3"
       - name: Verify iOS SDK and simulator devices
         shell: bash
+        env:
+          XCODE_VERSION: ${{ steps.select_xcode.outputs.xcode-version }}
         run: |
           set -euo pipefail
           xcodebuild -showsdks
-          xcrun --sdk iphoneos --show-sdk-version | grep -E '^27\.0$'
+          sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
+          expected_sdk="$(printf '%s\n' "${XCODE_VERSION}" | cut -d. -f1-2)"
+          if [[ "${sdk_version}" != "${expected_sdk}" ]]; then
+            echo "::error::iOS SDK ${sdk_version} does not match Xcode ${XCODE_VERSION}."
+            exit 1
+          fi
           xcrun simctl list devices available --json > "$RUNNER_TEMP/simulators.json"
-          python3 - "$RUNNER_TEMP/simulators.json" <<'PY'
+          python3 - "$RUNNER_TEMP/simulators.json" "${sdk_version}" <<'PY'
           import json
           import sys
 
           with open(sys.argv[1]) as source:
               devices = json.load(source)["devices"]
+          runtime_suffix = ".iOS-" + sys.argv[2].replace(".", "-")
           available = {
               device["name"]
               for runtime, entries in devices.items()
-              if runtime.endswith(".iOS-27-0")
+              if runtime.endswith(runtime_suffix)
               for device in entries
               if device.get("isAvailable")
           }
+          print(f"Available iOS {sys.argv[2]} simulators: {sorted(available)}")
           required = {"iPhone 17", "iPhone 18 Pro Max", "iPad Pro 13-inch (M5)"}
           missing = required - available
           if missing:
-              raise SystemExit(f"Missing iOS 27 simulators: {sorted(missing)}")
-          print(f"Verified iOS 27 simulators: {sorted(required)}")
+              raise SystemExit(f"Missing iOS {sys.argv[2]} simulators: {sorted(missing)}")
+          print(f"Verified iOS {sys.argv[2]} simulators: {sorted(required)}")
           PY

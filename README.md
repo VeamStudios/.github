@@ -6,18 +6,23 @@ Shared GitHub Actions workflows, composite actions, and organisation defaults fo
 
 ### `select-xcode`
 
-Selects either an exact stable Xcode release or `latest-stable` (the action default), verifies the resolved Xcode and Swift versions, and publishes them in the job summary. Beta installations are excluded even when a numeric application symlink exists.
+Selects either an exact stable Xcode release or `latest-stable`, verifies the resolved Xcode and Swift versions, and publishes them in the job summary. Beta installations are excluded even when a numeric application symlink exists. The action fails when no version is requested.
 
-Shared workflows default to Xcode `27.0`; direct callers pin `27.0` explicitly. The action default remains runner-relative so existing direct callers can migrate independently.
+The Xcode version and runner come from two organisation variables:
 
-Xcode 27 jobs use `xcode-27` or `xcode-27-xlarge`; `macos-26` images contain Xcode 26 only. Shared build, test, and deployment workflows retain the macOS 26 runner when a caller explicitly requests `26.x`, allowing caller PRs to land after the shared update. `latest-stable` selects from the Xcode 27 image.
+| Variable | Example | Used for |
+|---|---|---|
+| `XCODE_VERSION` | `27.0` | `xcode-version`, matched exactly against `xcodebuild -version` |
+| `XCODE_RUNNER` | `xcode-27` | `runs-on`; deploy jobs append `-xlarge` |
 
-The [20260912.0186 runner image](https://github.com/actions/runner-images/releases/tag/xcode-27-arm64/20260912.0186), published on 2026-09-17, includes Xcode 27.0 build `27A266a`, matching [Apple's September 14 release](https://developer.apple.com/news/releases/), despite retaining a `Release_Candidate` application directory. The image is still rolling out, so require the Xcode toolchain checks on both runner sizes before merging. Merge the shared change before the SAP, CIP, Annotator, and ImageCaching caller updates.
+Shared workflows read both variables; their `xcode_version` and `xcode_runner` inputs override them for one caller, for example a hotfix that must build with an older Xcode. Direct callers pass the variables themselves. A repository variable with the same name overrides the organisation value for that repository.
+
+To change Xcode, run **Test Xcode Toolchain** manually with the new `xcode_version` (and `xcode_runner` for a new major), check both runner sizes pass, then update the organisation variables.
 
 ```yaml
 - uses: VeamStudios/.github/.github/actions/select-xcode@main
   with:
-    xcode-version: "27.0"
+    xcode-version: "${{ vars.XCODE_VERSION }}"
     minimum-swift-version: "6.3"
 ```
 

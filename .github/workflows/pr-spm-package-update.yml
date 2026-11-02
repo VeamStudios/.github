@@ -49,7 +49,7 @@ on:
 
 jobs:
   update:
-    runs-on: xcode-27
+    runs-on: ${{ vars.XCODE_RUNNER }}
     permissions:
       contents: write
       pull-requests: write
@@ -57,7 +57,7 @@ jobs:
       - name: Select Xcode
         uses: VeamStudios/.github/.github/actions/select-xcode@main
         with:
-          xcode-version: "27.0"
+          xcode-version: "${{ vars.XCODE_VERSION }}"
 
       - name: Mint GitHub App token
         id: app_token

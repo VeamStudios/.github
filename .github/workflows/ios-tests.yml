@@ -4,9 +4,14 @@ on:
   workflow_call:
     inputs:
       xcode_version:
-        description: "Xcode version passed to select-xcode"
+        description: "Xcode version; overrides the XCODE_VERSION org variable"
         required: false
-        default: "27.0"
+        default: ""
+        type: string
+      xcode_runner:
+        description: "Runner label; overrides the XCODE_RUNNER org variable"
+        required: false
+        default: ""
         type: string
       scheme:
         description: "Xcode scheme to test"
@@ -55,7 +60,7 @@ on:
 jobs:
   test:
     name: Test iOS app
-    runs-on: ${{ startsWith(inputs.xcode_version, '26.') && 'macos-26' || 'xcode-27' }}
+    runs-on: ${{ inputs.xcode_runner || vars.XCODE_RUNNER }}
     timeout-minutes: 60
     steps:
       - name: Validate inputs
@@ -83,9 +88,10 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Select Xcode
+        id: select_xcode
         uses: VeamStudios/.github/.github/actions/select-xcode@main
         with:
-          xcode-version: "${{ inputs.xcode_version }}"
+          xcode-version: "${{ inputs.xcode_version || vars.XCODE_VERSION }}"
 
       - name: Checkout
         uses: actions/checkout@v6
@@ -99,9 +105,9 @@ jobs:
             ~/.swiftpm
             ~/Library/Caches/org.swift.swiftpm
             ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
-          key: ${{ runner.os }}-xcode-${{ inputs.xcode_version }}-swiftpm-${{ hashFiles('**/swiftpm/Package.resolved') }}
+          key: ${{ runner.os }}-xcode-${{ steps.select_xcode.outputs.xcode-version }}-swiftpm-${{ hashFiles('**/swiftpm/Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-xcode-${{ inputs.xcode_version }}-swiftpm-
+            ${{ runner.os }}-xcode-${{ steps.select_xcode.outputs.xcode-version }}-swiftpm-
 
       - name: Configure git for private dependencies
         run: |
