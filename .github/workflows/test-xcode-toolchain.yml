@@ -65,18 +65,19 @@ jobs:
 
           with open(sys.argv[1]) as source:
               devices = json.load(source)["devices"]
-          runtime_suffix = ".iOS-" + sys.argv[2].replace(".", "-")
-          available = {
-              device["name"]
-              for runtime, entries in devices.items()
-              if runtime.endswith(runtime_suffix)
-              for device in entries
-              if device.get("isAvailable")
-          }
-          print(f"Available iOS {sys.argv[2]} simulators: {sorted(available)}")
+          # Runner images keep the standard devices on the x.0 runtime, so accept any
+          # runtime from the same iOS major that the selected Xcode can run.
+          major = sys.argv[2].split(".")[0]
+          available = set()
+          for runtime, entries in sorted(devices.items()):
+              if ".iOS-" + major + "-" not in runtime:
+                  continue
+              names = sorted(device["name"] for device in entries if device.get("isAvailable"))
+              print(f"{runtime.rsplit('.', 1)[-1]}: {names}")
+              available.update(names)
           required = {"iPhone 17", "iPhone 18 Pro Max", "iPad Pro 13-inch (M5)"}
           missing = required - available
           if missing:
-              raise SystemExit(f"Missing iOS {sys.argv[2]} simulators: {sorted(missing)}")
-          print(f"Verified iOS {sys.argv[2]} simulators: {sorted(required)}")
+              raise SystemExit(f"Missing iOS {major} simulators: {sorted(missing)}")
+          print(f"Verified iOS {major} simulators: {sorted(required)}")
           PY
