@@ -131,3 +131,18 @@ test(`a fix copied onto a release branch without its own PR ${name}`,async()=>{
   assert.equal(m.issues.some(i=>i.startsWith('Unmapped shipped commits')),!complete);
  }finally{process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
 });
+
+test('website page content needs no changelog entry, app repos still do',async()=>{
+ const cwd=process.cwd(),dir=fs.mkdtempSync(path.join(os.tmpdir(),'changelog-website-'));
+ try{
+  process.chdir(dir);const git=(...args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();git('init');git('config','user.name','Test');git('config','user.email','test@example.com');
+  fs.writeFileSync('page.html','old');git('add','.');git('commit','-m','base');const baseline=git('rev-parse','HEAD');
+  fs.writeFileSync('page.html','new');git('add','.');git('commit','-m','page');const shipped=git('rev-parse','HEAD');
+  for(const [repo,target,flagged] of [['VeamStudios/siteauditpro.com','website',false],['VeamStudios/Test','web',true]]){
+   const pr={number:88,merged_at:'2026-11-04',merge_commit_sha:shipped,head:{sha:shipped},base:{repo:{full_name:repo}},user:{login:'author'},body:'',html_url:`https://github.com/${repo}/pull/88`};
+   const gh=async url=>url.includes('/commits/')?[pr]:url.includes('/files')?[{filename:'src/app/page.html',status:'modified'}]:url.includes('/reviews')?[]:pr;
+   const m=await buildManifest({repo,product:'Site Audit Pro',target,version:'v0.0.37',commit:shipped,event:'release',source:'https://github.com/run'},gh,baseline,null);
+   assert.equal(m.issues.some(i=>/PR #88 has no new changelog entry/.test(i)),flagged,repo);
+  }
+ }finally{process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
+});
