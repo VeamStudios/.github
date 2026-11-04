@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {GooglePlayMonitor,observePlay,resolveBuild,snapshotBuilds,validGooglePlay,PACKAGE,REPOSITORY,ROOT}=require('./google-play');
+const {GooglePlayMonitor,observePlay,pendingReplacement,resolveBuild,snapshotBuilds,validGooglePlay,PACKAGE,REPOSITORY,ROOT}=require('./google-play');
 const {ensureRelease,monitor}=require('./monitor-play');
 const {hash,rich,text}=require('./record');
 const identity={repository:REPOSITORY,target:'android-consumer',version:'v4.0.0',build:'211481388',commit:'a'.repeat(40),internalTag:'internal/4.0.0-211481388'};
@@ -92,5 +92,35 @@ test('a build replaced by a newer published build becomes terminal and later API
   row.properties['Play Observation']=updates[0].properties['Play Observation'];updates.length=0;
   await assert.rejects(()=>monitor({repo:REPOSITORY,releasesId:'db',dryRun:false},api,{snapshot:async()=>{throw Error('API unavailable')}}),/unavailable/);
   assert.equal(updates.length,0);
+});
+function approvedReplacement() {
+  const s=snapshot();
+  s.lifecycle.releases.push({track:'production',activeArtifacts:[{versionCode:211481400}],releaseLifecycleState:'RELEASE_LIFECYCLE_STATE_APPROVED_NOT_PUBLISHED'});
+  s.rollout.releases=[{versionCodes:['211481400'],status:'completed'}];
+  return s;
+}
+test('a published build whose approved replacement waits to be published is pending, not missing',()=>{
+  assert.throws(()=>observePlay(identity,approvedReplacement()),/Missing or ambiguous/);
+  assert.equal(pendingReplacement(identity.build,approvedReplacement()),'211481400');
+  const variations=[
+    s=>s.lifecycle.releases[1].releaseLifecycleState='RELEASE_LIFECYCLE_STATE_PUBLISHED',
+    s=>s.lifecycle.releases[0].releaseLifecycleState='RELEASE_LIFECYCLE_STATE_IN_REVIEW',
+    s=>s.rollout.releases[0].status='draft',
+    s=>s.rollout.releases[0].status='inProgress',
+    s=>s.rollout.releases.push({versionCodes:['211481388'],status:'completed'}),
+    s=>{s.lifecycle.releases.push({track:'production',activeArtifacts:[{versionCode:211481401}],releaseLifecycleState:'RELEASE_LIFECYCLE_STATE_IN_REVIEW'});s.rollout.releases.push({versionCodes:['211481401'],status:'completed'})},
+    s=>{s.lifecycle.releases[1].activeArtifacts[0].versionCode=211481300;s.rollout.releases[0].versionCodes=['211481300']},
+    s=>s.rollout.releases=[],
+    s=>s.lifecycle.releases.push(s.lifecycle.releases[0]),
+  ];
+  for(const change of variations){const s=approvedReplacement();change(s);assert.equal(pendingReplacement(identity.build,s),null)}
+});
+test('monitor leaves a live build untouched while its approved replacement waits to be published',async()=>{
+  const newer={...identity,version:'v4.0.1',build:'211481400',internalTag:'internal/4.0.1-211481400'};
+  const row={id:'page',properties:{Manifest:rich(JSON.stringify(identity)),'Play Observation':rich(JSON.stringify({owner:'play',observation:{phase:'live',verification:{kind:'google-play'}}}))}};const updates=[],recorded=[];
+  const api={gh:github().gh,notion:async(path,method,body)=>{if(path.includes('/query'))return {results:[row]};updates.push(body);return {}}};
+  const result=await monitor({repo:REPOSITORY,releasesId:'db',dryRun:false},api,{snapshot:async()=>approvedReplacement()},{resolve:build=>{assert.equal(build,newer.build);return newer},recorder:async(config)=>{recorded.push(config.phase);return {pageId:'newer'}},publish:()=>assert.fail()});
+  assert.deepEqual(result.errors,[]);assert.deepEqual(recorded,['uploaded']);assert.equal(updates.length,0);
+  assert.deepEqual(result.observations.find(o=>o.build===identity.build),{build:identity.build,phase:'live',pending:{by:newer.build},recording:'unchanged'});
 });
 module.exports={identity,snapshot};

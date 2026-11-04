@@ -1,7 +1,7 @@
 const fs=require('node:fs');
 const {clients,allPages,record,git,text,rich,hash}=require('./record');
 const {ownedOnly,previousObservation}=require('./ledger-columns');
-const {GooglePlayMonitor,snapshotBuilds,publishedBuilds,observePlay,resolveBuild,REPOSITORY}=require('./google-play');
+const {GooglePlayMonitor,snapshotBuilds,publishedBuilds,pendingReplacement,observePlay,resolveBuild,REPOSITORY}=require('./google-play');
 
 async function optional(gh,path) {try{return await gh(path)}catch(e){if(e.status===404)return null;throw e}}
 async function tagCommit(gh,repo,tag) {
@@ -53,6 +53,8 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
   // Newest first, so a new release records its baseline before an older build can be invalidated.
   for(const build of [...builds].sort((a,b)=>Number(b)-Number(a))) {
     const matching=rows.filter(row=>{const m=JSON.parse(text(row.properties.Manifest)||'{}');return m.target==='android-consumer'&&m.build===build});
+    const pending=pendingReplacement(build,snapshot);
+    if(pending){result.observations.push({build,phase:'live',pending:{by:pending},recording:'unchanged'});continue}
     try {
       const identity=resolve(build),observation=observePlay(identity,snapshot);
       const sameVersion=rows.filter(row=>{const m=JSON.parse(text(row.properties.Manifest)||'{}');return m.target===identity.target&&m.version===identity.version});
