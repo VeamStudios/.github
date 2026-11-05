@@ -53,7 +53,7 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
   catch(e){for(const row of rows) {const m=JSON.parse(text(row.properties.Manifest)||'{}');if(tracked(row,m)&&m.build&&!previousObservation(row.properties)?.replaced)await invalidate(row,e.message)}throw e}
   let builds=snapshotBuilds(snapshot);
   const active=builds,newest=Math.max(0,...publishedBuilds(snapshot).map(Number));
-  if(config.build){if(!builds.includes(config.build)){for(const row of rows){const m=JSON.parse(text(row.properties.Manifest)||'{}');if(m.build===config.build&&m.target===target)await invalidate(row,'Requested build is absent from production lifecycle evidence')}throw Error('Requested build is absent from production lifecycle evidence')};builds=[config.build]}
+  if(config.build){if(!builds.includes(config.build)){for(const row of rows){const m=JSON.parse(text(row.properties.Manifest)||'{}');if(m.build===config.build&&tracked(row,m))await invalidate(row,'Requested build is absent from production lifecycle evidence')}throw Error('Requested build is absent from production lifecycle evidence')};builds=[config.build]}
   // Every returned active build is considered; never choose a maximum versionCode.
   // Newest first, so a new release records its baseline before an older build can be invalidated.
   for(const build of [...builds].sort((a,b)=>Number(b)-Number(a))) {

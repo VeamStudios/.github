@@ -92,3 +92,21 @@ test('only a never-live, unannounced, non-historical row may be re-pointed to a 
     ['announced', row => { row.properties['Notification State'] = { select: { name: 'Sent' } }; }],
   ]) { const row = uploaded(); change(row); assert.equal(repointable(row), false, label); }
 });
+
+test('a rebuilt version re-points its never-live row; a build-less version never does', async () => {
+  const changelog = require('./changelog'), original = changelog.buildChangelogManifest;
+  const { config, api, row, manifest } = fixture('Uploaded');
+  const upload = { phase: 'uploaded', source: 'https://github.com/run/1', releasedAt: '2026-10-23T09:00:00Z', verification: null };
+  const first = { ...manifest, target: 'android-enterprise', build: '100' };
+  Object.assign(row.properties, { Manifest: rich(JSON.stringify(first)), 'Manifest Hash': rich(hash(first)) }, ownColumns('deploy', { Observation: rich(JSON.stringify(upload)) }, '2026-10-23T09:00:00Z', row.properties));
+  changelog.buildChangelogManifest = async c => ({ ...first, build: c.build });
+  try {
+    const result = await record({ ...config, target: 'android-enterprise', build: '200', phase: 'uploaded', verification: undefined, source: 'https://github.com/run/2' }, api);
+    assert.equal(result.manifest.build, '200');
+    assert.equal(text(result.properties.Build), '200');
+    assert.equal(JSON.parse(text(result.properties.Manifest)).build, '200');
+    assert.equal(JSON.parse(text(result.properties['Deploy Observation'])).observation.repointedFrom.build, '100');
+    Object.assign(row.properties, { Manifest: rich(JSON.stringify(manifest)), 'Manifest Hash': rich(hash(manifest)) });
+    await assert.rejects(record({ ...config, commit: 'HEAD~1', phase: 'uploaded', verification: undefined }, api), /different commit\/build/);
+  } finally { changelog.buildChangelogManifest = original; }
+});

@@ -134,7 +134,8 @@ async function record(config, api) {
   if (existing[0] && text(existing[0].properties.Manifest)) {
     manifest = JSON.parse(text(existing[0].properties.Manifest));
     if (manifest.commit !== git('rev-parse', `${config.commit}^{commit}`) || manifest.build !== (config.build || '')) {
-      if (!repointable(existing[0]) || hash(manifest) !== text(existing[0].properties['Manifest Hash'])) throw new Error('Release identity already belongs to a different commit/build.');
+      // Only a rebuilt mobile build qualifies; a different commit under a build-less version is a mistake.
+      if (!manifest.build || !config.build || !repointable(existing[0]) || hash(manifest) !== text(existing[0].properties['Manifest Hash'])) throw new Error('Release identity already belongs to a different commit/build.');
       repointed = { from: { commit: manifest.commit, build: manifest.build, manifestHash: hash(manifest) }, source: config.source };
       manifest = null;
     }
