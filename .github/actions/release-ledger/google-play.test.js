@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {GooglePlayMonitor,observePlay,resolveBuild,snapshotBuilds,validGooglePlay,PACKAGE,REPOSITORY,ROOT}=require('./google-play');
+const {GooglePlayMonitor,observePlay,resolveBuild,snapshotBuilds,validGooglePlay,PACKAGE,PACKAGES,REPOSITORY,ROOT,rootFor}=require('./google-play');
 const {ensureRelease,monitor}=require('./monitor-play');
 const {hash,rich,text}=require('./record');
 const identity={repository:REPOSITORY,target:'android-consumer',version:'v4.0.0',build:'211481388',commit:'a'.repeat(40),internalTag:'internal/4.0.0-211481388'};
@@ -73,6 +73,18 @@ test('shadow monitor performs no writes; completed and rollout releases cannot b
     const result=await monitor({repo:REPOSITORY,releasesId:'db',dryRun:true},{gh:api.gh,notion:async()=>({results:[]})},{snapshot:async()=>snapshot('PUBLISHED',status)},{resolve:()=>identity,recorder:async(config)=>{assert.equal(config.dryRun,true);recorded++;return {pageId:'page'}},publish:async()=>{published++;return {state:'preview'}}});
     assert.equal(result.errors.length,0);assert.equal(recorded,1);assert.equal(published,status==='completed'?1:0);assert.equal(api.writes.length,0);
   }
+});
+test('enterprise records a rebuilt never-live version without GitHub or website publication',async()=>{
+  const pkg=PACKAGES['android-enterprise'],root=rootFor(pkg),ent={...identity,target:'android-enterprise'};
+  const s={...snapshot(),packageName:pkg,evidence:`${root}/tracks/production/releases`,rolloutEvidence:`${root}/edits/123/tracks/production`};
+  const old={...ent,build:'211000000',commit:'c'.repeat(40)},upload={phase:'uploaded',source:'https://github.com/run',releasedAt:'2026-10-23T09:00:00Z',verification:null};
+  const row={id:'page',properties:{State:{select:{name:'Uploaded'}},Manifest:rich(JSON.stringify(old)),'Manifest Hash':rich(hash(old)),Observation:rich(JSON.stringify(upload))}};
+  let recorded;
+  const result=await monitor({repo:REPOSITORY,target:'android-enterprise',releasesId:'db',dryRun:true},{gh:()=>assert.fail('no GitHub calls'),notion:async()=>({results:[row]})},{snapshot:async()=>s},{resolve:()=>ent,recorder:async c=>{recorded=c;return {pageId:'page'}},publish:()=>assert.fail('no website')});
+  assert.equal(result.errors.length,0);assert.equal(recorded.build,ent.build);assert.equal(recorded.verification.packageName,pkg);
+  row.properties.State={select:{name:'Released'}};
+  const frozen=await monitor({repo:REPOSITORY,target:'android-enterprise',releasesId:'db',dryRun:true},{gh:()=>assert.fail(),notion:async()=>({results:[row]})},{snapshot:async()=>s},{resolve:()=>ent,recorder:()=>assert.fail()});
+  assert.match(frozen.errors[0].error,/already bound/);
 });
 test('API failure invalidates pending availability and never calls recorder or publisher',async()=>{
   const row={id:'page',properties:{Manifest:rich(JSON.stringify(identity)),Observation:rich(JSON.stringify({phase:'live',verification:{kind:'google-play'}}))}};const updates=[];

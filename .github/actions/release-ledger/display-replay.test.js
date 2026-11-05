@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
-const { record, rich, hash, text, deployedBaseline } = require('./record');
+const { record, rich, hash, text, deployedBaseline, repointable } = require('./record');
 const { ownColumns } = require('./ledger-columns');
 
 function fixture(state) {
@@ -80,4 +80,15 @@ test('display labels cannot manufacture a verified comparison baseline', () => {
     row.properties['Deploy Observation'] = rich(JSON.stringify({ ...record, observation: { ...record.observation, verification: null } }));
     assert.equal(deployedBaseline(row), false);
   }
+});
+
+test('only a never-live, unannounced, non-historical row may be re-pointed to a rebuilt version', () => {
+  const uploaded = () => { const { row } = fixture('Uploaded'); Object.assign(row.properties, ownColumns('deploy', { Observation: rich(JSON.stringify({ phase: 'uploaded', source: 'https://github.com/run', releasedAt: '2026-10-23T09:00:00Z', verification: null })) }, '2026-10-23T09:00:00Z', row.properties)); delete row.properties.Observation; return row; };
+  assert.equal(repointable(uploaded()), true);
+  for (const [label, change] of [
+    ['live evidence', row => { const { row: live } = fixture('Uploaded'); row.properties = live.properties; }],
+    ['released label', row => { row.properties.State = { select: { name: 'Released' } }; }],
+    ['historical', row => { row.properties.Historical = { checkbox: true }; }],
+    ['announced', row => { row.properties['Notification State'] = { select: { name: 'Sent' } }; }],
+  ]) { const row = uploaded(); change(row); assert.equal(repointable(row), false, label); }
 });
