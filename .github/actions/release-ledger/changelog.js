@@ -121,7 +121,8 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
     wordingPr=accepted.pr;supplement=accepted.file;wordingAcceptance=accepted.acceptance;
   }
   const raw=supplement?Buffer.from(supplement.content,'base64').toString('utf8'):read(sha),before=validBaseline?read(baseline):'';
-  if(!raw && !(config.target==='website'&&WEBSITES[config.repo]))issues.push('CHANGELOG.md is missing at the shipped commit. Add reviewed release notes before publication.');
+  const website=Boolean(config.target==='website'&&WEBSITES[config.repo]);
+  if(!raw && !website)issues.push('CHANGELOG.md is missing at the shipped commit. Add reviewed release notes before publication.');
   const contexts=[];
   for(const number of [...numbers].sort((a,b)=>a-b)) {
     const pr=await gh(`/repos/${config.repo}/pulls/${number}`),links=parseWorkItemLinks(pr.body),files=[];
@@ -129,7 +130,8 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
     for(let page=1;;page++){const batch=await gh(`/repos/${config.repo}/pulls/${number}/files?per_page=100&page=${page}`);files.push(...batch);if(batch.length<100)break}
     const added=newEntries(read(`${pr.merge_commit_sha}^1`),read(pr.merge_commit_sha)),approved=await reviewed(gh,config.repo,pr);
     const warnings=links.invalidEntries.length?[`PR #${number}: fix the invalid Work Items link in the PR description.`]:[];
-    if(!added.length&&!internalFiles(files))issues.push(`PR #${number} has no new changelog entry; a release PR may supply it.`);
+    // Website repos keep no CHANGELOG.md of their own; their page content is not a release note.
+    if(!added.length&&!internalFiles(files)&&!website)issues.push(`PR #${number} has no new changelog entry; a release PR may supply it.`);
     prs.push({number,url:pr.html_url,mergeCommit:pr.merge_commit_sha,headCommit:pr.head.sha,workItems:links.ids,approved,noteHash:''});
     contexts.push({pr,links:links.ids,added,approved,warnings,files,commits:[...commitPrs].filter(([,number])=>number===pr.number).map(([commit])=>commit)});
   }

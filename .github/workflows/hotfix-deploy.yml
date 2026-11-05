@@ -26,9 +26,14 @@ on:
         default: "cloud"
         type: string
       xcode_version:
-        description: "Xcode version used to build the hotfix"
+        description: "Xcode version; overrides the XCODE_VERSION org variable"
         required: false
-        default: "27.0"
+        default: ""
+        type: string
+      xcode_runner:
+        description: "Runner label; overrides the XCODE_RUNNER org variable"
+        required: false
+        default: ""
         type: string
       minimum_swift_version:
         description: "Minimum accepted Swift compiler version"
@@ -256,6 +261,7 @@ jobs:
       environment_name: ${{ inputs.build_environment_name }}
       ipa_path: ${{ inputs.ipa_path }}
       xcode_version: ${{ inputs.xcode_version }}
+      xcode_runner: ${{ inputs.xcode_runner }}
       minimum_swift_version: ${{ inputs.minimum_swift_version }}
       checkout_ref: ${{ needs.resolve-hotfix.outputs.hotfix_sha }}
       capture_commit_sha: true

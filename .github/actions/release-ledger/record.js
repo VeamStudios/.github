@@ -98,7 +98,7 @@ function deployedBaseline(row) {
     const b=o.baseline;
     // An audited baseline only chooses the comparison commit; it never establishes Play availability.
     if(b?.kind==='audited-production-baseline'&&b.manifestHash===hash(m)&&b.commit===m.commit&&b.repository===m.repository&&b.target===m.target&&Number.isFinite(Date.parse(b.checkedAt))&&Array.isArray(b.evidence)&&b.evidence.length>=2&&b.evidence.every(url=>typeof url==='string'&&url.startsWith('https://'))&&(!m.target.match(/^(ios|android)-/)||Boolean(b.build&&b.build===(m.build||text(row.properties.Build)))))return true;
-    if(m.repository==='VeamStudios/SiteAuditPro-AndroidNew'&&m.target==='android-consumer')return o.phase==='live'&&require('./google-play').validGooglePlay(o.verification,m);
+    if(m.repository==='VeamStudios/SiteAuditPro-AndroidNew'&&(m.target==='android-consumer'||o.verification?.kind==='google-play'))return o.phase==='live'&&require('./google-play').validGooglePlay(o.verification,m);
     if(m.target.includes('ios')||m.target.includes('android'))return Boolean(o.phase==='live'&&m.build&&((o.verification?.kind==='app-store'&&o.verification.build===m.build)||(o.verification?.kind==='manual'&&o.verification.build===m.build&&row.properties['Audience Verified']?.checkbox&&evidence)));
     return Boolean(o.phase==='deployed'&&((o.verification?.kind==='http'&&o.verification.commit===m.commit&&o.verification.reportedCommit===m.commit&&o.verification.repository===m.repository&&o.verification.evidence)||(o.verification?.kind==='cloud-run'&&validCloudRun(o.verification,m.commit,m.repository))||(o.verification?.kind==='manual'&&o.verification.commit===m.commit&&o.verification.evidence&&row.properties['Audience Verified']?.checkbox&&evidence)));
   }catch{return false}
@@ -106,7 +106,7 @@ function deployedBaseline(row) {
 function verificationProperties(config, previous, oldProperties, observedAt) {
   // A failed recheck is a new diagnostic, not evidence that the original deployment never happened.
   const retain = Boolean(config.verificationError && previous?.phase === config.phase && previous.verification);
-  const observation = { ...(previous?.website ? {website:previous.website} : {}), ...(previous?.baseline ? {baseline:previous.baseline} : {}), phase:config.phase, source:retain ? previous.source : config.source, releasedAt:config.releasedAt || previous?.releasedAt || observedAt, verification:config.verification || (retain ? previous.verification : null), ...(config.verificationError ? {verificationError:config.verificationError,verificationAttempt:{source:config.source,at:observedAt}} : {}) };
+  const observation = { ...(previous?.website ? {website:previous.website} : {}), ...(previous?.baseline ? {baseline:previous.baseline} : {}), ...(previous?.repointedFrom ? {repointedFrom:previous.repointedFrom} : {}), phase:config.phase, source:retain ? previous.source : config.source, releasedAt:config.releasedAt || previous?.releasedAt || observedAt, verification:config.verification || (retain ? previous.verification : null), ...(config.verificationError ? {verificationError:config.verificationError,verificationAttempt:{source:config.source,at:observedAt}} : {}) };
   const properties = {Observation:rich(JSON.stringify(observation))};
   if (config.verification && !config.verificationError && previous?.verificationError && text(oldProperties?.Error) === previous.verificationError) {
     const receipt = JSON.parse(text(oldProperties?.['Operations Receipt']) || '{}');
@@ -116,16 +116,31 @@ function verificationProperties(config, previous, oldProperties, observedAt) {
   }
   return properties;
 }
+// A version rebuilt before it ever shipped (a second internal build of the same version)
+// may re-point its never-live row to the new exact build. Anything observed live,
+// announced, historical or already labelled terminal stays frozen.
+function repointable(row) {
+  const p = row?.properties || {}, o = priorObservation(p);
+  return p.Historical?.checkbox !== true && (!o || ['prepare', 'uploaded'].includes(o.phase)) &&
+    !['Sent', 'Sending', 'Needs attention'].includes(p['Notification State']?.select?.name) && !text(p['Published Hash']) && !text(p['Slack Message']) &&
+    !['Released', 'Available', 'Limited rollout', 'Withdrawn', 'Superseded'].includes(p.State?.select?.name);
+}
 async function record(config, api) {
   const schema = await releaseSchema(api.notion, config.releasesId);
   const filter = { property: 'Release Key', rich_text: { equals: releaseKey(config.repo, config.target, config.version, config.event) } };
   const existing = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter });
   if (existing.length > 1) throw new Error('Duplicate release identity found; reconcile before continuing.');
-  let manifest;
+  let manifest, repointed = null;
   if (existing[0] && text(existing[0].properties.Manifest)) {
     manifest = JSON.parse(text(existing[0].properties.Manifest));
-    if (manifest.commit !== git('rev-parse', `${config.commit}^{commit}`) || manifest.build !== (config.build || '')) throw new Error('Release identity already belongs to a different commit/build.');
-  } else {
+    if (manifest.commit !== git('rev-parse', `${config.commit}^{commit}`) || manifest.build !== (config.build || '')) {
+      // Only a rebuilt mobile build qualifies; a different commit under a build-less version is a mistake.
+      if (!manifest.build || !config.build || !repointable(existing[0]) || hash(manifest) !== text(existing[0].properties['Manifest Hash'])) throw new Error('Release identity already belongs to a different commit/build.');
+      repointed = { from: { commit: manifest.commit, build: manifest.build, manifestHash: hash(manifest) }, source: config.source };
+      manifest = null;
+    }
+  }
+  if (!manifest) {
     let baseline = config.baseline;
     if (!baseline) {
       const previous = await allPages(api.notion, `/data_sources/${config.releasesId}/query`, { filter: { and: [{ property: 'Repository', rich_text: { equals: config.repo } }, targetFilter(schema, config.target)] }, sorts: [{ property: 'Released At', direction: 'descending' }] });
@@ -164,7 +179,12 @@ async function record(config, api) {
   if(config.verification?.kind==='manual' && !(config.repo==='VeamStudios/SiteAuditPro-AndroidNew'&&config.target==='android-consumer'))properties['Audience Verified']={checkbox:true};
   if(config.verificationError)properties.Error=rich(config.verificationError);
   if (config.phase === 'withdrawn') properties.State = select('Withdrawn');
-  if (existing[0]) {
+  if (repointed) {
+    // The writer-owned observation keeps the audit trail of the never-shipped build this row described.
+    if (!properties.Observation) throw new Error('Re-pointing a rebuilt version requires a new observation of the exact build.');
+    properties.Observation = rich(JSON.stringify({ ...JSON.parse(text(properties.Observation)), repointedFrom: { ...repointed.from, source: repointed.source } }));
+  }
+  if (existing[0] && !repointed) {
     // Human edits must invalidate readiness, never be silently overwritten by a retry.
     for (const name of ['Manifest', 'Manifest Hash', 'Changelog', 'Work Items', 'Product', 'Repository', 'Target', 'Version', 'Commit', 'Build', 'Event']) delete properties[name];
   }
@@ -239,5 +259,5 @@ async function main() {
   console.log(JSON.stringify({ key: result.key || result.manifest.key, url: result.url, hash: result.hash, dryRun: config.dryRun }));
   if(config.verificationError)throw new Error(config.verificationError);
 }
-module.exports = { workItemRelation, verificationProperties, canonical, hash, rich, text, select, workItems, releaseKey, request, clients, allPages, buildManifest, record, git, ancestor, reviewed, provenanceMapping, deployedBaseline };
+module.exports = { repointable, workItemRelation, verificationProperties, canonical, hash, rich, text, select, workItems, releaseKey, request, clients, allPages, buildManifest, record, git, ancestor, reviewed, provenanceMapping, deployedBaseline };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

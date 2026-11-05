@@ -14,9 +14,14 @@ on:
         default: ''
         type: string
       xcode_version:
-        description: "Xcode version passed to select-xcode"
+        description: "Xcode version; overrides the XCODE_VERSION org variable"
         required: false
-        default: "27.0"
+        default: ""
+        type: string
+      xcode_runner:
+        description: "Runner label; overrides the XCODE_RUNNER org variable"
+        required: false
+        default: ""
         type: string
       minimum_swift_version:
         description: "Minimum accepted Swift compiler version"
@@ -35,7 +40,7 @@ on:
 jobs:
   build:
     name: ${{ inputs.job-name }}
-    runs-on: ${{ startsWith(inputs.xcode_version, '26.') && 'macos-26' || 'xcode-27' }}
+    runs-on: ${{ inputs.xcode_runner || vars.XCODE_RUNNER }}
     steps:
       - name: Mint GitHub App token
         id: app_token
@@ -48,7 +53,7 @@ jobs:
       - name: Select Xcode
         uses: VeamStudios/.github/.github/actions/select-xcode@main
         with:
-          xcode-version: "${{ inputs.xcode_version }}"
+          xcode-version: "${{ inputs.xcode_version || vars.XCODE_VERSION }}"
           minimum-swift-version: "${{ inputs.minimum_swift_version }}"
 
       - name: Checkout

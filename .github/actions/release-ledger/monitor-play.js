@@ -1,6 +1,6 @@
 const fs=require('node:fs');
-const {clients,allPages,record,git,text,rich,hash}=require('./record');
-const {ownedOnly,previousObservation}=require('./ledger-columns');
+const {clients,allPages,record,git,text,rich,hash,repointable}=require('./record');
+const {ownedOnly,previousObservation,OWNERS}=require('./ledger-columns');
 const {GooglePlayMonitor,snapshotBuilds,publishedBuilds,observePlay,resolveBuild,REPOSITORY}=require('./google-play');
 
 async function optional(gh,path) {try{return await gh(path)}catch(e){if(e.status===404)return null;throw e}}
@@ -34,10 +34,18 @@ async function ensureRelease(identity,gh,dryRun) {
   }catch(e){const found=await optional(gh,path);if(!found)throw e;return ensureRelease(identity,gh,true)}
 }
 
-async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git('tag','-l','internal/*').split('\n'),tag=>git('rev-parse',`refs/tags/${tag}^{commit}`)),recorder=record,publish=async()=>({state:'disabled'})}={}) {
-  if(config.repo!==REPOSITORY)throw Error('Consumer Site Audit Pro Android is the only enabled Play monitor');
+async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git('tag','-l','internal/*').split('\n'),tag=>git('rev-parse',`refs/tags/${tag}^{commit}`),config.target||'android-consumer'),recorder=record,publish=async()=>({state:'disabled'})}={}) {
+  if(config.repo!==REPOSITORY)throw Error('Site Audit Pro Android is the only enabled Play monitor');
+  const target=config.target||'android-consumer';
+  // Enterprise ships the same marketing versions as consumer, which owns the GitHub tag, release and website notes.
+  const ownsPublication=target==='android-consumer';
+  // Enterprise rows are also recorded at internal upload; only rows this monitor has written belong to it.
+  // The Play column survives a failed check (verification cleared), so the row stays tracked.
+  const tracked=(row,m)=>m.target===target&&(ownsPublication||Boolean(text(row.properties[OWNERS.play.observation])));
   const rows=await allPages(api.notion,`/data_sources/${config.releasesId}/query`,{filter:{property:'Repository',rich_text:{equals:config.repo}}});
   const result={dryRun:config.dryRun,observations:[],errors:[]};
+  // Rows recorded (or re-pointed) this run hold fresh evidence; the start-of-run manifest is stale for them.
+  const recordedRows=new Set();
   let snapshot;
   const invalidate=async(row,message)=>{
     if(config.dryRun)return;
@@ -45,29 +53,33 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
     await api.notion(`/pages/${row.id}`,'PATCH',{properties:ownedOnly('play',{Observation:rich(JSON.stringify({...previous,verification:null,verificationError:message,verificationAttempt:{at,source:config.source}})),Error:rich(message)},at,row.properties)});
   };
   try {snapshot=await play.snapshot();snapshotBuilds(snapshot)}
-  catch(e){for(const row of rows) {const m=JSON.parse(text(row.properties.Manifest)||'{}');if(m.target==='android-consumer'&&m.build&&!previousObservation(row.properties)?.replaced)await invalidate(row,e.message)}throw e}
+  catch(e){for(const row of rows) {const m=JSON.parse(text(row.properties.Manifest)||'{}');if(tracked(row,m)&&m.build&&!previousObservation(row.properties)?.replaced)await invalidate(row,e.message)}throw e}
   let builds=snapshotBuilds(snapshot);
   const active=builds,newest=Math.max(0,...publishedBuilds(snapshot).map(Number));
-  if(config.build){if(!builds.includes(config.build)){for(const row of rows){const m=JSON.parse(text(row.properties.Manifest)||'{}');if(m.build===config.build&&m.target==='android-consumer')await invalidate(row,'Requested build is absent from production lifecycle evidence')}throw Error('Requested build is absent from production lifecycle evidence')};builds=[config.build]}
+  if(config.build){if(!builds.includes(config.build)){for(const row of rows){const m=JSON.parse(text(row.properties.Manifest)||'{}');if(m.build===config.build&&tracked(row,m))await invalidate(row,'Requested build is absent from production lifecycle evidence')}throw Error('Requested build is absent from production lifecycle evidence')};builds=[config.build]}
   // Every returned active build is considered; never choose a maximum versionCode.
   // Newest first, so a new release records its baseline before an older build can be invalidated.
   for(const build of [...builds].sort((a,b)=>Number(b)-Number(a))) {
-    const matching=rows.filter(row=>{const m=JSON.parse(text(row.properties.Manifest)||'{}');return m.target==='android-consumer'&&m.build===build});
+    const matching=rows.filter(row=>{const m=JSON.parse(text(row.properties.Manifest)||'{}');return m.target===target&&m.build===build});
     try {
       const identity=resolve(build),observation=observePlay(identity,snapshot);
       const sameVersion=rows.filter(row=>{const m=JSON.parse(text(row.properties.Manifest)||'{}');return m.target===identity.target&&m.version===identity.version});
       if(sameVersion.length>1||matching.length>1)throw Error('Duplicate release identities require reconciliation');
-      for(const row of sameVersion) {const m=JSON.parse(text(row.properties.Manifest));if(hash(m)!==text(row.properties['Manifest Hash'])||m.commit!==identity.commit||m.build!==identity.build)throw Error('Version already bound to another commit/build or frozen manifest changed')}
-      // Validate existing GitHub identities before any recording or publication.
-      const sha=await tagCommit(api.gh,identity.repository,identity.version);
-      if(sha&&sha!==identity.commit)throw Error('Production tag conflicts with the exact internal build');
-      await ensureRelease(identity,api.gh,true);
+      // A never-live row for a rebuilt version is re-pointed by the recorder; anything else stays frozen.
+      for(const row of sameVersion) {const m=JSON.parse(text(row.properties.Manifest));if(hash(m)!==text(row.properties['Manifest Hash'])||(m.commit!==identity.commit||m.build!==identity.build)&&!repointable(row))throw Error('Version already bound to another commit/build or frozen manifest changed')}
+      if(ownsPublication) {
+        // Validate existing GitHub identities before any recording or publication.
+        const sha=await tagCommit(api.gh,identity.repository,identity.version);
+        if(sha&&sha!==identity.commit)throw Error('Production tag conflicts with the exact internal build');
+        await ensureRelease(identity,api.gh,true);
+      }
       const prior=sameVersion[0]&&(previousObservation(sameVersion[0].properties)||{});
       // Preserve first-observed release time; hourly checks are not new releases.
       if(prior?.phase===observation.phase&&prior.releasedAt)observation.releasedAt=prior.releasedAt;
       const recorded=await recorder({...config,...identity,repo:identity.repository,product:'Site Audit Pro',event:'release',...observation},api);
       const entry={...identity,phase:observation.phase,recording:config.dryRun?'preview':'complete',pageId:recorded.pageId||sameVersion[0]?.id};
-      if(observation.phase==='live') {
+      for(const id of [entry.pageId,...sameVersion.map(row=>row.id)])if(id)recordedRows.add(id);
+      if(observation.phase==='live'&&ownsPublication) {
         entry.github=await ensureRelease(identity,api.gh,config.dryRun);
         if(entry.pageId) {
           try {entry.website=await publish(entry.pageId,config,api)}
@@ -87,7 +99,7 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
   // recorded evidence, drop any stale error, and stop rechecking it.
   for(const row of rows) {
     const m=JSON.parse(text(row.properties.Manifest)||'{}'),previous=previousObservation(row.properties)||{};
-    if(m.target!=='android-consumer'||!m.build||active.includes(m.build)||!(Number(m.build)<newest)||(previous.replaced&&!previous.verificationError))continue;
+    if(recordedRows.has(row.id)||!tracked(row,m)||!m.build||active.includes(m.build)||!(Number(m.build)<newest)||(previous.replaced&&!previous.verificationError))continue;
     const replaced={by:String(newest),at:snapshot.checkedAt,evidence:snapshot.evidence};
     result.observations.push({repository:m.repository,target:m.target,version:m.version,build:m.build,phase:'replaced',recording:config.dryRun?'preview':'complete',pageId:row.id});
     if(config.dryRun)continue;
@@ -97,10 +109,10 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
   return result;
 }
 async function main() {
-  const config={repo:process.env.GITHUB_REPOSITORY,releasesId:process.env.INPUT_RELEASES_ID||'8beb58ea-dd4f-4777-8799-b6694ade6317',githubToken:process.env.INPUT_GITHUB_TOKEN,notionToken:process.env.INPUT_NOTION_TOKEN,dryRun:process.env.INPUT_DRY_RUN!=='false',publishWebsite:process.env.INPUT_PUBLISH_WEBSITE==='true',retryWebsite:process.env.INPUT_RETRY_WEBSITE==='true',build:process.env.INPUT_VERSION_CODE||'',source:`https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}/attempts/${process.env.GITHUB_RUN_ATTEMPT}`};
+  const config={repo:process.env.GITHUB_REPOSITORY,releasesId:process.env.INPUT_RELEASES_ID||'8beb58ea-dd4f-4777-8799-b6694ade6317',githubToken:process.env.INPUT_GITHUB_TOKEN,notionToken:process.env.INPUT_NOTION_TOKEN,dryRun:process.env.INPUT_DRY_RUN!=='false',publishWebsite:process.env.INPUT_PUBLISH_WEBSITE==='true',retryWebsite:process.env.INPUT_RETRY_WEBSITE==='true',build:process.env.INPUT_VERSION_CODE||'',target:process.env.INPUT_TARGET||'android-consumer',source:`https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}/attempts/${process.env.GITHUB_RUN_ATTEMPT}`};
   if(!config.githubToken||!config.notionToken)throw Error('Configure release-bot and Notion credentials before monitoring');
   let credentials;try{credentials=JSON.parse(process.env.PLAY_MONITOR_SERVICE_ACCOUNT_JSON||'')}catch{throw Error('Configure PLAY_MONITOR_SERVICE_ACCOUNT_JSON with the dedicated Play monitor account')}
-  const play=new GooglePlayMonitor(credentials,{expectedEmail:process.env.PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL,uploaderEmail:process.env.PLAY_UPLOADER_SERVICE_ACCOUNT_EMAIL});
+  const play=new GooglePlayMonitor(credentials,{expectedEmail:process.env.PLAY_MONITOR_SERVICE_ACCOUNT_EMAIL,uploaderEmail:process.env.PLAY_UPLOADER_SERVICE_ACCOUNT_EMAIL,target:config.target});
   const api=clients(config),run=()=>monitor(config,api,play,{publish:require('./play-website').publishWebsite});
   // Owned columns replace the shared lock; the reusable workflow serializes Play monitor runs per repository.
   const result=await run();
