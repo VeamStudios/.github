@@ -14,6 +14,10 @@ on:
       retry_website:
         type: boolean
         default: false
+      target:
+        description: 'android-consumer or android-enterprise; each target is bound to one Play package'
+        type: string
+        default: android-consumer
     secrets:
       PLAY_MONITOR_SERVICE_ACCOUNT_JSON:
         required: true
@@ -62,6 +66,7 @@ jobs:
           INPUT_VERSION_CODE: ${{ inputs.version_code }}
           INPUT_PUBLISH_WEBSITE: ${{ inputs.publish_website }}
           INPUT_RETRY_WEBSITE: ${{ inputs.retry_website }}
+          INPUT_TARGET: ${{ inputs.target }}
           INPUT_GITHUB_TOKEN: ${{ steps.token.outputs.token }}
           INPUT_NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           PLAY_MONITOR_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_MONITOR_SERVICE_ACCOUNT_JSON }}
@@ -70,5 +75,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: google-play-observation
+          name: google-play-observation${{ inputs.target != 'android-consumer' && format('-{0}', inputs.target) || '' }}
           path: release-source/play-observation.json
