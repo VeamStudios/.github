@@ -78,10 +78,14 @@ test('enterprise records a rebuilt never-live version without GitHub or website 
   const pkg=PACKAGES['android-enterprise'],root=rootFor(pkg),ent={...identity,target:'android-enterprise'};
   const s={...snapshot(),packageName:pkg,evidence:`${root}/tracks/production/releases`,rolloutEvidence:`${root}/edits/123/tracks/production`};
   const old={...ent,build:'211000000',commit:'c'.repeat(40)},upload={phase:'uploaded',source:'https://github.com/run',releasedAt:'2026-10-23T09:00:00Z',verification:null};
-  const row={id:'page',properties:{State:{select:{name:'Uploaded'}},Manifest:rich(JSON.stringify(old)),'Manifest Hash':rich(hash(old)),Observation:rich(JSON.stringify(upload))}};
+  // Play had already seen the first build waiting in review before the rebuild replaced it.
+  const seen={owner:'play',recordedAt:'2026-10-24T09:00:00Z',observation:{phase:'uploaded',verification:{kind:'google-play'}}};
+  const row={id:'page',properties:{State:{select:{name:'Uploaded'}},Manifest:rich(JSON.stringify(old)),'Manifest Hash':rich(hash(old)),Observation:rich(JSON.stringify(upload)),'Play Observation':rich(JSON.stringify(seen))}};
   let recorded;
   const result=await monitor({repo:REPOSITORY,target:'android-enterprise',releasesId:'db',dryRun:true},{gh:()=>assert.fail('no GitHub calls'),notion:async()=>({results:[row]})},{snapshot:async()=>s},{resolve:()=>ent,recorder:async c=>{recorded=c;return {pageId:'page'}},publish:()=>assert.fail('no website')});
   assert.equal(result.errors.length,0);assert.equal(recorded.build,ent.build);assert.equal(recorded.verification.packageName,pkg);
+  // The re-pointed row now holds the live build; its stale start-of-run build must not mark it replaced.
+  assert.deepEqual(result.observations.map(o=>o.phase),['live']);
   row.properties.State={select:{name:'Released'}};
   const frozen=await monitor({repo:REPOSITORY,target:'android-enterprise',releasesId:'db',dryRun:true},{gh:()=>assert.fail(),notion:async()=>({results:[row]})},{snapshot:async()=>s},{resolve:()=>ent,recorder:()=>assert.fail()});
   assert.match(frozen.errors[0].error,/already bound/);
@@ -93,16 +97,18 @@ test('API failure invalidates pending availability and never calls recorder or p
   assert.equal(updates.length,1);assert.match(JSON.stringify(updates[0]),/verification\\":null/);
   const owned=JSON.parse(text(updates[0].properties['Play Observation']));assert.equal(owned.observation.verification,null);assert.equal(text(updates[0].properties['Play Error']),'API unavailable');
 });
-test('a build replaced by a newer published build becomes terminal and later API failures leave it alone',async()=>{
-  const newer={...identity,version:'v4.0.3',build:'213024193',internalTag:'internal/4.0.3-213024193'},s=snapshot('PUBLISHED','inProgress');
+for(const target of ['android-consumer','android-enterprise'])test(`${target}: a build replaced by a newer published build becomes terminal and later API failures leave it alone`,async()=>{
+  const pkg=PACKAGES[target],root=rootFor(pkg),own={...identity,target};
+  const newer={...own,version:'v4.0.3',build:'213024193',internalTag:'internal/4.0.3-213024193'},s={...snapshot('PUBLISHED','inProgress'),packageName:pkg,evidence:`${root}/tracks/production/releases`,rolloutEvidence:`${root}/edits/123/tracks/production`};
   s.lifecycle.releases[0].activeArtifacts[0].versionCode=213024193;s.rollout.releases[0].versionCodes=['213024193'];
-  const row={id:'page',properties:{Manifest:rich(JSON.stringify(identity)),'Play Observation':rich(JSON.stringify({owner:'play',observation:{phase:'live',verification:null,verificationError:'Play monitor GET failed (503); no availability inferred'}}))}};const updates=[];
+  // A failed check cleared the verification; the row still belongs to this monitor.
+  const row={id:'page',properties:{Manifest:rich(JSON.stringify(own)),'Play Observation':rich(JSON.stringify({owner:'play',observation:{phase:'live',verification:null,verificationError:'Play monitor GET failed (503); no availability inferred'}}))}};const updates=[];
   const api={gh:github().gh,notion:async(path,method,body)=>{if(path.includes('/query'))return {results:[row]};updates.push(body);return {}}};
-  await monitor({repo:REPOSITORY,releasesId:'db',dryRun:false},api,{snapshot:async()=>s},{resolve:()=>newer,recorder:async()=>({pageId:'newer'})});
+  await monitor({repo:REPOSITORY,target,releasesId:'db',dryRun:false},api,{snapshot:async()=>s},{resolve:()=>newer,recorder:async()=>({pageId:'newer'})});
   assert.equal(updates.length,1);const owned=JSON.parse(text(updates[0].properties['Play Observation'])).observation;
   assert.equal(owned.replaced.by,newer.build);assert.equal(owned.verificationError,undefined);assert.equal(text(updates[0].properties['Play Error']),'');
   row.properties['Play Observation']=updates[0].properties['Play Observation'];updates.length=0;
-  await assert.rejects(()=>monitor({repo:REPOSITORY,releasesId:'db',dryRun:false},api,{snapshot:async()=>{throw Error('API unavailable')}}),/unavailable/);
+  await assert.rejects(()=>monitor({repo:REPOSITORY,target,releasesId:'db',dryRun:false},api,{snapshot:async()=>{throw Error('API unavailable')}}),/unavailable/);
   assert.equal(updates.length,0);
 });
 module.exports={identity,snapshot};

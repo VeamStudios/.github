@@ -1,6 +1,6 @@
 const fs=require('node:fs');
 const {clients,allPages,record,git,text,rich,hash,repointable}=require('./record');
-const {ownedOnly,previousObservation}=require('./ledger-columns');
+const {ownedOnly,previousObservation,OWNERS}=require('./ledger-columns');
 const {GooglePlayMonitor,snapshotBuilds,publishedBuilds,observePlay,resolveBuild,REPOSITORY}=require('./google-play');
 
 async function optional(gh,path) {try{return await gh(path)}catch(e){if(e.status===404)return null;throw e}}
@@ -39,10 +39,13 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
   const target=config.target||'android-consumer';
   // Enterprise ships the same marketing versions as consumer, which owns the GitHub tag, release and website notes.
   const ownsPublication=target==='android-consumer';
-  // Enterprise rows are also recorded at internal upload; only rows with Play evidence belong to this monitor.
-  const tracked=(row,m)=>m.target===target&&(ownsPublication||previousObservation(row.properties)?.verification?.kind==='google-play');
+  // Enterprise rows are also recorded at internal upload; only rows this monitor has written belong to it.
+  // The Play column survives a failed check (verification cleared), so the row stays tracked.
+  const tracked=(row,m)=>m.target===target&&(ownsPublication||Boolean(text(row.properties[OWNERS.play.observation])));
   const rows=await allPages(api.notion,`/data_sources/${config.releasesId}/query`,{filter:{property:'Repository',rich_text:{equals:config.repo}}});
   const result={dryRun:config.dryRun,observations:[],errors:[]};
+  // Rows recorded (or re-pointed) this run hold fresh evidence; the start-of-run manifest is stale for them.
+  const recordedRows=new Set();
   let snapshot;
   const invalidate=async(row,message)=>{
     if(config.dryRun)return;
@@ -75,6 +78,7 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
       if(prior?.phase===observation.phase&&prior.releasedAt)observation.releasedAt=prior.releasedAt;
       const recorded=await recorder({...config,...identity,repo:identity.repository,product:'Site Audit Pro',event:'release',...observation},api);
       const entry={...identity,phase:observation.phase,recording:config.dryRun?'preview':'complete',pageId:recorded.pageId||sameVersion[0]?.id};
+      for(const id of [entry.pageId,...sameVersion.map(row=>row.id)])if(id)recordedRows.add(id);
       if(observation.phase==='live'&&ownsPublication) {
         entry.github=await ensureRelease(identity,api.gh,config.dryRun);
         if(entry.pageId) {
@@ -95,7 +99,7 @@ async function monitor(config,api,play,{resolve=(build)=>resolveBuild(build,git(
   // recorded evidence, drop any stale error, and stop rechecking it.
   for(const row of rows) {
     const m=JSON.parse(text(row.properties.Manifest)||'{}'),previous=previousObservation(row.properties)||{};
-    if(!tracked(row,m)||!m.build||active.includes(m.build)||!(Number(m.build)<newest)||(previous.replaced&&!previous.verificationError))continue;
+    if(recordedRows.has(row.id)||!tracked(row,m)||!m.build||active.includes(m.build)||!(Number(m.build)<newest)||(previous.replaced&&!previous.verificationError))continue;
     const replaced={by:String(newest),at:snapshot.checkedAt,evidence:snapshot.evidence};
     result.observations.push({repository:m.repository,target:m.target,version:m.version,build:m.build,phase:'replaced',recording:config.dryRun?'preview':'complete',pageId:row.id});
     if(config.dryRun)continue;

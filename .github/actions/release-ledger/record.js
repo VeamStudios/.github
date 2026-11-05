@@ -106,7 +106,7 @@ function deployedBaseline(row) {
 function verificationProperties(config, previous, oldProperties, observedAt) {
   // A failed recheck is a new diagnostic, not evidence that the original deployment never happened.
   const retain = Boolean(config.verificationError && previous?.phase === config.phase && previous.verification);
-  const observation = { ...(previous?.website ? {website:previous.website} : {}), ...(previous?.baseline ? {baseline:previous.baseline} : {}), phase:config.phase, source:retain ? previous.source : config.source, releasedAt:config.releasedAt || previous?.releasedAt || observedAt, verification:config.verification || (retain ? previous.verification : null), ...(config.verificationError ? {verificationError:config.verificationError,verificationAttempt:{source:config.source,at:observedAt}} : {}) };
+  const observation = { ...(previous?.website ? {website:previous.website} : {}), ...(previous?.baseline ? {baseline:previous.baseline} : {}), ...(previous?.repointedFrom ? {repointedFrom:previous.repointedFrom} : {}), phase:config.phase, source:retain ? previous.source : config.source, releasedAt:config.releasedAt || previous?.releasedAt || observedAt, verification:config.verification || (retain ? previous.verification : null), ...(config.verificationError ? {verificationError:config.verificationError,verificationAttempt:{source:config.source,at:observedAt}} : {}) };
   const properties = {Observation:rich(JSON.stringify(observation))};
   if (config.verification && !config.verificationError && previous?.verificationError && text(oldProperties?.Error) === previous.verificationError) {
     const receipt = JSON.parse(text(oldProperties?.['Operations Receipt']) || '{}');

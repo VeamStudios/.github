@@ -106,7 +106,9 @@ test('a rebuilt version re-points its never-live row; a build-less version never
     assert.equal(text(result.properties.Build), '200');
     assert.equal(JSON.parse(text(result.properties.Manifest)).build, '200');
     assert.equal(JSON.parse(text(result.properties['Deploy Observation'])).observation.repointedFrom.build, '100');
-    Object.assign(row.properties, { Manifest: rich(JSON.stringify(manifest)), 'Manifest Hash': rich(hash(manifest)) });
-    await assert.rejects(record({ ...config, commit: 'HEAD~1', phase: 'uploaded', verification: undefined }, api), /different commit\/build/);
+    // A build-less row bound to another commit is never re-pointed.
+    const other = { ...manifest, commit: '0'.repeat(40) };
+    Object.assign(row.properties, { Manifest: rich(JSON.stringify(other)), 'Manifest Hash': rich(hash(other)) });
+    await assert.rejects(record({ ...config, phase: 'uploaded', verification: undefined }, api), /different commit\/build/);
   } finally { changelog.buildChangelogManifest = original; }
 });
