@@ -19,7 +19,7 @@ GitHub does not evaluate dynamic job names when a whole job is skipped
 ([tracked limitation](https://github.com/actions/runner/issues/1215)). The QA
 queue therefore starts a brief job on each caller event. Configuration validation,
 token creation and project updates still run only when that event applies the
-QA-needed label. Other events report that no queue update is needed. This adds
+QA-needed or QA-approved label. Other events report that no board update is needed. This adds
 runner startup time and changes idle queue results from skipped to successful;
 it does not execute QA or update a project on those events.
 

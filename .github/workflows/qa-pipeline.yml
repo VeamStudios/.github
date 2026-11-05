@@ -88,7 +88,8 @@ jobs:
     name: ${{ inputs.qa-queue-check-name }}
     runs-on: ubuntu-latest
     env:
-      QA_QUEUE_NEEDED: "${{ github.event.action == 'labeled' && github.event.label.name == 'bot: qa needed' }}"
+      # Board status for the QA label this event applied, or empty for any other event.
+      QA_STATUS: "${{ github.event.action == 'labeled' && github.event.label.name == 'bot: qa needed' && 'Not Started' || github.event.action == 'labeled' && github.event.label.name == 'bot: qa approved' && 'QA Approved' || '' }}"
     concurrency:
       group: qa-project-status-${{ github.repository }}-${{ github.event.pull_request.number }}
       cancel-in-progress: false
@@ -97,7 +98,7 @@ jobs:
 
     steps:
       - name: Validate QA bot configuration
-        if: env.QA_QUEUE_NEEDED == 'true'
+        if: env.QA_STATUS != ''
         run: |
           if [ -z "${{ secrets.BOT_QA_PRIVATE_KEY }}" ]; then
             echo "::error::Required workflow secret BOT_QA_PRIVATE_KEY is missing"
@@ -105,7 +106,7 @@ jobs:
           fi
 
       - name: Mint GitHub App token
-        if: env.QA_QUEUE_NEEDED == 'true'
+        if: env.QA_STATUS != ''
         id: app_token
         uses: actions/create-github-app-token@v3
         with:
@@ -113,13 +114,14 @@ jobs:
           private-key: ${{ secrets.BOT_QA_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
-      - name: Set QA project status to Not Started
-        if: env.QA_QUEUE_NEEDED == 'true'
+      - name: Set QA project status
+        if: env.QA_STATUS != ''
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app_token.outputs.token }}
           script: |
             const PROJECT_NUMBER = 26;
+            const STATUS = process.env.QA_STATUS;
 
             const pr = context.payload.pull_request;
             if (!pr?.node_id) {
@@ -154,12 +156,12 @@ jobs:
             const statusField = project?.fields.nodes.find(
               (field) => field.name === 'Status',
             );
-            const notStartedOption = statusField?.options.find(
-              (option) => option.name === 'Not Started',
+            const statusOption = statusField?.options.find(
+              (option) => option.name === STATUS,
             );
-            if (!project || !statusField || !notStartedOption) {
+            if (!project || !statusField || !statusOption) {
               core.setFailed(
-                `Project ${PROJECT_NUMBER} must contain a Status field with a Not Started option`,
+                `Project ${PROJECT_NUMBER} must contain a Status field with a ${STATUS} option`,
               );
               return;
             }
@@ -236,12 +238,12 @@ jobs:
                 projectId: project.id,
                 itemId,
                 fieldId: statusField.id,
-                optionId: notStartedOption.id,
+                optionId: statusOption.id,
               },
             );
 
             core.info(
-              `Set Project ${PROJECT_NUMBER} item ${itemId} to Not Started for ${context.repo.owner}/${context.repo.repo}#${pr.number}`,
+              `Set Project ${PROJECT_NUMBER} item ${itemId} to ${STATUS} for ${context.repo.owner}/${context.repo.repo}#${pr.number}`,
             );
 
       - name: Describe this check
@@ -252,6 +254,6 @@ jobs:
           if [ -n "$CHECK_SUMMARY" ]; then
             printf '%s\n\n' "$CHECK_SUMMARY" >> "$GITHUB_STEP_SUMMARY"
           fi
-          if [ "$QA_QUEUE_NEEDED" != "true" ]; then
-            printf '%s\n' 'No queue update needed: this event did not apply the QA-needed label.' >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$QA_STATUS" ]; then
+            printf '%s\n' 'No board update needed: this event did not apply a QA label.' >> "$GITHUB_STEP_SUMMARY"
           fi

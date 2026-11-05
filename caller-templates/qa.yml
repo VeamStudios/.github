@@ -11,6 +11,7 @@
 # - PR opened / updated → required "Work Item gate" (`Work Items:` link required for feat titles)
 # - Work Item creation is offered by the separate Notion bot check.
 # - `bot: qa needed` → add the PR to QA Project 26 and set its status to Not Started
+# - `bot: qa approved` → set its QA Project 26 status to QA Approved
 # - QA labels never merge PRs or enable auto-merge; developers decide when to merge
 # - `bot: qa needed` → QA Brief is provided by the Cursor Automation, not GitHub Actions
 #
