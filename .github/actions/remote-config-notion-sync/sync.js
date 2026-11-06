@@ -117,31 +117,31 @@ function parseServiceAccount(value) {
   throw new Error("Firebase service account must be JSON or base64-encoded JSON.");
 }
 
-// Every request here is a read or an idempotent write (queries, page PATCH, token exchange), so a repeat is safe.
 // Only network errors, 429 and 5xx are retried; any 4xx is a real error and fails at once.
+// Callers pass attempts = 1 for writes that are not safe to repeat (page creation, block appends).
 const RETRY_ATTEMPTS = 3;
-async function fetchText(fetchImpl, url, init, retryDelayMs = 1000) {
+async function fetchText(fetchImpl, url, init, retryDelayMs = 1000, attempts = RETRY_ATTEMPTS) {
   for (let attempt = 1; ; attempt++) {
     let response, text;
     try {
       response = await fetchImpl(url, init);
       text = await response.text();
     } catch (error) {
-      if (attempt >= RETRY_ATTEMPTS) throw error;
+      if (attempt >= attempts) throw error;
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs * 2 ** (attempt - 1)));
       continue;
     }
-    if (response.ok || attempt >= RETRY_ATTEMPTS || !(response.status === 429 || response.status >= 500)) return { response, text };
+    if (response.ok || attempt >= attempts || !(response.status === 429 || response.status >= 500)) return { response, text };
     await new Promise((resolve) => setTimeout(resolve, retryDelayMs * 2 ** (attempt - 1)));
   }
 }
 
-async function requestJson(fetchImpl, url, { method = "GET", headers = {}, body } = {}, retryDelayMs) {
+async function requestJson(fetchImpl, url, { method = "GET", headers = {}, body } = {}, retryDelayMs, attempts) {
   const { response, text } = await fetchText(fetchImpl, url, {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
-  }, retryDelayMs);
+  }, retryDelayMs, attempts);
   if (!response.ok) {
     throw new HttpError(`HTTP ${response.status} for ${url}: ${text.slice(0, 500)}`, response.status, text);
   }
@@ -216,6 +216,9 @@ class NotionClient {
   }
 
   request(path, options = {}) {
+    // Same rule as release-ledger's request(): repeat only reads, queries and PATCH outside /children.
+    const method = options.method || "GET";
+    const safe = method === "GET" || path.endsWith("/query") || (method === "PATCH" && !path.endsWith("/children"));
     return requestJson(this.fetchImpl, `${this.apiUrl}${path}`, {
       ...options,
       headers: {
@@ -224,7 +227,7 @@ class NotionClient {
         "Notion-Version": NOTION_VERSION,
         ...(options.headers || {}),
       },
-    }, this.retryDelayMs);
+    }, this.retryDelayMs, safe ? RETRY_ATTEMPTS : 1);
   }
 
   queryDataSource(dataSourceId, body) {
