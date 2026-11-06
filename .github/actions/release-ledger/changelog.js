@@ -106,6 +106,8 @@ function squashedBackport(commit,baseline,sha,paired,runGit,ids) {
       if(changedSections(s,runGit).headings.every(h=>headings.includes(h)))matches.add(s);
     }
   }
+  // A paired commit leaves the release, so it may only touch what the backport carried.
+  for(const s of matches)if(runGit('diff-tree','--no-commit-id','--name-only','-r',s).split('\n').some(f=>f&&!files.includes(f)))return null;
   return matches.size?[...matches]:null;
 }
 function readChangelog(ref,runGit=require('./record').git) {
