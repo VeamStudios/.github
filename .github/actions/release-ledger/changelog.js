@@ -67,10 +67,56 @@ function divergedBaseline(baseline,sha,runGit=require('./record').git,ids=patchI
   const baselineIds=ids(`${sha}..${baseline}`),shippedIds=ids(`${baseline}..${sha}`),paired=new Set(),equivalents=[];
   for(const commit of baselineOnly) {
     const id=baselineIds.get(commit),match=id&&shipped.find(s=>!paired.has(s)&&shippedIds.get(s)===id);
-    if(!match)return null;
-    paired.add(match);equivalents.push({baseline:commit,shipped:match});
+    const matches=match?[match]:squashedBackport(commit,baseline,sha,paired,runGit,ids);
+    if(!matches)return null;
+    for(const s of matches){paired.add(s);equivalents.push({baseline:commit,shipped:s})}
   }
   return {mergeBase,equivalents,commits:shipped.filter(s=>!paired.has(s))};
+}
+function changelogSections(text) {
+  const sections=new Map();let heading=null;
+  for(const line of text.split('\n')){if(/^## /.test(line)){heading=line.trim();sections.set(heading,'')}else if(heading!==null)sections.set(heading,sections.get(heading)+line+'\n')}
+  return sections;
+}
+function changedSections(commit,runGit) {
+  const before=changelogSections(readChangelog(`${commit}^`,runGit)),after=changelogSections(readChangelog(commit,runGit));
+  return {after,headings:[...new Set([...before.keys(),...after.keys()])].filter(h=>before.get(h)!==after.get(h))};
+}
+// A release-branch fix is often squashed with its CHANGELOG section into one
+// commit, while main received the code and the notes as separate commits. It
+// still shipped when every code file's change equals a shipped commit's change
+// to that file, and every CHANGELOG section it touches is identical when shipped.
+// Shipped commits that only wrote those sections are paired so they are not
+// announced again.
+function squashedBackport(commit,baseline,sha,paired,runGit,ids) {
+  const filesOf=c=>runGit('diff-tree','--no-commit-id','--name-only','-r',c).split('\n').filter(Boolean);
+  const files=filesOf(commit);
+  if(!files.length)return null;
+  const fileIds=new Map(),matches=new Set();
+  for(const file of files.filter(f=>f!=='CHANGELOG.md')) {
+    const id=ids('-1',commit,'--',file).get(commit),shippedIds=ids(`${baseline}..${sha}`,'--',file);
+    const match=id&&[...shippedIds].find(([s,shippedId])=>!paired.has(s)&&shippedId===id)?.[0];
+    if(!match)return null;
+    fileIds.set(file,id);matches.add(match);
+  }
+  let headings=[];
+  if(files.includes('CHANGELOG.md')) {
+    const changed=changedSections(commit,runGit),shippedSections=changelogSections(readChangelog(sha,runGit));
+    headings=changed.headings;
+    if(!headings.length||headings.some(h=>changed.after.get(h)!==shippedSections.get(h)))return null;
+    for(const s of runGit('rev-list','--reverse',`${baseline}..${sha}`,'--','CHANGELOG.md').split('\n').filter(Boolean)) {
+      if(paired.has(s)||filesOf(s).join('\n')!=='CHANGELOG.md')continue;
+      const own=changedSections(s,runGit).headings;
+      if(own.length&&own.every(h=>headings.includes(h)))matches.add(s);
+    }
+  }
+  // A paired commit leaves the release, so every change it made must be one the
+  // backport carried: the same per-file patch, or only the backport's CHANGELOG sections.
+  for(const s of matches)for(const file of filesOf(s)) {
+    if(file==='CHANGELOG.md'){const own=changedSections(s,runGit).headings;if(!own.length||own.some(h=>!headings.includes(h)))return null}
+    else if(!fileIds.has(file)||ids('-1',s,'--',file).get(s)!==fileIds.get(file))return null;
+  }
+  return matches.size?[...matches]:null;
 }
 function readChangelog(ref,runGit=require('./record').git) {
   // An absent path is valid for early history; an unreadable Git object is not.
