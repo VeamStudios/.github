@@ -83,14 +83,14 @@ function divergedRepo(mode) {
  git('init','-b','main');git('config','user.name','Test');git('config','user.email','test@example.com');
  const commit=message=>{git('add','.');git('commit','-m',message);return git('rev-parse','HEAD')};
  const notes='## 1.0.1\n### Fixed\n- Fix crash.\n\n## 1.0.0\n### Fixed\n- Old fix.\n';
- fs.writeFileSync('CHANGELOG.md','## 1.0.0\n### Fixed\n- Old fix.\n');fs.writeFileSync('app.js','one\n');const mergeBase=commit('release 1.0.0');
+ fs.writeFileSync('CHANGELOG.md','## 1.0.0\n### Fixed\n- Old fix.\n');fs.writeFileSync('app.js','one\n');fs.writeFileSync('lib.js','l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\n');const mergeBase=commit('release 1.0.0');
  const squashed=mode.startsWith('squashed');
  // Squashed: main takes the code and the notes as separate commits.
- fs.writeFileSync('app.js','one\ntwo\n');if(!squashed)fs.writeFileSync('CHANGELOG.md',notes);if(mode==='squashed-wider-shipped-commit')fs.writeFileSync('other.js','x\n');const hotfix=commit('fix: crash');
- let notesCommit;if(squashed){fs.writeFileSync('CHANGELOG.md',notes);notesCommit=commit('chore: 1.0.1 notes')}
+ fs.writeFileSync('app.js','one\ntwo\n');if(!squashed)fs.writeFileSync('CHANGELOG.md',notes);if(mode==='squashed-wider-shipped-commit')fs.writeFileSync('other.js','x\n');if(mode==='squashed-extra-hunk')fs.writeFileSync('lib.js','l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\n'.replace('l10','l10 extra'));const hotfix=commit('fix: crash');
+ let notesCommit;if(mode==='squashed-extra-hunk'){fs.writeFileSync('lib.js',fs.readFileSync('lib.js','utf8').replace('l1\n','L1\n'));commit('fix: header')}if(squashed){fs.writeFileSync('CHANGELOG.md',notes);notesCommit=commit('chore: 1.0.1 notes')}
  fs.writeFileSync('feature.js','feature\n');fs.writeFileSync('CHANGELOG.md','## 1.1.0\n### Fixed\n- Fix exports.\n\n'+fs.readFileSync('CHANGELOG.md','utf8'));const feature=commit('fix: exports');
  git('checkout','-q','-b','release/1.0.1',mergeBase);
- if(squashed){fs.writeFileSync('app.js','one\ntwo\n');fs.writeFileSync('CHANGELOG.md',mode==='squashed'?notes:notes.replace('Fix crash.','Fix a crash.'));commit('fix: crash (#9)')}
+ if(squashed){fs.writeFileSync('app.js','one\ntwo\n');if(mode==='squashed-extra-hunk')fs.writeFileSync('lib.js','l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\n'.replace('l1\n','L1\n'));fs.writeFileSync('CHANGELOG.md',mode==='squashed-other-notes'?notes.replace('Fix crash.','Fix a crash.'):notes);commit('fix: crash (#9)')}
  else git('cherry-pick','-x',hotfix);
  if(mode==='extra'){fs.writeFileSync('only-release.js','x\n');commit('release-only change')}
  const baseline=git('rev-parse','HEAD');git('checkout','-q','main');
@@ -102,7 +102,7 @@ function divergedApi(repo,{hotfix,feature},queried=[]) {
 }
 const notionStub=async()=>({results:[],has_more:false});
 
-for(const [name,mode] of [['is verified when every baseline-only commit was cherry-picked from the shipped history','cherry-pick'],['is verified when a squashed backport shipped as separate code and notes commits','squashed'],['still needs a reviewed provenance mapping when it has a release-only commit','extra'],['still needs a reviewed provenance mapping when its squashed notes differ from what shipped','squashed-other-notes'],['still needs a reviewed provenance mapping when the matching shipped commit also changed other files','squashed-wider-shipped-commit']])
+for(const [name,mode] of [['is verified when every baseline-only commit was cherry-picked from the shipped history','cherry-pick'],['is verified when a squashed backport shipped as separate code and notes commits','squashed'],['still needs a reviewed provenance mapping when it has a release-only commit','extra'],['still needs a reviewed provenance mapping when its squashed notes differ from what shipped','squashed-other-notes'],['still needs a reviewed provenance mapping when the matching shipped commit also changed other files','squashed-wider-shipped-commit'],['still needs a reviewed provenance mapping when the matching shipped commit changed a carried file differently','squashed-extra-hunk']])
 test(`a diverged release-branch baseline ${name}`,async()=>{
  const cwd=process.cwd();let dir;
  try{
@@ -110,7 +110,7 @@ test(`a diverged release-branch baseline ${name}`,async()=>{
   assert.ok(!require('./record').ancestor(r.baseline,r.feature));
   const m=await buildManifest({repo,product:'Site Audit Pro',target:'web',version:'v1.1.0',commit:r.feature,event:'release',source:'https://github.com/run'},divergedApi(repo,r,queried),r.baseline,notionStub);
   assert.equal(m.baseline,r.baseline);
-  if(mode==='extra'||mode==='squashed-other-notes'||mode==='squashed-wider-shipped-commit'){assert.equal(m.provenanceComplete,false);assert.equal(m.divergedBaseline,undefined);assert.deepEqual(m.changes,[]);assert.match(m.issues.join('\n'),/Missing verified production baseline/);return}
+  if(['extra','squashed-other-notes','squashed-wider-shipped-commit','squashed-extra-hunk'].includes(mode)){assert.equal(m.provenanceComplete,false);assert.equal(m.divergedBaseline,undefined);assert.deepEqual(m.changes,[]);assert.match(m.issues.join('\n'),/Missing verified production baseline/);return}
   assert.equal(m.provenanceComplete,true);
   const shipped=mode==='squashed'?[r.hotfix,r.notesCommit]:[r.hotfix];
   assert.deepEqual(m.divergedBaseline,{mergeBase:r.mergeBase,equivalents:shipped.map(s=>({baseline:r.baseline,shipped:s}))});

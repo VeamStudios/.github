@@ -89,25 +89,33 @@ function changedSections(commit,runGit) {
 // Shipped commits that only wrote those sections are paired so they are not
 // announced again.
 function squashedBackport(commit,baseline,sha,paired,runGit,ids) {
-  const files=runGit('diff-tree','--no-commit-id','--name-only','-r',commit).split('\n').filter(Boolean);
+  const filesOf=c=>runGit('diff-tree','--no-commit-id','--name-only','-r',c).split('\n').filter(Boolean);
+  const files=filesOf(commit);
   if(!files.length)return null;
-  const matches=new Set();
+  const fileIds=new Map(),matches=new Set();
   for(const file of files.filter(f=>f!=='CHANGELOG.md')) {
     const id=ids('-1',commit,'--',file).get(commit),shippedIds=ids(`${baseline}..${sha}`,'--',file);
     const match=id&&[...shippedIds].find(([s,shippedId])=>!paired.has(s)&&shippedId===id)?.[0];
     if(!match)return null;
-    matches.add(match);
+    fileIds.set(file,id);matches.add(match);
   }
+  let headings=[];
   if(files.includes('CHANGELOG.md')) {
-    const {after,headings}=changedSections(commit,runGit),shippedSections=changelogSections(readChangelog(sha,runGit));
-    if(!headings.length||headings.some(h=>after.get(h)!==shippedSections.get(h)))return null;
+    const changed=changedSections(commit,runGit),shippedSections=changelogSections(readChangelog(sha,runGit));
+    headings=changed.headings;
+    if(!headings.length||headings.some(h=>changed.after.get(h)!==shippedSections.get(h)))return null;
     for(const s of runGit('rev-list','--reverse',`${baseline}..${sha}`,'--','CHANGELOG.md').split('\n').filter(Boolean)) {
-      if(paired.has(s)||runGit('diff-tree','--no-commit-id','--name-only','-r',s)!=='CHANGELOG.md')continue;
-      if(changedSections(s,runGit).headings.every(h=>headings.includes(h)))matches.add(s);
+      if(paired.has(s)||filesOf(s).join('\n')!=='CHANGELOG.md')continue;
+      const own=changedSections(s,runGit).headings;
+      if(own.length&&own.every(h=>headings.includes(h)))matches.add(s);
     }
   }
-  // A paired commit leaves the release, so it may only touch what the backport carried.
-  for(const s of matches)if(runGit('diff-tree','--no-commit-id','--name-only','-r',s).split('\n').some(f=>f&&!files.includes(f)))return null;
+  // A paired commit leaves the release, so every change it made must be one the
+  // backport carried: the same per-file patch, or only the backport's CHANGELOG sections.
+  for(const s of matches)for(const file of filesOf(s)) {
+    if(file==='CHANGELOG.md'){const own=changedSections(s,runGit).headings;if(!own.length||own.some(h=>!headings.includes(h)))return null}
+    else if(!fileIds.has(file)||ids('-1',s,'--',file).get(s)!==fileIds.get(file))return null;
+  }
   return matches.size?[...matches]:null;
 }
 function readChangelog(ref,runGit=require('./record').git) {
