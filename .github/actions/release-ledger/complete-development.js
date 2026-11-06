@@ -34,7 +34,10 @@ async function completeDevelopment(config, api) {
     // Operational projects span products and do not complete a client platform.
     if (props.Type?.select?.name === 'Product Ops') { skipped.push({ id, reason: 'Product Ops has no customer platform completion' }); continue; }
     const products = props.Product?.relation || [];
-    if (props.Product?.has_more || products.length !== 1 || normalize(products[0].id) !== mapping.product) throw new Error('Work Item product does not match repository');
+    // An empty Product is filled from the repository in the same update; a different single product is skipped, not fatal.
+    if (props.Product?.has_more || products.length > 1) throw new Error(`Work Item ${id} has several Products; set one Product that matches the repository`);
+    if (products.length === 1 && normalize(products[0].id) !== mapping.product) { skipped.push({ id, reason: 'Work Item Product is a different product, not this repository\'s product' }); continue; }
+    const fillProduct = products.length === 0;
     if (['Rejected', 'Deferred', 'Duplicate'].includes(props['Work Item Status']?.status?.name)) { skipped.push({ id, reason: 'Work Item is inactive' }); continue; }
     const property = `${mapping.platform} Dev Status`;
     const current = props[property]?.select?.name;
@@ -47,7 +50,7 @@ async function completeDevelopment(config, api) {
     // Migrate evidence-only records once. Subsequent retries cannot finish a new development cycle.
     const to = same && current === 'Released' ? 'Released' : 'Done';
     const evidence = { repository: config.repo, pr: pr.number, head: pr.head.sha, mergeCommit: pr.merge_commit_sha, mergedAt: pr.merged_at, source: pr.html_url, scope: same ? previous.scope || '' : '', targets: same ? previous.targets || [] : [], doneOnMerge: true };
-    const properties = { [property]: select(to) };
+    const properties = { [property]: select(to), ...(fillProduct ? { Product: { relation: [{ id: mapping.product }] } } : {}) };
     const written = config.mode === 'live' && config.lifecycleWrites === true;
     if (written) {
       // Persist the retry checkpoint before the status write, then confirm it.
@@ -55,7 +58,7 @@ async function completeDevelopment(config, api) {
       await api.notion(`/pages/${id}`, 'PATCH', { properties });
       await writeState(api.notion,id,`development-${mapping.platform}`,{...evidence,statusApplied:true},text(props.Name));
     }
-    changes.push({ id, property, from: current, to, source: pr.html_url, written });
+    changes.push({ id, property, from: current, to, source: pr.html_url, written, ...(fillProduct ? { productFilled: true } : {}) });
   }
   return { changes, skipped };
 }

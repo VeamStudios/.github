@@ -51,9 +51,18 @@ test('other Work Item open PR does not block, and PR without Work Items does not
   await completeDevelopment(f.config, f.api); assert.equal(f.patches.length, 1);
   const empty = fixture(); empty.pr.body = 'Fix a bug'; await completeDevelopment(empty.config, empty.api); assert.equal(empty.patches.length, 0);
 });
-test('wrong product, unknown repo and non-Work-Item page fail without mutation', async () => {
-  for (const change of [f => { f.row.properties.Product.relation[0].id = 'f'.repeat(32); }, f => { f.row.parent.data_source_id = 'other'; }, f => { f.config.repo = 'VeamStudios/SiteAuditPro-Backend'; }]) {
+test('several products, unknown repo and non-Work-Item page fail without mutation', async () => {
+  for (const change of [f => { f.row.properties.Product.relation.push({ id: 'f'.repeat(32) }); }, f => { f.row.parent.data_source_id = 'other'; }, f => { f.config.repo = 'VeamStudios/SiteAuditPro-Backend'; }]) {
     const f = fixture(); change(f); await assert.rejects(completeDevelopment(f.config, f.api)); assert.equal(f.patches.length, 0);
+  }
+});
+test('empty Product is filled in the same update; a different Product is skipped without failing', async () => {
+  for (const [relation, patched, reason] of [[[], true, undefined], [[{ id: 'f'.repeat(32) }], false, /different product/]]) {
+    const f = fixture(); f.row.properties.Product = { relation };
+    const result = await completeDevelopment(f.config, f.api);
+    assert.equal(f.patches.some(p => p.Product?.relation?.[0]?.id === REPOSITORIES[repo].product), patched);
+    if (patched) assert.equal(f.row.properties['Web Dev Status'].select.name, 'Done');
+    else { assert.equal(f.patches.length, 0); assert.match(result.skipped[0].reason, reason); }
   }
 });
 test('unrelated open PR placeholders do not abort completion', async () => {
@@ -102,9 +111,9 @@ test('Product Ops skips platform completion even when it spans products', async 
   assert.equal(f.patches.length, 0); assert.match(result.skipped[0].reason, /Product Ops/);
 });
 test('unknown Work Item types still enforce product identity', async () => {
-  const f = fixture(); f.row.properties.Type = select('Unknown'); f.row.properties.Product.relation = [];
-  await assert.rejects(completeDevelopment(f.config, f.api), /product does not match/);
-  assert.equal(f.patches.length, 0);
+  const f = fixture(); f.row.properties.Type = select('Unknown'); f.row.properties.Product.relation = [{ id: 'f'.repeat(32) }];
+  const result = await completeDevelopment(f.config, f.api);
+  assert.match(result.skipped[0].reason, /different product/); assert.equal(f.patches.length, 0);
 });
 
  test('an evidence-only legacy record is repaired once and retries preserve subsequent development', async () => {
