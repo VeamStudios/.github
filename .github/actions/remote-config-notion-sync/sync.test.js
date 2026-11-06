@@ -5,6 +5,7 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const {
   buildPageProperties,
+  NotionClient,
   remoteConfigEvidence,
   remoteConfigValue,
   resolveProductPageId,
@@ -354,6 +355,17 @@ async function testDryRunDoesNotUpdate() {
   assert.equal(notion.updates.length, 0);
 }
 
+async function testNotionRetriesServerErrorsOnly() {
+  // Hourly monitors must survive a single 5xx/429, but a 4xx (bad token, bad request) fails at once.
+  for (const [statuses, calls, ok] of [[[504, 200], 2, true], [[429, 503, 200], 3, true], [[503, 503, 503, 200], 3, false], [[401, 200], 1, false]]) {
+    let n = 0;
+    const fetchImpl = async () => { const status = statuses[n++]; return { ok: status < 400, status, text: async () => "{}" }; };
+    const notion = new NotionClient({ token: "t", fetchImpl, retryDelayMs: 0 });
+    await notion.queryDataSource("ds", {}).then(() => assert.ok(ok), () => assert.ok(!ok));
+    assert.equal(n, calls);
+  }
+}
+
 async function run() {
   await testRemoteConfigValuesMirrorExactly();
   await testProductSlugResolvesPageId();
@@ -367,6 +379,7 @@ async function run() {
   await testFailedReadsNeverClaimFreshness();
   await testMissingCredentialsAndMalformedTemplates();
   await testLiveUploadWithNothingToObserveIsNoOp();
+  await testNotionRetriesServerErrorsOnly();
   await testNotionReadFailureIsReported();
   await testPageFailureDoesNotDiscardOtherUpdates();
   await testCommandExitStatusAndOutputs();
