@@ -34,15 +34,41 @@ on:
         type: string
     secrets:
       BOT_RELEASE_PRIVATE_KEY:
-        description: "PEM private key for the Release Bot GitHub App"
-        required: true
+        description: "PEM private key for existing non-Dependabot PR builds"
+        required: false
+      CI_DEPENDENCIES_PRIVATE_KEY:
+        description: "Read-only private-dependency app key; configure as a Dependabot secret"
+        required: false
 
 jobs:
   build:
     name: ${{ inputs.job-name }}
     runs-on: ${{ inputs.xcode_runner || vars.XCODE_RUNNER }}
+    env:
+      USE_DEPENDENCY_APP: ${{ secrets.CI_DEPENDENCIES_PRIVATE_KEY != '' }}
     steps:
+      - name: Validate Dependabot credentials
+        if: ${{ github.actor == 'dependabot[bot]' && env.USE_DEPENDENCY_APP != 'true' }}
+        run: |
+          echo '::error::Configure CI_DEPENDENCIES_PRIVATE_KEY as a Dependabot secret and CI_DEPENDENCIES_CLIENT_ID as a repository variable. Do not expose the release app key.'
+          exit 1
+
+      - name: Mint read-only dependency token
+        if: ${{ env.USE_DEPENDENCY_APP == 'true' }}
+        id: dependency_token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CI_DEPENDENCIES_CLIENT_ID }}
+          private-key: ${{ secrets.CI_DEPENDENCIES_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: |
+            ImageCaching-SAP
+            DrawSignature-iOS
+            Annotator-SAP
+          permission-contents: read
+
       - name: Mint GitHub App token
+        if: ${{ env.USE_DEPENDENCY_APP != 'true' && github.actor != 'dependabot[bot]' }}
         id: app_token
         uses: actions/create-github-app-token@v3
         with:
@@ -59,17 +85,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          token: ${{ steps.app_token.outputs.token }}
+          # The dependency app deliberately cannot read the caller repository.
+          token: ${{ github.token }}
+          persist-credentials: false
 
       - name: Private GitHub dependencies
+        env:
+          DEPENDENCY_TOKEN: ${{ steps.dependency_token.outputs.token || steps.app_token.outputs.token }}
         run: |
-          git config --global user.name 'Veam Bot'
-          git config --global user.email 'veamstudios@users.noreply.github.com'
-          echo "machine github.com login 'Veam Bot' password ${{ steps.app_token.outputs.token }}" > ~/.netrc
-          chmod 600 ~/.netrc
+          set -euo pipefail
+          test -n "$DEPENDENCY_TOKEN"
+          backup="$(mktemp -d "$RUNNER_TEMP/ios-netrc.XXXXXX")"
+          echo "NETRC_BACKUP=$backup" >> "$GITHUB_ENV"
+          if [ -e "$HOME/.netrc" ]; then
+            cp -p "$HOME/.netrc" "$backup/original"
+          fi
+          umask 077
+          printf 'machine github.com login x-access-token password %s\n' "$DEPENDENCY_TOKEN" > "$HOME/.netrc"
+          chmod 600 "$HOME/.netrc"
 
       - name: Build
         run: xcodebuild ${{ inputs.xcodebuild_args }}
+
+      - name: Restore private dependency credentials
+        if: ${{ always() && env.NETRC_BACKUP != '' }}
+        run: |
+          set -euo pipefail
+          if [ -f "$NETRC_BACKUP/original" ]; then
+            cp -p "$NETRC_BACKUP/original" "$HOME/.netrc"
+          else
+            rm -f "$HOME/.netrc"
+          fi
+          rm -rf "$NETRC_BACKUP"
 
       - name: Describe this check
         if: ${{ always() && inputs.job-summary != '' }}
