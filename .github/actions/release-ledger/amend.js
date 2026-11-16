@@ -12,8 +12,13 @@ async function amend(config,api,build=buildChangelogManifest){
   const candidate=config.initialSnapshot?await require('./initial-snapshot').initialSnapshot(config,original,api.gh):await build({...config,target:original.target,product:original.product,version:original.version,build:original.build,commit:original.commit,event:original.event,source:original.source},api.gh,original.baseline,api.notion);
   ledger.source=reviewedSource(row.properties);
   const source=ledger.source?.manifest||original;
-  // A posted message is frozen in its Slack receipt and never reposts, so a later recheck
-  // (for example one that now resolves source PRs) may refresh the Notion record freely.
+  // Announced entries keep their wording; provenance (source PRs, Work Items, flags) may refresh,
+  // for example when a later recheck resolves PRs that were unknown at posting time.
+  for(const id of new Set(ledger.batches.flatMap(b=>b.ids))) {
+    const prior=source.changes.find(c=>c.id===id),next=candidate.changes.find(c=>c.id===id);
+    const wording=c=>c&&Object.fromEntries(['id','summary','heading','kind','limitations'].map(k=>[k,c[k]]));
+    if(!prior||!next||hash(wording(prior))!==hash(wording(next)))throw new Error('A supplement cannot rewrite announced entries. Queue a correction to that message instead.');
+  }
   // Preserve the display of announced Work Items without freezing stale delivery contracts.
   const announcedItems=new Set(source.changes.filter(c=>ledger.batches.some(b=>b.ids.includes(c.id))).flatMap(c=>c.workItems));
   candidate.workItemSnapshots=candidate.workItemSnapshots.map(w=>{
