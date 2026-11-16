@@ -85,9 +85,10 @@ function changedSections(commit,runGit) {
 // A release-branch fix is often squashed with its CHANGELOG section into one
 // commit, while main received the code and the notes as separate commits. It
 // still shipped when every code file's change equals a shipped commit's change
-// to that file, and every CHANGELOG section it touches is identical when shipped.
-// Shipped commits that only wrote those sections are paired so they are not
-// announced again.
+// to that file, and every CHANGELOG section it touches was identical in the
+// shipped history. That can be before the shipped tip: main may reword an old
+// release's notes after the backport. Shipped commits that only wrote those
+// sections are paired so they are not announced again.
 function squashedBackport(commit,baseline,sha,paired,runGit,ids) {
   const filesOf=c=>runGit('diff-tree','--no-commit-id','--name-only','-r',c).split('\n').filter(Boolean);
   const files=filesOf(commit);
@@ -101,10 +102,11 @@ function squashedBackport(commit,baseline,sha,paired,runGit,ids) {
   }
   let headings=[];
   if(files.includes('CHANGELOG.md')) {
-    const changed=changedSections(commit,runGit),shippedSections=changelogSections(readChangelog(sha,runGit));
+    const changed=changedSections(commit,runGit),notesCommits=runGit('rev-list','--reverse',`${baseline}..${sha}`,'--','CHANGELOG.md').split('\n').filter(Boolean);
     headings=changed.headings;
-    if(!headings.length||headings.some(h=>changed.after.get(h)!==shippedSections.get(h)))return null;
-    for(const s of runGit('rev-list','--reverse',`${baseline}..${sha}`,'--','CHANGELOG.md').split('\n').filter(Boolean)) {
+    const shippedVersions=[sha,...notesCommits].map(ref=>changelogSections(readChangelog(ref,runGit)));
+    if(!headings.length||headings.some(h=>!shippedVersions.some(v=>v.get(h)===changed.after.get(h))))return null;
+    for(const s of notesCommits) {
       if(paired.has(s)||filesOf(s).join('\n')!=='CHANGELOG.md')continue;
       const own=changedSections(s,runGit).headings;
       if(own.length&&own.every(h=>headings.includes(h)))matches.add(s);
