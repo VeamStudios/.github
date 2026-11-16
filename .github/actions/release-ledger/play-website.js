@@ -24,7 +24,6 @@ function mergeSection(before,section,version) {
   const sections=sectionMap(before),key=version.replace(/^v/,'');
   if(sections.has(key)) {
     // The website already shows this version: never publish it twice.
-    if(sections.get(key)!==section.trim())console.warn(`Website notes for ${key} differ from CHANGELOG.md; left unchanged`);
     return before;
   }
   const first=before.search(/^## /m);
@@ -133,7 +132,10 @@ async function publishWebsite(pageId,config,api,{fetcher=fetch}={}) {
       receipt.commit=merged.sha;
     } else {
       // The website already lists this version (by hand or an earlier run): never publish it twice.
-      return finish({...receipt,...(pr?{pullRequest:pr.number}:{}),state:'published',commit:(await api.gh(`/repos/${WEBSITE}/git/ref/heads/main`)).object.sha,reason:'Website already lists this version'});
+      // A leftover bot PR is closed so it cannot merge a second copy later.
+      if(pr?.state==='open')await api.gh(`/repos/${WEBSITE}/pulls/${pr.number}`,'PATCH',{state:'closed'});
+      const differs=sectionMap(before).get(m.version.replace(/^v/,''))!==source.section.trim();
+      return finish({...receipt,...(pr?{pullRequest:pr.number}:{}),state:'published',commit:(await api.gh(`/repos/${WEBSITE}/git/ref/heads/main`)).object.sha,reason:differs?'Website already lists this version with different notes; left unchanged':'Website already lists this version'});
     }
     await publicationReceipt(row,api,receipt);
   }

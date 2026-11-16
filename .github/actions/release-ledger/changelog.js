@@ -135,14 +135,16 @@ async function provenance(config,gh,sha,baseline,notion,website) {
 function sectionChanges(config,raw,contexts) {
   const {hash}=require('./record'),{clean}=require('./customer-notes');
   const version=config.version.replace(/^v/,'');
+  const seen=new Map();
   return parseChangelog(raw.replace(/<!--[^]*?-->/g,'')).filter(e=>e.version===version).map(entry=>{
     const customer=['New','Changed','Fixed'].includes(entry.heading),summary=customer?clean(entry.summary):entry.summary.trim();
     const sources=contexts.filter(x=>entry.prRefs.some(p=>p.repository===config.repo&&p.number===x.pr.number));
     const sourcePrs=sources.map(x=>x.pr.number).sort((a,b)=>a-b),review=sources.find(x=>x.approved);
     const kind=!customer?'internal':entry.heading==='Fixed'?'fix':'feature';
-    const id=digest({repository:config.repo,version,heading:entry.heading,entry:identity(entry)});
+    const base={repository:config.repo,version,heading:entry.heading,entry:identity(entry)},n=seen.get(digest(base))||0;seen.set(digest(base),n+1);
+    const id=digest(n?{...base,occurrence:n}:base);
     return {id,kind,summary,heading:entry.heading,sourceVersion:version,audience:'Users of this production target',limitations:entry.previewTag?`Preview: ${entry.previewTag}`:'',scope:`changelog-${id.slice(0,24)}`,targets:[config.target],availabilityMode:'work-item',audienceGate:false,requiredReleaseKeys:[],workItems:entry.workItems,pr:sourcePrs[0]||0,noteHash:hash({summary,heading:entry.heading,sourcePrs}),approved:Boolean(review),reviewEvidence:review?.pr.html_url||'',blocked:[],flagKeys:entry.flagKeys,gateKeys:[],sourcePrs};
-  }).filter((c,i,all)=>c.summary&&all.findIndex(o=>o.id===c.id)===i);
+  }).filter(c=>c.summary);
 }
 async function buildChangelogManifest(config,gh,baseline,notion) {
   const {git,releaseKey}=require('./record');
