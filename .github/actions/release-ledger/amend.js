@@ -12,20 +12,25 @@ async function amend(config,api,build=buildChangelogManifest){
   const candidate=config.initialSnapshot?await require('./initial-snapshot').initialSnapshot(config,original,api.gh):await build({...config,target:original.target,product:original.product,version:original.version,build:original.build,commit:original.commit,event:original.event,source:original.source},api.gh,original.baseline,api.notion);
   ledger.source=reviewedSource(row.properties);
   const source=ledger.source?.manifest||original;
-  for(const id of new Set(ledger.batches.flatMap(b=>b.ids))) {
+  // Announced entries keep their wording. Their provenance may only gain information, for example
+  // when a later recheck resolves PRs; a rebuild that lost it (GitHub outage, unconfirmed PR) keeps what was posted.
+  const announced=new Set(ledger.batches.flatMap(b=>b.ids));
+  for(const id of announced) {
     const prior=source.changes.find(c=>c.id===id),next=candidate.changes.find(c=>c.id===id);
-    const display=c=>c&&Object.fromEntries(['id','summary','heading','kind','workItems','flagKeys','limitations','sourcePrs'].map(k=>[k,c[k]]));
-    if(!prior||!next||hash(display(prior))!==hash(display(next)))throw new Error('A supplement cannot rewrite announced entries. Queue a correction to that message instead.');
-    candidate.changes[candidate.changes.indexOf(next)]=prior;
+    const wording=c=>c&&Object.fromEntries(['id','summary','heading','kind','limitations'].map(k=>[k,c[k]]));
+    if(!prior||!next||hash(wording(prior))!==hash(wording(next)))throw new Error('A supplement cannot rewrite announced entries. Queue a correction to that message instead.');
+    const gains=(prior.sourcePrs||[]).every(n=>(next.sourcePrs||[]).includes(n))&&(next.approved||!prior.approved);
+    if(!gains)for(const k of ['pr','noteHash','approved','reviewEvidence','sourcePrs'])next[k]=prior[k];
   }
-  // Preserve the display of announced Work Items without freezing stale delivery contracts.
-  const announcedItems=new Set(source.changes.filter(c=>ledger.batches.some(b=>b.ids.includes(c.id))).flatMap(c=>c.workItems));
-  candidate.workItemSnapshots=candidate.workItemSnapshots.map(w=>{
-    const old=source.workItemSnapshots.find(old=>old.id===w.id);
-    return old&&announcedItems.has(w.id)?{...w,title:old.title,description:old.description,url:old.url}:w;
-  });
+  // Announced Work Items keep their displayed snapshot, even when the rebuild could not fetch it.
+  const announcedItems=new Set(source.changes.filter(c=>announced.has(c.id)).flatMap(c=>c.workItems));
+  const kept=source.workItemSnapshots.filter(w=>announcedItems.has(w.id));
+  candidate.workItemSnapshots=[
+    ...candidate.workItemSnapshots.map(w=>{const old=kept.find(old=>old.id===w.id);return old?{...w,title:old.title,description:old.description,url:old.url}:w}),
+    ...kept.filter(old=>!candidate.workItemSnapshots.some(w=>w.id===old.id))
+  ];
   ledger.source={manifest:candidate,digest:hash(candidate),evidence:candidate.wordingSource?.url||`https://github.com/${original.repository}/commit/${original.commit}`};
-  const preview={pageId:row.id,dryRun:config.dryRun!==false,source:ledger.source.evidence,wordingSource:candidate.wordingSource||null,originalManifestHash:hash(original),manifestHash:ledger.source.digest,changes:candidate.changes.map(c=>({id:c.id,summary:c.summary,workItems:c.workItems,approved:c.approved,reasons:c.blocked})),issues:candidate.issues};
+  const preview={pageId:row.id,dryRun:config.dryRun!==false,source:ledger.source.evidence,wordingSource:candidate.wordingSource||null,originalManifestHash:hash(original),manifestHash:ledger.source.digest,changes:candidate.changes.map(c=>({id:c.id,summary:c.summary,workItems:c.workItems,approved:c.approved})),issues:candidate.issues};
   if(config.dryRun!==false)return preview;
   const current=await api.notion(`/pages/${row.id}`);
   if(text(current.properties['Manifest Hash'])!==text(row.properties['Manifest Hash'])||text(current.properties.Manifest)!==text(row.properties.Manifest)||text(current.properties.Announcements)!==text(row.properties.Announcements))throw new Error('Release changed during note preparation; inspect before retrying');

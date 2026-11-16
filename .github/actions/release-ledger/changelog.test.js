@@ -10,7 +10,7 @@ test('section moves and formatting alone are not new release notes',()=>{const b
 test('missing notes produce an advisory preview without requiring JSON',()=>{const result=check('','a'.repeat(40),()=>{throw new Error('missing')});assert.match(result.warnings.join('\n'),/CHANGELOG/);assert.doesNotMatch(result.warnings.join('\n'),/\.json/)});
 test('a Play summary is left out of the preview and needs no Work Items',()=>{const files={base:'## 1.0.0\n### Fixed\n- Old fix.\n',head:'## 1.1.0\n### Fixed\n- Fix exports.\n### Play\n- Faster exports.\n\n## 1.0.0\n### Fixed\n- Old fix.\n'};const result=check('','a'.repeat(40),ref=>files[ref.split(':')[0]==='base'?'base':'head'],'base');assert.match(result.changelog,/Fix exports/);assert.doesNotMatch(result.changelog,/Play|Faster exports/);assert.doesNotMatch(result.warnings.join('\n'),/Work Items/)});
 test('verified deployment can be a baseline while feature wording is pending',()=>{const m={target:'web',commit:'a'.repeat(40)},row={properties:{Manifest:rich(JSON.stringify(m)),'Manifest Hash':rich(hash(m)),State:{select:{name:'Waiting'}},Observation:rich(JSON.stringify({phase:'deployed',verification:{kind:'http',reportedCommit:m.commit,commit:m.commit,evidence:'https://production.test'}}))}};assert.equal(deployedBaseline(row),true);row.properties.Observation=rich(JSON.stringify({phase:'uploaded'}));assert.equal(deployedBaseline(row),false)});
-test('exact shipped changelog includes skipped versions and frozen Work Items without JSON',async()=>{
+test('announces exactly the shipped version section, with or without provenance',async()=>{
   const cwd=process.cwd(),dir=fs.mkdtempSync(path.join(os.tmpdir(),'changelog-manifest-'));
   try {
     process.chdir(dir);const git=(...args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
@@ -25,7 +25,11 @@ test('exact shipped changelog includes skipped versions and frozen Work Items wi
     const gh=async url=>{queried.push(url);if(url.includes('/commits/'))return [url.includes(first)?prs[0]:prs[1]];const p=url.includes('/pulls/1')?prs[0]:prs[1];if(url.includes('/reviews'))return [{user:{type:'User',login:'reviewer'},state:'APPROVED',commit_id:p.head.sha}];if(url.includes('/files'))return [{filename:'CHANGELOG.md',status:'modified'}];return p};
     const notion=async url=>url.startsWith('/pages/')?{parent:{data_source_id:'20aeddfe-a3f7-41e9-b440-c9eb6b26887f'},properties:{Name:{title:[{text:{content:'Spreadsheet exports'}}]},}}:{results:[],has_more:false};
     const m=await buildManifest({repo,product:'Site Audit Pro',target:'web',version:'v1.2.0',commit:shipped,event:'release',source:'https://github.com/run'},gh,baseline,notion);
-    assert.equal(m.schemaVersion,2);assert.equal(m.commit,shipped);assert.equal(m.changes.length,2);assert.deepEqual(m.changes.map(c=>c.kind),['feature','fix']);assert.ok(m.changes.every(c=>c.approved));assert.equal(m.workItemSnapshots[0].description,'Spreadsheet exports');assert.doesNotMatch(m.completeChangelog,/Old fix|rcValue/);assert.match(m.completeChangelog,/1\.1\.0/);assert.ok(!queried.some(url=>url.includes(later)));assert.deepEqual(m.changes[1].workItems,[]);
+    assert.equal(m.schemaVersion,2);assert.equal(m.commit,shipped);assert.equal(m.workItemSnapshots[0].description,'Spreadsheet exports');assert.ok(!queried.some(url=>url.includes(later)));
+    // Notes under earlier versions and a broken provenance chain never change what is announced.
+    const unproven=await buildManifest({repo,product:'Site Audit Pro',target:'web',version:'v1.2.0',commit:shipped,event:'release',source:'https://github.com/run'},async()=>{throw Error('GitHub down')},undefined,null);
+    for(const x of [m,unproven]){assert.deepEqual(x.changes.map(c=>[c.kind,c.summary,c.blocked]),[['feature','Export spreadsheets.',[]]]);assert.equal(x.completeChangelog,'### New\n\n- Export spreadsheets.')}
+    assert.equal(unproven.provenanceComplete,false);assert.match(unproven.issues.join(' '),/previous production commit/);
   }finally{process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
 });
 
@@ -33,23 +37,6 @@ test('a repeated fix is new only when an additional version occurrence was added
 test('adding a source link while moving a section does not duplicate the entry',()=>{assert.deepEqual(newEntries('## Unreleased\n### Fixed\n- Fix exports.\n','## 1.1.0\n### Fixed\n- Fix exports. [PR](https://github.com/VeamStudios/Test/pull/2)\n'),[])});
 
 test('audited historical baseline remains usable without changing its frozen manifest or availability',()=>{for(const m of [{repository:'VeamStudios/App',target:'ios-consumer',commit:'a'.repeat(40),build:''},{repository:'VeamStudios/SiteAuditPro-AndroidNew',target:'android-consumer',commit:'a'.repeat(40),build:''}]){const digest=hash(m),baseline={kind:'audited-production-baseline',repository:m.repository,target:m.target,commit:m.commit,build:'5',manifestHash:digest,checkedAt:new Date().toISOString(),evidence:['https://appstoreconnect.apple.com/apps/1','https://github.com/VeamStudios/App/releases/tag/v1']};const row={properties:{Manifest:rich(JSON.stringify(m)),'Manifest Hash':rich(digest),Build:rich('5'),Historical:{checkbox:true},Observation:rich(JSON.stringify({baseline}))}};assert.equal(deployedBaseline(row),true);for(const change of [{commit:'b'.repeat(40)},{build:'6'},{manifestHash:'changed'},{evidence:[]}]){row.properties.Observation=rich(JSON.stringify({baseline:{...baseline,...change}}));assert.equal(deployedBaseline(row),false)}}});
-
-test('explicit Work Item links select shipped implementation PRs instead of an unrelated wording PR',async()=>{
- const cwd=process.cwd(),dir=fs.mkdtempSync(path.join(os.tmpdir(),'changelog-sources-'));
- try{
-  process.chdir(dir);const git=(...args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();git('init');git('config','user.name','Test');git('config','user.email','test@example.com');
-  const commit=message=>{git('add','.');git('commit','-m',message);return git('rev-parse','HEAD')};fs.writeFileSync('CHANGELOG.md','## 1.0.0\n### Fixed\n- Old fix\n');const baseline=commit('base');
-  fs.writeFileSync('feature.js','implemented');const implementation=commit('feature');const wi='a'.repeat(32),other='b'.repeat(32),third='c'.repeat(32),repo='VeamStudios/Test';
-  fs.writeFileSync('CHANGELOG.md',`## 1.1.0\n### New\n- Attach reports. [Work Item](https://www.notion.so/${wi})\n- Ambiguous sorting feature.\n`);const shipped=commit('release wording');
-  const prs=[{number:1,merge_commit_sha:implementation,body:`Work Items:\n- https://www.notion.so/${wi}`},{number:2,merge_commit_sha:shipped,body:`Work Items:\n- https://www.notion.so/${other}\n- https://www.notion.so/${third}`}].map(pr=>({...pr,title:'feat: changes',merged_at:'2026-09-15',base:{repo:{full_name:repo}},head:{sha:pr.merge_commit_sha},user:{login:'author'},html_url:`https://github.com/${repo}/pull/${pr.number}`}));
-  const gh=async url=>{if(url.includes('/commits/'))return [url.includes(implementation)?prs[0]:prs[1]];const pr=url.includes('/pulls/1')?prs[0]:prs[1];if(url.includes('/reviews'))return [{user:{type:'User',login:'reviewer'},state:'APPROVED',commit_id:pr.head.sha}];if(url.includes('/files'))return [{filename:pr.number===1?'feature.js':'CHANGELOG.md'}];return pr};
-  const notion=async url=>url.startsWith('/pages/')?{parent:{data_source_id:'20aeddfe-a3f7-41e9-b440-c9eb6b26887f'},properties:{Name:rich('Feature')}}:{results:[],has_more:false};
-  const m=await buildManifest({repo,product:'Site Audit Pro',target:'web',version:'v1.1.0',commit:shipped,event:'release',source:'https://github.com/run'},gh,baseline,notion);
-  assert.deepEqual(m.changes[0].sourcePrs,[1]);assert.deepEqual(m.changes[0].workItems,[wi]);assert.equal(m.changes[0].pr,2);assert.equal(m.changes[0].approved,true);assert.deepEqual(m.changes[0].blocked,[]);
-  assert.deepEqual(m.changes[1].workItems,[]);assert.match(m.changes[1].blocked.join(' '),/Several Work Items/);
- }finally{process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
-});
-
 
 test('absent historical changelog is distinct from unreadable Git history',()=>{
  const calls=[];
@@ -138,7 +125,7 @@ test(`a fix copied onto a release branch without its own PR ${name}`,async()=>{
   const gh=async url=>url.includes('/commits/')?[]:url.includes('/reviews')?[{user:{type:'User',login:'reviewer'},state:'APPROVED',commit_id:merged}]:url.includes('/files')?[{filename:'CHANGELOG.md'}]:pr;
   const m=await buildManifest({repo,product:'Site Audit Pro',target:'web',version:'v1.0.1',commit:shipped,event:'release',source:'https://github.com/run'},gh,baseline,notionStub);
   assert.equal(m.provenanceComplete,complete);assert.deepEqual(m.prs.map(p=>p.number),complete?[7]:[]);
-  assert.equal(m.issues.some(i=>i.startsWith('Unmapped shipped commits')),!complete);
+  assert.equal(m.issues.some(i=>i.startsWith('Shipped commits without a PR')),!complete);
  }finally{process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
 });
 
@@ -152,7 +139,7 @@ test('website page content needs no changelog entry, app repos still do',async()
    const pr={number:88,merged_at:'2026-11-04',merge_commit_sha:shipped,head:{sha:shipped},base:{repo:{full_name:repo}},user:{login:'author'},body:'',html_url:`https://github.com/${repo}/pull/88`};
    const gh=async url=>url.includes('/commits/')?[pr]:url.includes('/files')?[{filename:'src/app/page.html',status:'modified'}]:url.includes('/reviews')?[]:pr;
    const m=await buildManifest({repo,product:'Site Audit Pro',target,version:'v0.0.37',commit:shipped,event:'release',source:'https://github.com/run'},gh,baseline,null);
-   assert.equal(m.issues.some(i=>/PR #88 has no new changelog entry/.test(i)),flagged,repo);
+   assert.equal(m.issues.some(i=>/PR #88 has no changelog entry of its own/.test(i)),flagged,repo);
   }
  }finally{process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
 });

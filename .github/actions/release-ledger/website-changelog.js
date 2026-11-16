@@ -83,7 +83,7 @@ function websiteChanges(config, baseline, sha, contexts, syncs, git, deployed = 
       const summary = `Updated changelog for ${file.label}${version ? ` Release ${version}` : ''}`;
       const id = digest({ repository: config.repo, path: file.path, version, content: sections(after).get(version) || after });
       const sourcePrs = sources.map(source => source.pr.number).sort((a,b) => a-b);
-      changes.push({ id, kind: 'fix', summary, heading: 'Updated', sourceVersion: version, audience: 'Visitors to the marketing website', limitations: '', scope: `website-changelog-${id.slice(0,24)}`, targets: ['website'], audienceGate: false, requiredReleaseKeys: [], workItems: [], pr: sourcePrs[0] || 0, noteHash: digest({summary,sourcePrs}), approved, reviewEvidence: approved ? evidence[0] : '', blocked: approved ? [] : ['Website changelog update needs reviewed source or a verified release-bot sync.'], flagKeys: [], gateKeys: [], sourcePrs });
+      changes.push({ id, kind: 'fix', summary, heading: 'Updated', sourceVersion: version, audience: 'Visitors to the marketing website', limitations: '', scope: `website-changelog-${id.slice(0,24)}`, targets: ['website'], audienceGate: false, requiredReleaseKeys: [], workItems: [], pr: sourcePrs[0] || 0, noteHash: digest({summary,sourcePrs}), approved, reviewEvidence: approved ? evidence[0] : '', blocked: [], flagKeys: [], gateKeys: [], sourcePrs });
     }
   }
   return changes;

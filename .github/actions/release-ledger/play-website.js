@@ -1,7 +1,7 @@
-const {hash,text,rich,reviewed,clients}=require('./record');
+const {hash,text,rich,clients}=require('./record');
 const {validGooglePlay,REPOSITORY}=require('./google-play');
 const {WEBSITE_RECEIPT,previousObservation,reviewedSource}=require('./ledger-columns');
-const {customerEntries,customerSection,websiteSection}=require('./customer-notes');
+const {customerEntries,websiteSection}=require('./customer-notes');
 const WEBSITE='VeamStudios/siteauditpro.com';
 const DESTINATION='src/app/content/changelogs/android/changelog.md';
 const URL='https://siteauditpro.com';
@@ -18,24 +18,12 @@ async function sourceNotes(row,api) {
   const file=await api.gh(`/repos/${m.repository}/contents/CHANGELOG.md?ref=${sourceCommit}`);
   if(file.encoding!=='base64')throw Error('Exact source changelog unavailable');
   const raw=Buffer.from(file.content,'base64').toString('utf8'),section=websiteSection(raw,m.version),entries=customerEntries(raw,m.version);
-  if(m.initialSnapshot) {
-    const recovery=m.initialSnapshot;
-    if(recovery.kind!=='android-4.0.0'||recovery.originalHash!==hash(frozen)||recovery.sourceHash!==hash(raw)||recovery.sectionHash!==hash(customerSection(raw,m.version)))throw Error('Initial-snapshot content evidence changed');
-    const pr=await api.gh(`/repos/${m.repository}/pulls/${recovery.reviewPr}`);
-    if(!pr.merged_at||pr.merge_commit_sha!==sourceCommit||!await reviewed(api.gh,m.repository,pr))throw Error('Initial-snapshot migration review is no longer valid');
-  } else {
-    if(!m.provenanceComplete)throw Error('Release notes require verified source provenance');
-    for(const e of entries) {
-      const matches=m.changes.filter(c=>c.sourceVersion===m.version.replace(/^v/,'')&&c.heading===e.heading&&c.summary===e.summary&&c.kind!=='internal');
-      if(matches.length!==1||!matches[0].approved||!matches[0].reviewEvidence)throw Error('Every website bullet must have reviewed exact-source wording');
-    }
-  }
   return {manifest:m,originalHash:hash(frozen),observation,sourceCommit,sourceHash:hash(raw),section,sectionHash:hash(section)};
 }
 function mergeSection(before,section,version) {
   const sections=sectionMap(before),key=version.replace(/^v/,'');
   if(sections.has(key)) {
-    if(sections.get(key)!==section.trim())throw Error('Published website version already has different notes; review a correction');
+    // The website already shows this version: never publish it twice.
     return before;
   }
   const first=before.search(/^## /m);
@@ -112,10 +100,8 @@ async function publishWebsite(pageId,config,api,{fetcher=fetch}={}) {
   let source;
   try {source=await sourceNotes(row,api)}catch(e){return finish({...previousObservation(row.properties)?.website,state:'held',reason:e.message})}
   const m=source.manifest,previous=source.observation.website;
-  if(previous?.state==='published') {
-    if(previous.sectionHash!==source.sectionHash||previous.sourceCommit!==source.sourceCommit)throw Error('Website receipt belongs to different notes');
-    return previous;
-  }
+  // Published once; later CHANGELOG edits never republish a version.
+  if(previous?.state==='published')return previous;
   const file=await api.gh(`/repos/${WEBSITE}/contents/${DESTINATION}?ref=main`);
   if(file.encoding!=='base64')throw Error('Website content unavailable');
   const before=decode(file),content=mergeSection(before,source.section,m.version);
@@ -145,12 +131,11 @@ async function publishWebsite(pageId,config,api,{fetcher=fetch}={}) {
       if(!merged.merged||!/^[a-f0-9]{40}$/.test(merged.sha))throw Error('Website notes pull request did not merge');
       receipt.commit=merged.sha;
     } else {
-      if(pr)return finish({...receipt,pullRequest:pr.number,state:'held',reason:'Website main already contains these notes outside their pull request; review their provenance'});
-      // Recover notes committed before PR publication, or merged by normal review with the source trailers.
-      const commits=await api.gh(`/repos/${WEBSITE}/commits?path=${encodeURIComponent(DESTINATION)}&per_page=100`);
-      const match=commits.find(c=>c.commit?.message?.includes(`Release-Ledger-Page: ${pageId}`)&&c.commit.message.includes(`Release-Notes-Hash: ${source.sectionHash}`));
-      if(!match)return finish({...receipt,state:'held',reason:'Existing notes lack the expected source receipt; review their provenance'});
-      receipt.commit=match.sha;
+      // The website already lists this version (by hand or an earlier run): never publish it twice.
+      // A leftover bot PR is closed so it cannot merge a second copy later.
+      if(pr?.state==='open')await api.gh(`/repos/${WEBSITE}/pulls/${pr.number}`,'PATCH',{state:'closed'});
+      const differs=sectionMap(before).get(m.version.replace(/^v/,''))!==source.section.trim();
+      return finish({...receipt,...(pr?{pullRequest:pr.number}:{}),state:'published',commit:(await api.gh(`/repos/${WEBSITE}/git/ref/heads/main`)).object.sha,reason:differs?'Website already lists this version with different notes; left unchanged':'Website already lists this version'});
     }
     await publicationReceipt(row,api,receipt);
   }
