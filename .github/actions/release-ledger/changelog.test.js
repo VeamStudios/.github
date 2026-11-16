@@ -91,7 +91,7 @@ function divergedRepo(mode) {
  let rewordCommit;if(mode==='squashed-reworded-later'){fs.writeFileSync('CHANGELOG.md',notes.replace('Fix crash.','Fix a crash.'));rewordCommit=commit('docs: reword 1.0.1 notes')}
  fs.writeFileSync('feature.js','feature\n');fs.writeFileSync('CHANGELOG.md','## 1.1.0\n### Fixed\n- Fix exports.\n\n'+fs.readFileSync('CHANGELOG.md','utf8'));const feature=commit('fix: exports');
  git('checkout','-q','-b','release/1.0.1',mergeBase);
- if(squashed){fs.writeFileSync('app.js','one\ntwo\n');if(mode==='squashed-extra-hunk')fs.writeFileSync('lib.js','l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\n'.replace('l1\n','L1\n'));fs.writeFileSync('CHANGELOG.md',mode==='squashed-other-notes'?notes.replace('Fix crash.','Fix a crash.'):notes);commit('fix: crash (#9)')}
+ if(squashed){fs.writeFileSync('app.js','one\ntwo\n');if(mode==='squashed-extra-hunk')fs.writeFileSync('lib.js','l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\n'.replace('l1\n','L1\n'));fs.writeFileSync('CHANGELOG.md',mode==='squashed-other-notes'?notes.replace('Fix crash.','Fix a crash.'):notes);commit('fix: bring the crash fix into release/1.0.1 (#9)\n\n* fix: crash (#7)')}
  else git('cherry-pick','-x',hotfix);
  if(mode==='extra'){fs.writeFileSync('only-release.js','x\n');commit('release-only change')}
  const baseline=git('rev-parse','HEAD');git('checkout','-q','main');
@@ -116,8 +116,8 @@ test(`a diverged release-branch baseline ${name}`,async()=>{
   assert.equal(m.provenanceComplete,true);
   assert.deepEqual(m.divergedBaseline,{mergeBase:r.mergeBase});
   assert.deepEqual(m.changes.filter(c=>!c.blocked.length).map(c=>c.summary),['Fix exports.']);
-  // The backported fix's own PR shipped with the baseline when it carried its notes.
-  if(mode==='cherry-pick')assert.deepEqual(m.prs.map(p=>[p.number,p.carried===true]),[[7,true],[8,false]]);
+  // A squash naming the backported PR keeps that PR with the baseline release.
+  if(mode==='squashed')assert.deepEqual(m.prs.map(p=>[p.number,p.carried===true]),[[7,true],[8,false]]);
   assert.ok(!m.issues.some(i=>/baseline/.test(i)));
  }finally{process.chdir(cwd);if(dir)fs.rmSync(dir,{recursive:true,force:true})}
 });

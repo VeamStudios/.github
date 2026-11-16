@@ -113,20 +113,19 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   const contexts=[];
   // On a diverged baseline, main's copy of a fix the previous release already
   // shipped is in range. It belongs to that release, not this one, when the
-  // release-branch commits name its PR (squash and cherry-pick subjects keep
-  // "(#N)") or when all its notes are already in the baseline CHANGELOG. Its
-  // evidence stays in the record; only its Work Items are not linked again.
-  const shippedBefore=diverged?new Set(parseChangelog(before).map(identity)):null;
+  // release-branch commits name its PR (squash bodies and cherry-picks keep
+  // "(#N)"). Its evidence stays in the record; only its Work Items are not
+  // linked again, and it needs no new changelog entry.
   const carried=new Set(diverged?[...git('log','--format=%B',`${sha}..${baseline}`).matchAll(/\(#(\d+)\)$/gm)].map(m=>Number(m[1])):[]);
   for(const number of [...numbers].sort((a,b)=>a-b)) {
     const pr=await gh(`/repos/${config.repo}/pulls/${number}`),links=parseWorkItemLinks(pr.body),files=[];
     if(!pr.merged_at || pr.base?.repo?.full_name!==config.repo || (!ancestor(pr.merge_commit_sha,sha)&&!mapping&&!copied.has(number)))throw new Error(`PR #${number} is not proven in the shipped commit`);
     for(let page=1;;page++){const batch=await gh(`/repos/${config.repo}/pulls/${number}/files?per_page=100&page=${page}`);files.push(...batch);if(batch.length<100)break}
     const added=newEntries(read(`${pr.merge_commit_sha}^1`),read(pr.merge_commit_sha)),approved=await reviewed(gh,config.repo,pr);
-    const prior=carried.has(number)||Boolean(shippedBefore&&added.length&&added.every(e=>shippedBefore.has(identity(e)))),workItems=prior?[]:links.ids;
+    const prior=carried.has(number),workItems=prior?[]:links.ids;
     const warnings=links.invalidEntries.length?[`PR #${number}: fix the invalid Work Items link in the PR description.`]:[];
     // Website repos keep no CHANGELOG.md of their own; their page content is not a release note.
-    if(!added.length&&!internalFiles(files)&&!website)issues.push(`PR #${number} has no new changelog entry; a release PR may supply it.`);
+    if(!added.length&&!prior&&!internalFiles(files)&&!website)issues.push(`PR #${number} has no new changelog entry; a release PR may supply it.`);
     prs.push({number,url:pr.html_url,mergeCommit:pr.merge_commit_sha,headCommit:pr.head.sha,workItems,approved,noteHash:'',...(prior?{carried:true}:{})});
     contexts.push({pr,links:workItems,added,approved,warnings,files,commits:[...commitPrs].filter(([,number])=>number===pr.number).map(([commit])=>commit)});
   }
