@@ -111,11 +111,18 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   const website=Boolean(config.target==='website'&&WEBSITES[config.repo]);
   if(!raw && !website)issues.push('CHANGELOG.md is missing at the shipped commit. Add reviewed release notes before publication.');
   const contexts=[];
+  // On a diverged baseline, main's copy of a fix the previous release already
+  // shipped is in range. It belongs to that release, not this one, when the
+  // release-branch commits name its PR (squash and cherry-pick subjects keep
+  // "(#N)") or when all its notes are already in the baseline CHANGELOG.
+  const shippedBefore=diverged?new Set(parseChangelog(before).map(identity)):null;
+  const carried=new Set(diverged?[...git('log','--format=%B',`${sha}..${baseline}`).matchAll(/\(#(\d+)\)/g)].map(m=>Number(m[1])):[]);
   for(const number of [...numbers].sort((a,b)=>a-b)) {
     const pr=await gh(`/repos/${config.repo}/pulls/${number}`),links=parseWorkItemLinks(pr.body),files=[];
     if(!pr.merged_at || pr.base?.repo?.full_name!==config.repo || (!ancestor(pr.merge_commit_sha,sha)&&!mapping&&!copied.has(number)))throw new Error(`PR #${number} is not proven in the shipped commit`);
     for(let page=1;;page++){const batch=await gh(`/repos/${config.repo}/pulls/${number}/files?per_page=100&page=${page}`);files.push(...batch);if(batch.length<100)break}
     const added=newEntries(read(`${pr.merge_commit_sha}^1`),read(pr.merge_commit_sha)),approved=await reviewed(gh,config.repo,pr);
+    if(carried.has(number)||(shippedBefore&&added.length&&added.every(e=>shippedBefore.has(identity(e)))))continue;
     const warnings=links.invalidEntries.length?[`PR #${number}: fix the invalid Work Items link in the PR description.`]:[];
     // Website repos keep no CHANGELOG.md of their own; their page content is not a release note.
     if(!added.length&&!internalFiles(files)&&!website)issues.push(`PR #${number} has no new changelog entry; a release PR may supply it.`);
