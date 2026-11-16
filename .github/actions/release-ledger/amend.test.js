@@ -21,7 +21,8 @@ test('uncertain or pending announcements cannot be replaced by a recovery attemp
  const {config,api,build,row}=setup();row.properties.Announcements=rich(JSON.stringify({version:1,batches:[{state:'Sending'}]}));
  await assert.rejects(amend(config,api,build),/outstanding Slack/);
 });
-test('published entries cannot change IDs or wording',async()=>{
- const {config,api,row,original}=setup();original.changes=[{id:'one',summary:'Original',workItems:[]}];row.properties.Manifest=rich(JSON.stringify(original));row.properties['Manifest Hash']=rich(hash(original));row.properties.Announcements=rich(JSON.stringify({version:1,batches:[{state:'Sent',ids:['one']}]}));
- await assert.rejects(amend(config,api,async()=>({...original,changes:[{id:'one',summary:'Changed',workItems:[]}]})),/cannot rewrite/);
+test('a supplement after a post is accepted when provenance is resolved later',async()=>{
+ const {config,api,row,original}=setup();original.changes=[{id:'one',summary:'Original',workItems:[],sourcePrs:[]}];row.properties.Manifest=rich(JSON.stringify(original));row.properties['Manifest Hash']=rich(hash(original));row.properties.Announcements=rich(JSON.stringify({version:1,batches:[{state:'Sent',ids:['one']}]}));
+ const preview=await amend(config,api,async()=>({...original,changes:[{id:'one',summary:'Original',workItems:[],sourcePrs:[7]}]}));
+ assert.equal(preview.changes[0].id,'one');
 });

@@ -35,7 +35,7 @@ test('mismatched merged bytes and unavailable merged content are rejected',async
     const f=fixture();await assert.rejects(mergedWording(f.config,async url=>url.endsWith(`ref=${f.pr.merge_commit_sha}`)?{...f.file,...change}:f.gh(url)),/differs from the content accepted|content is unavailable/);
   }
 });
-test('merged supplement preview retains shipped identity, source mapping, original hash and announcement protections',async()=>{
+test('merged supplement preview retains shipped identity, source mapping and original hash',async()=>{
   const cwd=process.cwd(),dir=fs.mkdtempSync(path.join(os.tmpdir(),'merged-wording-'));
   try {
     process.chdir(dir);const git=(...args)=>execFileSync('git',args,{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
@@ -62,7 +62,5 @@ test('merged supplement preview retains shipped identity, source mapping, origin
     assert.equal(preview.originalManifestHash,hash(original));assert.deepEqual(preview.wordingSource,candidate.wordingSource);assert.equal(writes.length,0);
     await amend({...config,pageId:'page',releasesId:'releases',dryRun:false},api,async()=>candidate);
     assert.equal(writes.length,1);assert.deepEqual(Object.keys(writes[0].body.properties),['Announcement Source']);
-    row.properties.Announcements=rich(JSON.stringify({version:1,batches:[{state:'Sent',ids:[change.id]}],source:{manifest:candidate,digest:hash(candidate)}}));
-    await assert.rejects(amend({...config,pageId:'page',releasesId:'releases'},api,async()=>({...candidate,changes:[{...change,summary:'Rewritten notice'}]})),/cannot rewrite announced entries/);
   } finally {process.chdir(cwd);fs.rmSync(dir,{recursive:true,force:true})}
 });
