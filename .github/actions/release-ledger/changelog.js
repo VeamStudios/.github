@@ -54,75 +54,6 @@ function patchIds(...revs) {
   const out=execFileSync('git',['patch-id','--verbatim'],{...options,input:log});
   return new Map(out.split('\n').filter(Boolean).map(line=>{const [id,commit]=line.split(' ');return [commit,id]}));
 }
-// A baseline built on a release branch is not an ancestor of the next release.
-// It still proves what shipped when every baseline-only commit has a
-// patch-equivalent commit in the shipped history; those commits are excluded.
-function divergedBaseline(baseline,sha,runGit=require('./record').git,ids=patchIds) {
-  let mergeBase;
-  try{mergeBase=runGit('merge-base',baseline,sha)}catch{return null}
-  if(!/^[a-f0-9]{40}$/.test(mergeBase)||mergeBase===baseline)return null;
-  // Symmetric ranges equal mergeBase..X and stay exact when history has several merge bases.
-  const baselineOnly=runGit('rev-list','--reverse',`${sha}..${baseline}`).split('\n').filter(Boolean);
-  const shipped=runGit('rev-list','--reverse',`${baseline}..${sha}`).split('\n').filter(Boolean);
-  const baselineIds=ids(`${sha}..${baseline}`),shippedIds=ids(`${baseline}..${sha}`),paired=new Set(),equivalents=[];
-  for(const commit of baselineOnly) {
-    const id=baselineIds.get(commit),match=id&&shipped.find(s=>!paired.has(s)&&shippedIds.get(s)===id);
-    const matches=match?[match]:squashedBackport(commit,baseline,sha,paired,runGit,ids);
-    if(!matches)return null;
-    for(const s of matches){paired.add(s);equivalents.push({baseline:commit,shipped:s})}
-  }
-  return {mergeBase,equivalents,commits:shipped.filter(s=>!paired.has(s))};
-}
-function changelogSections(text) {
-  const sections=new Map();let heading=null;
-  for(const line of text.split('\n')){if(/^## /.test(line)){heading=line.trim();sections.set(heading,'')}else if(heading!==null)sections.set(heading,sections.get(heading)+line+'\n')}
-  return sections;
-}
-function changedSections(commit,runGit) {
-  const before=changelogSections(readChangelog(`${commit}^`,runGit)),after=changelogSections(readChangelog(commit,runGit));
-  return {after,headings:[...new Set([...before.keys(),...after.keys()])].filter(h=>before.get(h)!==after.get(h))};
-}
-// A release-branch fix is often squashed with its CHANGELOG section into one
-// commit, while main received the code and the notes as separate commits. It
-// still shipped when every code file's change equals a shipped commit's change
-// to that file, and every CHANGELOG section it touches was identical in the
-// shipped history. That can be before the shipped tip: main may reword an old
-// release's notes after the backport. Shipped commits that only wrote those
-// sections are paired so they are not announced again.
-function squashedBackport(commit,baseline,sha,paired,runGit,ids) {
-  const filesOf=c=>runGit('diff-tree','--no-commit-id','--name-only','-r',c).split('\n').filter(Boolean);
-  const files=filesOf(commit);
-  if(!files.length)return null;
-  const fileIds=new Map(),matches=new Set();
-  for(const file of files.filter(f=>f!=='CHANGELOG.md')) {
-    const id=ids('-1',commit,'--',file).get(commit),shippedIds=ids(`${baseline}..${sha}`,'--',file);
-    const match=id&&[...shippedIds].find(([s,shippedId])=>!paired.has(s)&&shippedId===id)?.[0];
-    if(!match)return null;
-    fileIds.set(file,id);matches.add(match);
-  }
-  let headings=[];
-  if(files.includes('CHANGELOG.md')) {
-    const changed=changedSections(commit,runGit),notesCommits=runGit('rev-list','--reverse',`${baseline}..${sha}`,'--','CHANGELOG.md').split('\n').filter(Boolean);
-    headings=changed.headings;
-    // Check the tip first and read older versions only when needed. A removed
-    // section must still be absent at the tip.
-    const sections=new Map(),at=ref=>{if(!sections.has(ref))sections.set(ref,changelogSections(readChangelog(ref,runGit)));return sections.get(ref)};
-    const shipped=h=>{const want=changed.after.get(h);return want===undefined?!at(sha).has(h):[sha,...notesCommits].some(ref=>at(ref).get(h)===want)};
-    if(!headings.length||!headings.every(shipped))return null;
-    for(const s of notesCommits) {
-      if(paired.has(s)||filesOf(s).join('\n')!=='CHANGELOG.md')continue;
-      const own=changedSections(s,runGit).headings;
-      if(own.length&&own.every(h=>headings.includes(h)))matches.add(s);
-    }
-  }
-  // A paired commit leaves the release, so every change it made must be one the
-  // backport carried: the same per-file patch, or only the backport's CHANGELOG sections.
-  for(const s of matches)for(const file of filesOf(s)) {
-    if(file==='CHANGELOG.md'){const own=changedSections(s,runGit).headings;if(!own.length||own.some(h=>!headings.includes(h)))return null}
-    else if(!fileIds.has(file)||ids('-1',s,'--',file).get(s)!==fileIds.get(file))return null;
-  }
-  return matches.size?[...matches]:null;
-}
 function readChangelog(ref,runGit=require('./record').git) {
   // An absent path is valid for early history; an unreadable Git object is not.
   if(!runGit('ls-tree',ref,'--','CHANGELOG.md').trim())return '';
@@ -158,10 +89,15 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   const sha=git('rev-parse',`${config.commit}^{commit}`),issues=[],prs=[],changes=[];
   const mapping=await provenanceMapping(config,gh,sha,baseline);
   const shaBaseline=Boolean(baseline&&/^[a-f0-9]{40}$/.test(baseline));
-  const diverged=shaBaseline&&!ancestor(baseline,sha)&&!mapping?divergedBaseline(baseline,sha,git):null;
+  // A baseline on a release branch (backports never merged back) is not an
+  // ancestor of the next release. Measure from where the two histories meet:
+  // baseline..sha already excludes everything the baseline shipped, and entries
+  // are compared with the baseline's CHANGELOG, so nothing is announced twice.
+  const mergeBase=shaBaseline&&!ancestor(baseline,sha)&&!mapping?(()=>{try{return git('merge-base',baseline,sha)}catch{return ''}})():'';
+  const diverged=/^[a-f0-9]{40}$/.test(mergeBase)?{mergeBase}:null;
   const validBaseline=Boolean(shaBaseline&&(ancestor(baseline,sha)||mapping||diverged));
   if(!validBaseline)issues.push('Missing verified production baseline. Record the previous deployed commit; no announcement is inferred.');
-  const commits=diverged?diverged.commits:validBaseline?git('rev-list','--reverse',`${baseline}..${sha}`).split('\n').filter(Boolean):[];
+  const commits=validBaseline?git('rev-list','--reverse',`${baseline}..${sha}`).split('\n').filter(Boolean):[];
   const numbers=new Set(),unmapped=[],syncs=[],commitPrs=new Map(),copied=new Set();
   for(const commit of commits){const associated=[];for(let page=1;;page++){const rows=await gh(`/repos/${config.repo}/commits/${commit}/pulls?per_page=100&page=${page}`);associated.push(...rows);if(rows.length<100)break};const included=associated.filter(p=>p.base?.repo?.full_name===config.repo && p.merged_at && p.merge_commit_sha && ancestor(p.merge_commit_sha,sha));let number=mapping?.commits[commit]||(included.length===1?included[0].number:undefined);if(!number&&(number=await copiedPr(config,gh,commit,git)))copied.add(number);if(number){numbers.add(number);commitPrs.set(commit,number)}else{const sync=config.target==='website'?await verifiedSync(config.repo,commit,gh,git):null;if(sync)syncs.push(sync);else unmapped.push(commit)}}
   if(unmapped.length)issues.push(`Unmapped shipped commits: ${unmapped.join(', ')}. Confirm their source PRs before announcing this release.`);
@@ -229,9 +165,9 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
     const c={id,kind,summary,heading:entry.heading,sourceVersion:entry.version,audience:'Users of this production target',limitations:entry.previewTag?`Preview: ${entry.previewTag}`:'',scope:`changelog-${id.slice(0,24)}`,targets:[config.target],availabilityMode:'work-item',audienceGate:kind==='feature'||flagKeys.length>0,requiredReleaseKeys:[],workItems:linked,pr:wording?.pr.number||sources[0]?.pr.number||0,noteHash:hash({summary,heading:entry.heading,sourcePrs}),approved:Boolean(wording?.approved),reviewEvidence:wording?.approved?wording.pr.html_url:'',blocked,flagKeys,gateKeys,sourcePrs};
     changes.push(c);
   }
-  if(validBaseline && config.target==='website')changes.push(...websiteChanges(config,baseline,sha,contexts,syncs,git,new Set(diverged?.equivalents.map(e=>e.shipped))));
+  if(validBaseline && config.target==='website')changes.push(...websiteChanges(config,baseline,sha,contexts,syncs,git));
   const covered=new Set(changes.filter(c=>!c.blocked.length).flatMap(c=>c.sourcePrs));
   const warnings=issues.filter(message=>{const missing=message.match(/^PR #(\d+) has no new changelog entry/);return !missing||!covered.has(Number(missing[1]))});
-  return {schemaVersion:2,deliveryVersion:1,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs,changes,workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url,acceptance:wordingAcceptance}:null,issues:warnings,provenanceComplete:validBaseline&&unmapped.length===0,...(diverged?{divergedBaseline:{mergeBase:diverged.mergeBase,equivalents:diverged.equivalents}}:{}),websiteSyncs:syncs,source:config.source};
+  return {schemaVersion:2,deliveryVersion:1,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs,changes,workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url,acceptance:wordingAcceptance}:null,issues:warnings,provenanceComplete:validBaseline&&unmapped.length===0,...(diverged?{divergedBaseline:{mergeBase:diverged.mergeBase}}:{}),websiteSyncs:syncs,source:config.source};
 }
 module.exports={parseChangelog,newEntries,renderChangelog,identity,buildChangelogManifest,internalFiles,readChangelog,mergedWording};

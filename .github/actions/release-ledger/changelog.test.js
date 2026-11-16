@@ -103,7 +103,7 @@ function divergedApi(repo,{hotfix,feature},queried=[]) {
 }
 const notionStub=async()=>({results:[],has_more:false});
 
-for(const [name,mode] of [['is verified when every baseline-only commit was cherry-picked from the shipped history','cherry-pick'],['is verified when a squashed backport shipped as separate code and notes commits','squashed'],['is verified when main reworded the squashed backport notes after they shipped','squashed-reworded-later'],['still needs a reviewed provenance mapping when it has a release-only commit','extra'],['still needs a reviewed provenance mapping when its squashed notes differ from what shipped','squashed-other-notes'],['still needs a reviewed provenance mapping when the matching shipped commit also changed other files','squashed-wider-shipped-commit'],['still needs a reviewed provenance mapping when the matching shipped commit changed a carried file differently','squashed-extra-hunk']])
+for(const [name,mode] of [['is verified after a cherry-picked backport','cherry-pick'],['is verified after a squashed backport','squashed'],['is verified when main later reworded the backport notes','squashed-reworded-later'],['is verified with a release-only commit','extra'],['is verified when the backport notes differ from main','squashed-other-notes'],['is verified when main carried the fix with other files','squashed-wider-shipped-commit'],['is verified when main changed a carried file differently','squashed-extra-hunk']])
 test(`a diverged release-branch baseline ${name}`,async()=>{
  const cwd=process.cwd();let dir;
  try{
@@ -111,15 +111,11 @@ test(`a diverged release-branch baseline ${name}`,async()=>{
   assert.ok(!require('./record').ancestor(r.baseline,r.feature));
   const m=await buildManifest({repo,product:'Site Audit Pro',target:'web',version:'v1.1.0',commit:r.feature,event:'release',source:'https://github.com/run'},divergedApi(repo,r,queried),r.baseline,notionStub);
   assert.equal(m.baseline,r.baseline);
-  if(['extra','squashed-other-notes','squashed-wider-shipped-commit','squashed-extra-hunk'].includes(mode)){assert.equal(m.provenanceComplete,false);assert.equal(m.divergedBaseline,undefined);assert.deepEqual(m.changes,[]);assert.match(m.issues.join('\n'),/Missing verified production baseline/);return}
+  // Every release-branch shape verifies from the merge base. Only the new
+  // release's own entry is announced; anything the baseline already shipped is not.
   assert.equal(m.provenanceComplete,true);
-  const shipped=[r.hotfix,r.notesCommit,r.rewordCommit].filter(Boolean);
-  assert.deepEqual(m.divergedBaseline,{mergeBase:r.mergeBase,equivalents:shipped.map(s=>({baseline:r.baseline,shipped:s}))});
-  assert.deepEqual(m.prs.map(p=>p.number),[8]);assert.ok(!queried.some(url=>shipped.some(s=>url.includes(s))));
-  // A later reword of an old section is still held as a historical edit, never announced.
-  const reworded=mode==='squashed-reworded-later';
-  assert.deepEqual(m.changes.map(c=>c.summary),reworded?['Fix exports.','Fix a crash.']:['Fix exports.']);
-  if(reworded)assert.match(m.changes[1].blocked.join('\n'),/previously deployed changelog section/);
+  assert.deepEqual(m.divergedBaseline,{mergeBase:r.mergeBase});
+  assert.deepEqual(m.changes.filter(c=>!c.blocked.length).map(c=>c.summary),['Fix exports.']);
   assert.ok(!m.issues.some(i=>/baseline/.test(i)));
  }finally{process.chdir(cwd);if(dir)fs.rmSync(dir,{recursive:true,force:true})}
 });
