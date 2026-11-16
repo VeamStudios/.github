@@ -6,7 +6,7 @@
   "target": "android-enterprise",
   "version": "v1.0.0",
   "build": "200",
-  "commit": "87451f53ee335cd3b434dd4c796284317b83c07c",
+  "commit": "375e7b7fe4ce5be675de6e562619de388cbeba84",
   "baseline": "",
   "event": "release",
   "prs": [],

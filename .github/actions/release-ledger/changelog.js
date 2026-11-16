@@ -104,8 +104,11 @@ function squashedBackport(commit,baseline,sha,paired,runGit,ids) {
   if(files.includes('CHANGELOG.md')) {
     const changed=changedSections(commit,runGit),notesCommits=runGit('rev-list','--reverse',`${baseline}..${sha}`,'--','CHANGELOG.md').split('\n').filter(Boolean);
     headings=changed.headings;
-    const shippedVersions=[sha,...notesCommits].map(ref=>changelogSections(readChangelog(ref,runGit)));
-    if(!headings.length||headings.some(h=>!shippedVersions.some(v=>v.get(h)===changed.after.get(h))))return null;
+    // Check the tip first and read older versions only when needed. A removed
+    // section must still be absent at the tip.
+    const sections=new Map(),at=ref=>{if(!sections.has(ref))sections.set(ref,changelogSections(readChangelog(ref,runGit)));return sections.get(ref)};
+    const shipped=h=>{const want=changed.after.get(h);return want===undefined?!at(sha).has(h):[sha,...notesCommits].some(ref=>at(ref).get(h)===want)};
+    if(!headings.length||!headings.every(shipped))return null;
     for(const s of notesCommits) {
       if(paired.has(s)||filesOf(s).join('\n')!=='CHANGELOG.md')continue;
       const own=changedSections(s,runGit).headings;
