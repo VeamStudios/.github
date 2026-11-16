@@ -130,14 +130,14 @@ async function provenance(config,gh,sha,baseline,notion,website) {
   }catch(error){issues.push(`Provenance check failed: ${error.message}`)}
   return {issues,prs,contexts,syncs,workItemSnapshots,validBaseline,diverged,complete:validBaseline&&!unmapped.length&&!issues.some(i=>i.startsWith('Provenance check failed'))};
 }
-// What is announced is exactly the shipped build's `## x.y.z` section: New, Changed and
-// Fixed for customers (the website uses the same entries); every other heading is internal.
+// What is announced is exactly the shipped build's `## x.y.z` section: CUSTOMER_HEADINGS
+// are for customers (the website uses the same entries); every other heading is internal.
 function sectionChanges(config,raw,contexts) {
-  const {hash}=require('./record'),{clean}=require('./customer-notes');
+  const {hash}=require('./record'),{clean,CUSTOMER_HEADINGS}=require('./customer-notes');
   const version=config.version.replace(/^v/,'');
   const seen=new Map();
   return parseChangelog(raw.replace(/<!--[^]*?-->/g,'')).filter(e=>e.version===version).map(entry=>{
-    const customer=['New','Changed','Fixed'].includes(entry.heading),summary=customer?clean(entry.summary):entry.summary.trim();
+    const customer=CUSTOMER_HEADINGS.includes(entry.heading),summary=customer?clean(entry.summary):entry.summary.trim();
     const sources=contexts.filter(x=>entry.prRefs.some(p=>p.repository===config.repo&&p.number===x.pr.number));
     const sourcePrs=sources.map(x=>x.pr.number).sort((a,b)=>a-b),review=sources.find(x=>x.approved);
     const kind=!customer?'internal':entry.heading==='Fixed'?'fix':'feature';
@@ -160,7 +160,7 @@ async function buildChangelogManifest(config,gh,baseline,notion) {
   if(!website&&!changes.some(c=>c.kind!=='internal'))issues.push(`CHANGELOG.md at the shipped commit has no customer notes under ## ${config.version.replace(/^v/,'')}.`);
   if(info.validBaseline&&website)changes.push(...websiteChanges(config,baseline,sha,info.contexts,info.syncs,git));
   // A release PR usually writes the notes; a PR a note cites needs no entry of its own.
-  const cited=new Set(changes.flatMap(c=>c.sourcePrs));
+  const cited=new Set(changes.filter(c=>c.kind!=='internal').flatMap(c=>c.sourcePrs));
   const shown=issues.filter(message=>!cited.has(Number(message.match(/^PR #(\d+) has no changelog entry/)?.[1])));
   return {schemaVersion:2,deliveryVersion:1,key:releaseKey(config.repo,config.target,config.version,config.event),repository:config.repo,product:config.product,target:config.target,version:config.version,build:config.build||'',commit:sha,baseline:baseline||'',event:config.event||'release',prs:info.prs,changes,workItemSnapshots:info.workItemSnapshots,completeChangelog:renderChangelog(changes.filter(c=>c.kind!=='internal')),wordingSource:wordingPr?{pr:wordingPr.number,commit:wordingPr.head.sha,url:wordingPr.html_url,acceptance:wordingAcceptance}:null,issues:shown,provenanceComplete:info.complete,...(info.diverged?{divergedBaseline:{mergeBase:info.diverged.mergeBase}}:{}),websiteSyncs:info.syncs,source:config.source};
 }

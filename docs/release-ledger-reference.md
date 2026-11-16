@@ -22,7 +22,7 @@ Work Item labels use their titles; release wording comes from the shipped reposi
 
 <details><summary>Exact contents and missing notes</summary>
 
-The recorder reads `CHANGELOG.md` at the shipped commit and takes the shipped version's section only. **New**, **Changed** and **Fixed** are customer notes, for Slack and the website alike; any other heading (such as **Internal** or **Play**) stays in Notion. Notes under other versions or Unreleased are never announced.
+The recorder reads `CHANGELOG.md` at the shipped commit and takes the shipped version's section only. **New**, **Feature**, **Improved**, **Changed** and **Fixed** are customer notes, for Slack and the website alike; any other heading (such as **Internal** or **Play**) stays in Notion. Notes under other versions or Unreleased are never announced.
 
 PR inclusion comes from GitHub commit associations since the previous verified production commit. It is information only: it fills the shipped PR and Work Item lists in Notion. Missing baselines, unmapped commits, PRs without changelog entries, invalid Work Item links and unreviewed PRs become warnings on the release page. They never hold a post.
 
