@@ -117,7 +117,7 @@ test(`a diverged release-branch baseline ${name}`,async()=>{
   assert.deepEqual(m.divergedBaseline,{mergeBase:r.mergeBase});
   assert.deepEqual(m.changes.filter(c=>!c.blocked.length).map(c=>c.summary),['Fix exports.']);
   // The backported fix's own PR shipped with the baseline when it carried its notes.
-  if(mode==='cherry-pick')assert.deepEqual(m.prs.map(p=>p.number),[8]);
+  if(mode==='cherry-pick')assert.deepEqual(m.prs.map(p=>[p.number,p.carried===true]),[[7,true],[8,false]]);
   assert.ok(!m.issues.some(i=>/baseline/.test(i)));
  }finally{process.chdir(cwd);if(dir)fs.rmSync(dir,{recursive:true,force:true})}
 });
