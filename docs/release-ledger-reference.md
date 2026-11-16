@@ -24,7 +24,7 @@ Work Item labels use their titles; release wording comes from the shipped reposi
 
 The recorder reads CHANGELOG.md at the shipped commit and compares it with the previous verified production commit, independent of announcement readiness. It includes skipped versions, multiline entries and Unreleased. Moving unchanged entries between version headings does not announce them again. Editing an already deployed version is held for correction.
 
-PR inclusion comes from GitHub commit associations, paginated directly rather than through the daily Notion mirror. Ambiguous/cherry-picked provenance requires the existing reviewed `.release-provenance/` mapping. It is an exceptional operator recovery path, not routine developer input.
+PR inclusion comes from GitHub commit associations, paginated directly rather than through the daily Notion mirror. When the previous production commit sits on a release branch that was never merged back, the range starts where the two histories meet (`git merge-base`); entries already in the previous release's CHANGELOG are not announced again. Other ambiguous provenance requires the existing reviewed `.release-provenance/` mapping. It is an exceptional operator recovery path, not routine developer input.
 
 For ambiguous changelog-to-feature mapping, add a normal Markdown Work Item or shipped PR link beside the entry. Raw rcValue and previewTag metadata is retained as gating information and excluded from the changelog text. Preview restrictions remain visible.
 
