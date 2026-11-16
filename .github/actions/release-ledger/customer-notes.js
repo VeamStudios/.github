@@ -3,7 +3,7 @@ const clean = summary => summary.replace(/<!--[^]*?-->/g,'').replace(/\s*\[[^\]]
 function customerEntries(raw,version) {
   const normalized=version.replace(/^v/,'');
   if(!/^\d+\.\d+\.\d+$/.test(normalized))throw Error('An exact marketing version is required');
-  const headings=String(raw).match(new RegExp(`^## v?${normalized.replaceAll('.','\\.')}\\s*$`,'gm'))||[];
+  const headings=String(raw).match(new RegExp(`^##\\s+\\[?v?${normalized.replaceAll('.','\\.')}\\]?(?:\\s+-\\s+\\d{4}-\\d\\d-\\d\\d)?\\s*$`,'gm'))||[];
   if(headings.length!==1)throw Error(`Expected one CHANGELOG.md section for ${normalized}`);
   const entries=parseChangelog(raw.replace(/<!--[^]*?-->/g,'')).filter(e=>e.version===normalized&&['New','Changed','Fixed'].includes(e.heading)).map(e=>({...e,summary:clean(e.summary)})).filter(e=>e.summary);
   if(!entries.length)throw Error(`No customer notes for ${normalized}`);

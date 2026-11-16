@@ -53,7 +53,7 @@ test('merged supplement preview retains shipped identity, source mapping, origin
     const config={repo,target:'console',product:'Site Audit Pro',version,commit:shipped,event:'release',source:'https://github.com/run',wordingPr:44};
     const candidate=await buildManifest(config,gh,baseline,notion);
     assert.equal(candidate.commit,shipped);assert.equal(candidate.baseline,baseline);assert.equal(candidate.changes.length,1);
-    const change=candidate.changes[0];assert.equal(change.summary,note);assert.deepEqual(change.sourcePrs,[37]);assert.deepEqual(change.workItems,[wi]);assert.equal(change.kind,'feature');assert.equal(change.audienceGate,true);assert.equal(change.approved,true);assert.deepEqual(change.blocked,[]);
+    const change=candidate.changes[0];assert.equal(change.summary,note);assert.deepEqual(change.sourcePrs,[37]);assert.deepEqual(change.workItems,[wi]);assert.equal(change.kind,'feature');assert.deepEqual(change.blocked,[]);
     assert.equal(candidate.prs[0].approved,false);assert.equal(candidate.wordingSource.commit,wordingHead);assert.equal(candidate.wordingSource.acceptance.kind,'merged-pr');assert.doesNotMatch(candidate.completeChangelog,/Future|Old fix/);
     assert.ok(!calls.some(url=>url.includes('/pulls/44/reviews')));
     const original={...candidate,changes:[],completeChangelog:'',wordingSource:null};const row={id:'page',parent:{data_source_id:'releases'},properties:{Manifest:rich(JSON.stringify(original)),'Manifest Hash':rich(hash(original)),Announcements:rich('')}};

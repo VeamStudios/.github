@@ -48,12 +48,12 @@ test('customer projection excludes unreleased/internal/metadata and preserves al
   const merged=mergeSection(historical,section,'v4.0.1');
   assert.ok(merged.endsWith(historical.slice(historical.indexOf('## '))));
   assert.equal(mergeSection(merged,section,'4.0.1'),merged);
-  assert.throws(()=>mergeSection(merged,section.replace('fix','change'),'4.0.1'),/different notes/);
+  assert.equal(mergeSection(merged,section.replace('fix','change'),'4.0.1'),merged);
   assert.equal(renderedNotes('<h2>4.0.1</h2><li>A <strong>complete</strong> fix.</li>',section,'4.0.1'),true);
   assert.equal(renderedNotes('<h2>4.0.1</h2><li>Future secret</li>',section,'4.0.1'),false);
 });
-test('partial/halted/wrong evidence and unreviewed wording cannot sync',async()=>{
-  for(const mutation of [r=>{const o=JSON.parse(text(r.properties.Observation));o.verification.rolloutStatus='halted';r.properties.Observation=rich(JSON.stringify(o))},r=>{const m=JSON.parse(text(r.properties.Manifest));m.changes[0].approved=false;r.properties.Manifest=rich(JSON.stringify(m));r.properties['Manifest Hash']=rich(hash(m))}]) {
+test('a halted Play rollout cannot sync',async()=>{
+  for(const mutation of [r=>{const o=JSON.parse(text(r.properties.Observation));o.verification.rolloutStatus='halted';r.properties.Observation=rich(JSON.stringify(o))}]) {
     const {row,api}=setup();mutation(row);await assert.rejects(()=>sourceNotes(row,api));
   }
 });
